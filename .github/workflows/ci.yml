@@ -1,0 +1,28 @@
+# 日常守门：push / PR 跑 typecheck + 全部单测（桌面 node:test + agent-core vitest）。
+# 只做代码检查不出安装包；发版构建在 release.yml，手动 Mac 包在 dist-mac.yml。
+# agent-core 的 pi 集成测试在二进制缺失时自动 skip（CI 不下载 pi-bin）。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # 单测/typecheck 不启动 Electron，跳过二进制下载提速
+      - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: pnpm typecheck
+      - run: pnpm test:unit

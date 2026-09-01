@@ -1,0 +1,18 @@
+node_modules/
+/dist/
+out/
+*.log
+.DS_Store
+apps/pi-bin/
+apps/ripgrep-bin/
+tools/pi/updates/
+tools/ripgrep/updates/
+tools/screenshots/
+apps/desktop/dist/
+packages/browser-runtime/dist
+apps/desktop/resources-browser/
+apps/cua-driver-bin/
+tools/cua-driver/updates/
+
+# 参考项目只读快照（本地存在即可，不进版本库）
+cindy/

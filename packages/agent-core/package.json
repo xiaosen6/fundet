@@ -1,0 +1,36 @@
+{
+  "name": "@fundet/agent-core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Fundet core: Pi agent orchestration, session management, memory. Zero Electron deps. Derived from makecindy/cindy maker-core (Apache-2.0).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fundet/shared": "workspace:*",
+    "diff": "^8.0.4",
+    "gray-matter": "^4.0.3"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "*"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.4"
+  }
+}

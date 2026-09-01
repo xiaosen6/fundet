@@ -1,0 +1,89 @@
+# Fundet 品牌变体打包配置（BRAND=fundet 构建时使用）。
+# 与 electron-builder.yml 唯一差别：productName / 图标 / 发布仓（xiaosen6/fundet）。
+# 功能与 LongMa 完全一致；userData 自动隔离到 %APPDATA%\Fundet。
+appId: com.fundet.app
+productName: Fundet
+directories:
+  output: dist
+  buildResources: resources
+
+publish:
+  provider: github
+  owner: xiaosen6
+  repo: fundet
+  releaseType: release
+
+npmRebuild: false
+
+files:
+  - out/**
+  - drizzle/**
+  - package.json
+  # agent-core/shared 打进主 bundle，不进 asar；browser-runtime 的运行时闭包
+  # （playwright-core/sharp/…，101 包）由 tools/pack-browser-deps.mjs 打平，
+  # 经下方 extraResources 落到 resources/node_modules（asar 外，主进程模块
+  # 解析向上可及；.node 原生二进制不进 asar 也免去 asarUnpack）
+  - "!node_modules/@fundet/agent-core"
+  - "!node_modules/@fundet/shared"
+
+asarUnpack:
+  - "**/*.node"
+
+extraResources:
+  - from: resources/fundet/icon.png
+    to: icon.png
+  - from: resources/fundet/icon.ico
+    to: icon.ico
+  - from: resources-browser/node_modules
+    to: node_modules
+  - from: ../../apps/cua-driver-bin/win32-x64
+    to: cua-driver/win32-x64
+    filter:
+      - '**/*'
+
+linux:
+  category: Utility
+  icon: resources/fundet/icon.png
+
+win:
+  icon: resources/fundet/icon.ico
+  target:
+    - nsis
+  extraResources:
+    - from: ../../apps/pi-bin/win32-x64
+      to: pi/win32-x64
+    - from: ../../apps/ripgrep-bin/win32-x64
+      to: ripgrep-bin/win32-x64
+    - from: ../../apps/cua-driver-bin/win32-x64
+      to: cua-driver/win32-x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Fundet
+  artifactName: Fundet-Setup-${version}-${arch}.exe
+
+mac:
+  icon: resources/fundet/icon.png
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  extraResources:
+    - from: ../../apps/pi-bin/darwin-${arch}
+      to: pi/darwin-${arch}
+    - from: ../../apps/ripgrep-bin/darwin-${arch}
+      to: ripgrep-bin/darwin-${arch}
+    - from: ../../apps/cua-driver-bin/darwin-universal
+      to: cua-driver/darwin-universal
+
+dmg:
+  artifactName: Fundet-${version}-${arch}.dmg
+  backgroundColor: "#f5f5f5"

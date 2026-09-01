@@ -1,0 +1,17 @@
+Fundet
+Copyright 2026 Fundet authors (山东未来互联科技)
+
+This product includes software derived from Cindy (https://github.com/makecindy/cindy),
+Copyright XD Inc., licensed under the Apache License, Version 2.0.
+
+The derived portions live in:
+- packages/agent-core/ (derived from packages/maker-core)
+- packages/shared/     (derived from packages/maker-shared)
+- packages/browser-runtime/ (derived from Cindy packages/browser-control-runtime;
+  its vendored browser core originates from openclaw/openclaw
+  https://github.com/openclaw/openclaw, MIT — see
+  packages/browser-runtime/upstream/browser-runtime.lock.json for the pinned commit)
+- packages/browser-mcp/ (derived from Cindy packages/lizi-mcps browser module)
+- tools/pi/, tools/shared/ (vendored binary-download tooling)
+- apps/desktop/src/main/im/wechat-ilink/ (adapted from Cindy @cindy/wechat-ilink;
+  Tencent iLink protocol utilities originally from Tencent/openclaw-weixin, MIT)

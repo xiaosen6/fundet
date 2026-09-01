@@ -1,0 +1,26 @@
+{
+  "name": "fundet",
+  "private": true,
+  "description": "Fundet — local-first agent app built on the Pi harness",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.14.4",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "bash tools/dev-desktop.sh",
+    "dev:win": "pnpm --filter fundet-desktop dev",
+    "build": "pnpm --filter fundet-desktop build",
+    "dist": "pnpm --filter fundet-desktop build && pnpm --filter fundet-desktop dist",
+    "dist:win": "pnpm --filter fundet-desktop build && pnpm --filter fundet-desktop dist:win",
+    "dist:mac": "pnpm --filter fundet-desktop build && pnpm --filter fundet-desktop dist:mac",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test:unit": "pnpm --filter @fundet/browser-runtime compile && pnpm -r --if-present run test",
+    "install:pi": "node tools/pi/update.mjs"
+  },
+  "pnpm": {
+    "neverBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
+}

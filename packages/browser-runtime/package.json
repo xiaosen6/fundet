@@ -1,0 +1,42 @@
+{
+  "name": "@fundet/browser-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Neutral browser automation runtime (vendored from Cindy browser-control-runtime; core from openclaw/openclaw, see upstream/browser-runtime.lock.json). Compiled to dist/ and consumed as an EXTERNAL runtime dependency - vite/rollup must NOT bundle the vendored sources.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./ssrf-runtime": {
+      "types": "./src/shim/ssrf-runtime.ts",
+      "default": "./dist/shim/ssrf-runtime.js"
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "LongMa authors (derived from Cindy by XD Inc.)",
+  "license": "Apache-2.0 AND MIT",
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ipaddr.js": "^2.4.0",
+    "playwright-core": "1.60.0",
+    "sharp": "^0.35.0",
+    "typebox": "1.1.39",
+    "undici": "^8.3.0",
+    "ws": "^8.18.3",
+    "zod": "^4.0.0"
+  },
+  "_comment": "npm deps are devDependencies on purpose: this package ships as a compiled external inside the desktop app, whose package.json declares the same runtime deps (asar hoisted resolution)."
+}

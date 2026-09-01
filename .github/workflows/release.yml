@@ -1,0 +1,98 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i -g gh
+        if: runner.os == 'Linux'
+      # 幂等：已存在（含 draft）则复用，防重跑撞已存在 Release
+      - run: gh release view "$GITHUB_REF_NAME" -R xiaosen6/fundet > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" -R xiaosen6/fundet --title "$GITHUB_REF_NAME" --notes ""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  win:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/pi/update.mjs 0.83.0 --platform=win32-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node tools/ripgrep/update.mjs --platform=win32-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node tools/cua-driver/update.mjs --platform=win32-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # EBUSY 预热：fresh 解包的 cua-driver 二进制被 Defender 锁定时 electron-builder
+      # 拷贝会挂，全量 hash 预热让 Defender 先扫完
+      - run: Get-ChildItem -Recurse apps/cua-driver-bin | ForEach-Object { if (-not $_.PSIsContainer) { Get-FileHash $_.FullName | Out-Null } }
+      - run: pnpm --filter fundet-desktop build
+      - name: Package & publish (EBUSY retry)
+        run: |
+          for i in 1 2 3; do
+            pnpm --filter fundet-desktop run dist:win:publish && exit 0
+            echo "::warning::attempt $i failed (likely EBUSY), retrying in 30s"
+            sleep 30
+            rm -rf apps/desktop/dist
+          done
+          exit 1
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mac:
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/pi/update.mjs 0.83.0 --platform=darwin-arm64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node tools/pi/update.mjs 0.83.0 --platform=darwin-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node tools/ripgrep/update.mjs --platform=darwin-arm64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node tools/cua-driver/update.mjs --platform=darwin-universal
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: find apps/cua-driver-bin -type f -exec sh -c 'md5 "$1" > /dev/null' _ {} \;
+      - run: node tools/ripgrep/update.mjs --platform=darwin-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: pnpm --filter fundet-desktop build
+      - run: pnpm --filter fundet-desktop run dist:mac:publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

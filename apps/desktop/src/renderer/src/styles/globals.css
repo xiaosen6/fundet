@@ -1,0 +1,523 @@
+/**
+ * Fundet 全局样式：Tailwind v4 + Cindy 设计规范 token 主题。
+ *
+ * 视觉规范照抄 Cindy 结构；浅色是米色/象牙，深色对齐 CINDY Dark：
+ * - 组件禁止写 hex 颜色，只消费这里的 token（bg-surface / text-primary / border-board …）。
+ * - 三层灰度：--surface 页面底 / --card 抬升层 / --board 发丝分割线；分隔只用 1px border，
+ *   零阴影（浮层例外：--shadow-menu / --overlay-modal，token 收口）。
+ * - 圆角三档：8px（inner：textarea/菜单行）/ 12px（container：卡片/面板）/ pill（交互控件）。
+ * - 字号白名单：text-10..16（UI）、text-18/20/24（标题/内容），与 Cindy text-<n> 同口径。
+ * - 语义色封闭清单：warning(#EA6B17 运行中) / focus(#417CDD) / perm 双档 / error / diff 四色，
+ *   此外一律灰度。
+ * - 动效档位（§14.4）：--motion-instant/fast/base/enter/exit + 三条曲线，组件不得硬编码时长。
+ */
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* 把 CSS 变量接成 Tailwind 颜色类（bg-surface、text-primary、border-board…） */
+@theme inline {
+  /* 三层 Surface 层级 */
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-ivory: var(--card-ivory);
+  --color-chip: var(--chip);
+  --color-chip-alt: var(--chip-alt);
+  --color-hover: var(--hover);
+  --color-hover-soft: var(--hover-soft);
+  --color-board: var(--board);
+  /* 文字 */
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-placeholder: var(--text-placeholder);
+  --color-disabled: var(--text-disabled);
+  /* 反相 CTA（E1D 反相中性：Light 深底浅字 / Dark 浅底深字） */
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-hover: var(--accent-hover);
+  /* 发送钮禁用态 */
+  --color-send-disabled-bg: var(--send-disabled-bg);
+  --color-send-disabled-icon: var(--send-disabled-icon);
+  /* 语义豁免色 */
+  --color-error: var(--error-fg);
+  --color-error-bg: var(--error-bg);
+  --color-error-border: var(--error-border);
+  --color-warning: var(--warning);
+  --color-focus: var(--focus-ring);
+  --color-perm-auto: var(--perm-auto);
+  --color-perm-bypass: var(--perm-bypass);
+  /* 代码 / diff */
+  --color-inline-code-bg: var(--inline-code-bg);
+  --color-rail: var(--agent-rail);
+  --color-diff-add-fg: var(--diff-add-fg);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-del-fg: var(--diff-del-fg);
+  --color-diff-del-bg: var(--diff-del-bg);
+  /* composer 专用 */
+  --color-composer-pill: var(--composer-pill-bg);
+  --color-menu-item-hover: var(--model-item-hover);
+  --color-perm-code-bg: var(--perm-code-bg);
+
+  /* 圆角两档（pill 用 rounded-full） */
+  --radius-inner: 8px;
+  --radius-container: 12px;
+
+  /* 字号白名单（Cindy 桌面 UI 口径）：text-10..16 + 标题档 18/20/24 */
+  --text-10: 10px;
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-24: 24px;
+}
+
+/* ---------- Light（米色 / 象牙：页底暖米，卡片更浅象牙） ---------- */
+:root {
+  --app-font-ui: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --app-font-code: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  /* 三层 */
+  --surface: #f2ebe1;
+  --card: #faf6f0;
+  --card-ivory: #fff9f2;
+  --chip: #ede4d6;
+  --chip-alt: #f0e8dc;
+  --hover: #e6dcce;
+  --hover-soft: #f4ede4;
+  --board: #ddd2c3;
+  /* 文字 */
+  --text-primary: #3d3832;
+  --text-secondary: #6f675c;
+  --text-muted: #948a7c;
+  --text-placeholder: #a3988a;
+  --text-disabled: #6f675c;
+  /* 反相 CTA（深底浅字） */
+  --accent: #3d3832;
+  --accent-fg: #fbf6ef;
+  --accent-hover: #2f2b26;
+  /* 发送钮禁用态 */
+  --send-disabled-bg: #ede4d6;
+  --send-disabled-icon: #a3988a;
+  /* 反相深钮上的 kbd 徽章 */
+  --accent-kbd-bg: rgba(255, 255, 255, 0.16);
+  --accent-kbd-border: rgba(255, 255, 255, 0.3);
+  /* 语义豁免 */
+  --error-fg: #dc2626;
+  --error-bg: #fef2f2;
+  --error-border: rgba(220, 38, 38, 0.4);
+  --warning: #ea6b17;
+  --focus-ring: #417cdd;
+  --focus-ring-soft: rgba(65, 124, 221, 0.5);
+  --caret: #417cdd;
+  --perm-auto: #417cdd;
+  --perm-bypass: #ea6b17;
+  /* 代码 / diff */
+  --inline-code-bg: rgba(175, 160, 140, 0.22);
+  --agent-rail: #ddd2c3;
+  --diff-add-fg: #22863a;
+  --diff-add-bg: #f0fff4;
+  --diff-del-fg: #b31d28;
+  --diff-del-bg: #ffeef0;
+  /* composer / 菜单 */
+  --composer-pill-bg: #fffbf6;
+  --model-item-hover: #e8dcce;
+  --perm-code-bg: #f5eee6;
+  /* 输入框聚焦描边 */
+  --input-focus-border: rgba(111, 103, 92, 0.3);
+  /* 浮层（token 收口的阴影/遮罩例外） */
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --overlay-modal: rgba(0, 0, 0, 0.5);
+  /* 选中文本底色 */
+  --text-selection-bg: var(--focus-ring-soft);
+}
+
+/* ---------- Dark（对齐 CINDY Dark skin，cindy-dark.ts 决策表原值） ---------- */
+:root[data-theme='dark'] {
+  --surface: #2a2828;
+  --card: #312f2f;
+  --card-ivory: #312f2f;
+  --chip: #2f2d2d;
+  --chip-alt: #2f2d2d;
+  --hover: #3a3838;
+  --hover-soft: #2b2929;
+  --board: #434343;
+  --text-primary: #d4d4d4;
+  --text-secondary: #bfc1c4;
+  --text-muted: #6f6f6f;
+  --text-placeholder: #6f6f6f;
+  --text-disabled: #bfc1c4;
+  --accent: #eeeeee;
+  --accent-fg: #252222;
+  --accent-hover: #e2e2e2;
+  --send-disabled-bg: #444242;
+  --send-disabled-icon: #585555;
+  --accent-kbd-bg: rgba(0, 0, 0, 0.08);
+  --accent-kbd-border: rgba(0, 0, 0, 0.2);
+  --error-fg: #f87171;
+  --error-bg: #3a2222;
+  --error-border: #7f1d1d;
+  --warning: #ea6b17;
+  --focus-ring: #417cdd;
+  --focus-ring-soft: rgba(65, 124, 221, 0.5);
+  --caret: #417cdd;
+  --perm-auto: #417cdd;
+  --perm-bypass: #ea6b17;
+  --inline-code-bg: rgba(110, 118, 129, 0.22);
+  --agent-rail: #434343;
+  --diff-add-fg: #7ee787;
+  --diff-add-bg: #033a16;
+  --diff-del-fg: #ff7b72;
+  --diff-del-bg: #67060c;
+  --composer-pill-bg: #393838;
+  --model-item-hover: #3d3b3b;
+  --perm-code-bg: #2b2929;
+  --input-focus-border: rgba(191, 193, 196, 0.3);
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --overlay-modal: rgba(0, 0, 0, 0.7);
+}
+
+/* ---------- 动效 token（DESIGN.md §14.4，双模式同值） ---------- */
+:root {
+  --motion-instant: 80ms;
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --motion-enter: 250ms;
+  --motion-exit: 150ms;
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --motion-ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-spinner-cycle: 1000ms;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--app-font-ui, 'Inter Variable', Inter, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(
+    --app-font-code,
+    'JetBrains Mono Variable',
+    'JetBrains Mono',
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+}
+
+::selection {
+  background: var(--text-selection-bg);
+}
+
+/* 光标蓝（CINDY caret-accent #417CDD，双模式同值） */
+input,
+textarea {
+  caret-color: var(--caret);
+}
+
+/* 输入框不要系统/全局 focus ring，只留给按钮等可点控件 */
+:focus-visible:not(input):not(textarea):not(select) {
+  outline: 2px solid var(--focus-ring-soft);
+  outline-offset: 1px;
+}
+
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* ---------- Markdown 正文（.md） ---------- */
+.md {
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0.5em 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 0.9em 0 0.4em;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.md h1 {
+  font-size: 20px;
+}
+.md h2 {
+  font-size: 18px;
+}
+.md h3 {
+  font-size: 16px;
+}
+.md h4 {
+  font-size: 15px;
+}
+.md ul,
+.md ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.md li {
+  margin: 0.2em 0;
+}
+/* 可点性规范（DESIGN.md §14.5）：下划线是唯一可点信号，不改色 */
+.md a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.8em;
+  border-left: 2px solid var(--agent-rail);
+  color: var(--text-primary);
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--board);
+  margin: 0.8em 0;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 13px;
+}
+.md th,
+.md td {
+  border: 1px solid var(--board);
+  padding: 4px 10px;
+  text-align: left;
+}
+/* 行内 code：GitHub Primer 式半透明淡底（不随容器撞色） */
+.md code:not(pre code) {
+  background: var(--inline-code-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
+}
+/* 代码块：Card 底 + 1px Board 描边 + 12px 容器圆角，无阴影 */
+.md pre {
+  background: var(--card);
+  border: 1px solid var(--board);
+  border-radius: var(--radius-container);
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.md pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* highlight.js token → 主题变量（近单色，仅注释/字符串等轻微区分） */
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-muted);
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.hljs-string,
+.hljs-attr,
+.hljs-title,
+.hljs-name,
+.hljs-literal {
+  color: var(--text-secondary);
+}
+.hljs-addition {
+  color: var(--diff-add-fg);
+  background: var(--diff-add-bg);
+  display: block;
+}
+.hljs-deletion {
+  color: var(--diff-del-fg);
+  background: var(--diff-del-bg);
+  display: block;
+}
+
+/* ---------- 滚动条（细、灰度） ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chip) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--chip);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 动效（§14.4 原型） ---------- */
+
+/* 通用淡入（页面/面板切换，150ms） */
+@keyframes fundet-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fundet-fade-in var(--motion-fast) var(--motion-ease-out) both;
+}
+
+/* 轻浮层入场（菜单/弹层：opacity + scale 0.97→1，150ms） */
+@keyframes fundet-float-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-float-in {
+  animation: fundet-float-in var(--motion-fast) var(--motion-ease-out) both;
+}
+
+/* 运行状态行：事件驱动的一次呼吸（1→0.45→1，steps 低帧率；cadenced，
+   由 RunningStatus 在真实动静时 key 重挂载触发，不是无限心跳） */
+@keyframes fundet-status-shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.status-bar-shimmer {
+  color: var(--warning);
+  animation: fundet-status-shimmer 1.5s steps(18, end) 1;
+  will-change: opacity;
+}
+
+/* 思考中三点波浪（thinking 卡片 header，无限但 compositor-only opacity） */
+@keyframes fundet-thinking-dot-wave {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.thinking-dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  animation: fundet-thinking-dot-wave 1.2s ease-in-out infinite;
+}
+.thinking-dot-1 {
+  animation-delay: 0s;
+}
+.thinking-dot-2 {
+  animation-delay: 0.2s;
+}
+.thinking-dot-3 {
+  animation-delay: 0.4s;
+}
+
+/* 流式正文逐词淡入（§14.4 第五类 sanctioned motion：词已排版就位，
+   只 ramp opacity；span 与 delay 由 lib/streamWordFade.ts 写入） */
+@keyframes fundet-stream-word-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.stream-word {
+  animation: fundet-stream-word-in var(--motion-fast) ease-out var(--wf-delay, 0ms) both;
+}
+
+/* 运行中呼吸（侧栏会话行的小圆点等） */
+@keyframes fundet-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-fundet-pulse {
+  animation: fundet-pulse 1.4s ease-in-out infinite;
+}
+
+/* spinner 整圈（线性、transform-only；reduced-motion 下静止） */
+@keyframes fundet-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-fundet-spin {
+  animation: fundet-spin var(--motion-spinner-cycle) linear infinite;
+}
+
+/* reduced-motion：一次性/循环动效全部静止（含 keyframes 白名单登记） */
+@media (prefers-reduced-motion: reduce) {
+  .status-bar-shimmer,
+  .thinking-dot,
+  .stream-word,
+  .animate-fundet-pulse,
+  .animate-fundet-spin,
+  .animate-fade-in,
+  .animate-float-in {
+    animation: none !important;
+    will-change: auto;
+  }
+}
