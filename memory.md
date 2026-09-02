@@ -254,12 +254,33 @@ pnpm -r --if-present run test
 
 | 参考 | 是什么 | 本仓中的位置 / 用法 |
 | --- | --- | --- |
-| **Cindy**（github.com/makecindy/cindy，XD Inc.，Apache-2.0） | 桌面 Agent 产品。UI 视觉、交互形态与多功能的对标/移植来源 | `cindy/` 只读快照。已移植：浏览器自动化（browser-control-runtime 整包 + browser-mcp 门面）、电脑操作形态、用量历史页、登录态拷贝、视觉勾选、错误重发。**禁止修改/fork 进本仓**；不搬 Ghost/账号云/Office/官方 IM Hook |
+| **Cindy**（github.com/makecindy/cindy，XD Inc.，Apache-2.0） | 桌面 Agent 产品。UI 视觉、交互形态与多功能的对标/移植来源 | **GitLab 仓不含 Cindy 源码**（zip 打包时排除了 `cindy/`）。完整只读克隆在初始开发机 `D:\AI\Fundet\cindy`（blobless，08-29 @ a971f9e）；内网跟进方式见 §9.5。已移植：浏览器自动化（browser-control-runtime 整包 + browser-mcp 门面）、电脑操作形态、用量历史页、登录态拷贝、视觉勾选、错误重发。**禁止修改/fork 进本仓**；不搬 Ghost/账号云/Office/官方 IM Hook |
 | **openclaw**（github.com/openclaw/openclaw，MIT） | browser-runtime 的更上游 vendored 浏览器内核 | `packages/browser-runtime/upstream/browser-runtime.lock.json` 钉 commit |
 | **trycua/cua**（MIT） | cua-driver Rust 二进制（电脑操作引擎，stdio MCP） | `tools/cua-driver/update.mjs` 现下；注意其删 release 留 tag 的前科 |
 | **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 0.83.0；AVX2 硬要求 |
 | **Tencent openclaw-weixin**（MIT） | 微信 iLink 协议工具 | `apps/desktop/src/main/im/wechat-ilink/` |
 | **Auriti-Labs/geo-optimizer-skill**（MIT） | GEO 技能封装的 CLI 上游 | 不 vendor，运行时 `uvx` |
+
+### 9.5 Cindy 上游跟进（内网环境专用流程）
+
+上游在 GitHub，内网通常访问不了；本 GitLab 仓也不含 Cindy 源码。跟进永远从**外网侧**发起，两段式：
+
+**第一段：把「更新」带进内网（三选一，按网络条件）**
+
+- **GitLab pull mirror（服务器能出网时首选）**：GitLab 新建 `cindy-mirror` 仓 → Settings → Repository → Mirroring repositories → 填 `https://github.com/makecindy/cindy.git` 设 pull mirror，自动定时同步。之后内网直接 clone 镜像。
+- **外网中继（服务器完全不通外网）**：外网机器 clone 上游（国内用 gh-proxy.com 镜像前缀，如 `https://gh-proxy.com/https://github.com/makecindy/cindy.git`），加内网镜像为 remote 定期 `git push`。
+- **按需 patch（最轻）**：不建镜像，需要某功能时由外网侧（跟踪 AI / 有外网的同事）`git format-patch` 出 patch 文件 + 移植说明，经内网交换渠道带进去，`git apply` 或照 diff 手工移植。
+
+**第二段：移植四步（与上游对照后手工落地）**
+
+1. **发现**：`git log --oneline <上次同步点>..origin/main [-- <目录>]`（上次同步点记在本节末尾）。
+2. **评估**：目录映射 maker-core→`packages/agent-core`、maker-shared→`packages/shared`、browser-control-runtime→`packages/browser-runtime`、lizi-mcps→`packages/browser-mcp`/`src/main/search`、renderer↔renderer；产品红线（账号云/Ghost/Office/官方 IM）永不搬；`git show <commit>` 读透再动手。
+3. **手工移植**：**永不 merge/cherry-pick 上游**。四处必须本地化：文案走 `brand.name`、IPC 四件套（channels/fundet-api/preload/register）、内部路径常量（`MANAGED_PROFILE`/`.fundet-uploads`/`Fundet-IM` 勿照抄上游命名）、Git 主线用 rebase 保持线性。
+4. **验证沉淀**：`pnpm typecheck` + `pnpm --filter fundet-desktop test` + `pnpm dev:win` 真机；更新本节「上次同步点」；新增衍生文件补 NOTICE derived 列表；随版发布。
+
+**特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
+
+**上次同步点：a971f9e81（fix(feishu): 修复群聊引用回复上下文，2026-08-29 前后）**。
 
 ---
 
