@@ -8,11 +8,17 @@
 import { memo, useRef, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import remarkCjkFriendly from 'remark-cjk-friendly';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { normalizeMathDelimiters } from '../lib/mathMarkdown';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { isImagePath } from '../lib/artifacts';
 import { createStreamFadeState, rehypeStreamWordFade, type StreamFadeState } from '../lib/streamWordFade';
 import { LocalImagePreview, looksLikeFilePath } from './LocalImagePreview';
+import { isMermaidClassName, MarkdownMermaidBlock } from './chat/MarkdownMermaidBlock';
 
 interface AssistantMessageProps {
   text: string;
@@ -50,17 +56,31 @@ function AssistantMessageImpl({
     fadeStateRef.current = createStreamFadeState();
   }
 
+  // 对齐 Cindy：() / [] 数学定界符规范化后交给 remark-math；
+  // 快速通路（无 LaTeX 定界符）零成本原样返回。
+  const normalizedText = normalizeMathDelimiters(text);
+
   const rehypePlugins =
     streaming && fadeStateRef.current
       ? [rehypeHighlight, rehypeStreamWordFade(fadeStateRef.current)]
-      : [rehypeHighlight];
+      : [rehypeHighlight, rehypeKatex];
 
   return (
     <div className="md text-primary select-text">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
         rehypePlugins={rehypePlugins}
         components={{
+          pre: ({ children }) => {
+            // ```mermaid 围栏 → SVG 图表（解析失败回落源码）
+            const child = Array.isArray(children) ? children[0] : children;
+            const cls = (child as { props?: { className?: string } } | undefined)?.props?.className;
+            if (typeof cls === 'string' && isMermaidClassName(cls)) {
+              const raw = flattenText((child as { props?: { children?: ReactNode } }).props?.children);
+              return <MarkdownMermaidBlock raw={raw} />;
+            }
+            return <pre>{children}</pre>;
+          },
           a: ({ href, children }) => (
             // http(s) 进系统浏览器；相对/本地路径走右侧 Canvas 预览。
             // 不拦截会让 Electron 主窗口整页跳走（will-navigate 还有一道主进程兜底）。
@@ -107,7 +127,7 @@ function AssistantMessageImpl({
           },
         }}
       >
-        {text}
+        {normalizedText}
       </ReactMarkdown>
     </div>
   );

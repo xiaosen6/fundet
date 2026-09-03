@@ -1838,7 +1838,10 @@ export class PiAgent extends BaseAgent {
           // setExtraDirs 是热更新；Pi 没有独立的 mid-session system-prompt RPC，所以在
           // 后续 user turn 前附上短引用目录段(但 /skill: 起始时不前置,见 composePiPromptText)。
           const promptText = composePiPromptText(text, piExtraDirsPrompt(mutableExtraDirs));
-          const command: Record<string, unknown> = { type: 'prompt', message: escapeLeadingSlashCommand(promptText) };
+          // 纯图片消息的 promptText 可能为空：pi 会把空文本编码成 {type:"text",text:""} 块，
+          // 智谱等严格端点对空 text 块直接 1210。补最小占位（模型自然转向看图）。
+          const effectivePrompt = promptText.trim().length > 0 || images.length === 0 ? promptText : '.';
+          const command: Record<string, unknown> = { type: 'prompt', message: escapeLeadingSlashCommand(effectivePrompt) };
           if (images.length > 0) command.images = images;
           // send 语义 = 排队开新 turn;pi streaming 中裸 prompt 会被拒,补 followUp。
           if (ctx.isStreaming) command.streamingBehavior = 'followUp';
@@ -1876,7 +1879,8 @@ export class PiAgent extends BaseAgent {
         setAutoReviewIntent(message.content);
         // /skill: 起始时不前置 Extra Dir 引用段(否则命令退化成文本),与 send 同口径。
         const promptText = composePiPromptText(text, piExtraDirsPrompt(mutableExtraDirs));
-        const command: Record<string, unknown> = { type: 'steer', message: escapeLeadingSlashCommand(promptText) };
+        const effectivePrompt = promptText.trim().length > 0 || images.length === 0 ? promptText : '.';
+        const command: Record<string, unknown> = { type: 'steer', message: escapeLeadingSlashCommand(effectivePrompt) };
         if (images.length > 0) command.images = images;
         const resp = await proc.request(command);
         if (!resp.success) {

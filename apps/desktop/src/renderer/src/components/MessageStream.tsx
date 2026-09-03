@@ -21,9 +21,78 @@ import { AssistantMessage } from './AssistantMessage';
 import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '../lib/cn';
+import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 
 /** 距底部多少 px 内视为贴底 */
 const STICK_THRESHOLD = 48;
+
+
+/** 用户消息气泡：长文本自动收起（抄 Cindy userMessageCollapse：镜像节点实测行数
+ * + ResizeObserver 跟宽重算），折叠态 line-clamp-10 + 「展开全文 / 收起」。 */
+function UserBubble({
+  text,
+  attachments,
+  onOpenFile,
+}: {
+  text: string;
+  attachments?: Array<{ path: string; name: string }>;
+  onOpenFile?: (path: string) => void;
+}) {
+  const mayExceed = mayExceedVisualLineThreshold(text);
+  const { mirrorRef, shouldCollapse } = useUserMessageAutoCollapse(text, mayExceed);
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = shouldCollapse && !expanded;
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[488px] rounded-container border border-board bg-card px-4 py-3 text-15 leading-[1.6] text-primary select-text">
+        {attachments && attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((a) => (
+              <button
+                key={a.path}
+                type="button"
+                title={a.path}
+                className="max-w-full truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary hover:text-primary"
+                onClick={() => onOpenFile?.(a.path)}
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {mayExceed ? (
+          <div
+            ref={mirrorRef}
+            aria-hidden
+            className="max-h-0 overflow-hidden whitespace-pre-wrap break-words text-15 leading-[1.6] [overflow-wrap:anywhere]"
+          >
+            {text}
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+            collapsed && 'line-clamp-10',
+          )}
+        >
+          {text}
+        </div>
+        {shouldCollapse ? (
+          <button
+            type="button"
+            className="mt-1.5 flex items-center gap-1 text-13 text-secondary hover:text-primary"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? '收起' : '展开全文'}
+            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 type AssistantItem = Extract<DisplayItem, { kind: 'assistant' }>;
 type GroupedRow = ReturnType<typeof groupWorkItems>[number];
@@ -184,28 +253,7 @@ export function MessageStream({
           }
           switch (item.kind) {
             case 'user':
-              return (
-                <div key={item.id} className="flex justify-end">
-                  <div className="max-w-[488px] rounded-container border border-board bg-card px-4 py-3 text-15 leading-[1.6] break-words whitespace-pre-wrap text-primary select-text">
-                    {item.attachments && item.attachments.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {item.attachments.map((a) => (
-                          <button
-                            key={a.path}
-                            type="button"
-                            title={a.path}
-                            className="max-w-full truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary hover:text-primary"
-                            onClick={() => onOpenFile?.(a.path)}
-                          >
-                            {a.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {item.text}
-                  </div>
-                </div>
-              );
+              return <UserBubble key={item.id} text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
             case 'assistant': {
               const showBar = isTurnTailAssistant(grouped, index, slice.isRunning, hasStreaming);
               if (!showBar) {
