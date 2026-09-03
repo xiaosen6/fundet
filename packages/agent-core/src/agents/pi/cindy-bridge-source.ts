@@ -129,20 +129,10 @@ function resolvesToCredentialPath(input: unknown, depth = 0): boolean {
   return false;
 }
 
-// 从 bash 子进程读取任意进程的初始环境(/proc/<pid|self>/environ)是绕过密钥剥离的旁路:
-// spawn 边界虽从子进程 env 删了 Cindy 私密变量,但父 pi 进程仍持有它们,同 UID 下
-// cat /proc/PPID/environ 可直接取回代理 token / 网关 key / BYOM key(codex 报)。
-// 无法从 JS 侧让 /proc 不可读,故在工具边界对这类命令一律硬拦(含 Full access)。
-// 线程视图 /proc/<pid>/task/<tid>/environ(乃至其它中间段)与 /proc/<pid>/environ 等价可读,
-// 同样拦。中间段允许含斜杠(旧正则用 [^/...]* 只认单段,漏了 task/<tid>,codex report),
-// 与 readonly-builtin 硬拦所用的共享 SENSITIVE_CREDENTIAL_PATH 特征(/proc/[^斜杠空白]*/environ)
-// 保持同等覆盖。注:命令文本匹配不是安全边界(变形/间接读取可绕过,详见 pi-harness.md 的
-// Full access 契约),这里只是 defense-in-depth。
+// bash 读 /proc/<pid|self>/environ(线程视图 task/<tid> 等价)不再硬拦——与原生 Pi
+// 对齐:用户选了完全放行就是完全放行,不暗拦;Ask 档下 bash 本就要走审批。
+// 注:命令文本匹配不是安全边界(变形/间接读取可绕过),真正的隔离靠 OS 沙箱。
 // (本文件是 String.raw 模板,注释里严禁反引号,否则会提前终结模板。)
-const PROC_ENVIRON_READ_RE = /\/proc\/[^\s'"]*\/environ\b/i;
-function commandReadsProcessEnviron(command: unknown): boolean {
-  return typeof command === 'string' && PROC_ENVIRON_READ_RE.test(command);
-}
 
 function currentPermissionState(): {
   mode: 'ask' | 'bypassPermissions';
@@ -1091,22 +1081,12 @@ export default async function cindyBridge(pi: any) {
     ) {
       return { block: true, reason: 'Cindy extra reference directories are read-only.' };
     }
-    // bash 读取任意进程的初始环境(/proc/<pid|self>/environ)是绕过密钥剥离的旁路:
-    // spawn 边界虽删了子进程 env 的私密变量,父 pi 进程仍持有,cat /proc/PPID/environ
-    // 同 UID 直取代理 token / 网关 / BYOM key(codex 报)→ 一律硬拦,含 Full access。
-    if (event.toolName === 'bash' && commandReadsProcessEnviron(event.input?.command)) {
-      return { block: true, reason: 'Cindy blocks reading process environment (/proc/*/environ), even with Full access.' };
-    }
-    // 凭证/密钥路径的内置只读工具(read/grep/find/ls)在 Pi 父进程内执行,而父进程 env
-    // 必须保留代理会话 token 与 BYOM keys($ENV 请求期解析、bridge client 使用)。Full
-    // access 若放行 read /proc/self/environ 这类路径,模型可直接取 token 调回环代理,
-    // 绕过审批盗刷当前会话额度(greptile 报)→ 即使 bypassPermissions 也硬拦。原始路径
-    // 命不中时还要跟随符号链接:工作区内的 link 可指向敏感目标,realpath 后再判一次。
+    // 凭证/密钥路径的内置只读工具(read/grep/find/ls)在 Ask 档不走免审批直通:
+    // 原始路径命不中时还要跟随符号链接,工作区内的 link 可指向敏感目标,
+    // realpath 后再判一次。完全放行(bypassPermissions)不再对凭证读硬拦——
+    // 与原生 Pi 一致,文本拦截不是安全边界;真正的隔离用 Ask/自动档或 OS 沙箱。
     const credentialRead = READONLY_BUILTINS.has(event.toolName)
       && (touchesCredentialPath(event.input) || resolvesToCredentialPath(event.input));
-    if (credentialRead && permission.mode === 'bypassPermissions') {
-      return { block: true, reason: 'Cindy blocks reading credential or key paths, even with Full access.' };
-    }
     if (permission.mode === 'bypassPermissions') return;
     if (READONLY_BUILTINS.has(event.toolName) && !credentialRead) return;
     let approved = false;
