@@ -1,8 +1,8 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-09-01。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**。
+> 最后更新：2026-09-03。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
 >
-> 仓库路径：`D:\AI\Fundet`（Windows；源码为本地 git 仓，远端见 §6 发版流程）。
+> 仓库路径：源码已推内网 GitLab `git@172.16.56.11:fundet-harness/fundet-buddy.git`（2026-09-03 起）。**活跃分支 `main`；`master` 是收编进来的落后占位历史，不要在上面开发**。初始开发机工作副本 `D:\AI\Fundet`。
 >
 > **品牌**：本产品是 **Fundet**（山东未来互联科技的本地 AI 智能体）。构建系统（`shared/brand.ts` + `BRAND` 环境变量）源自一个支持多品牌的底座，里面保留着一个由另一团队维护的变体分支（`longma`）——**本仓一切开发/构建/发版都是 Fundet，默认即 Fundet，不要动 brand.ts 里的变体分支，不要用它出包**。
 >
@@ -204,7 +204,7 @@ Fundet/
 | mac 未签名 | electron-updater 只检测不安装；用户 xattr -cr 或跳 Release 下载 |
 | Windows 图标缓存 | 用户报「图标还是旧的」先答 `ie4uinit.exe -show` + 重启 explorer |
 
-环境：pi pin 0.83.0（`tools/pi/latest.json`）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
+环境：pi pin 0.84.4（版本只写在 `tools/pi/latest.json`，升级只改这一个文件；0.83.0 曾因智谱新模型不识别导致视觉发图 1210，见 §5.5）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
 
 ### 5.5 v0.2.10 发版实录：视觉发图 1210 三层根因（2026-09-03，commit 0d98b3b/4a434c9/0f9d804/2524b49）
 
@@ -231,7 +231,7 @@ Fundet/
 3. CI 绿后：查 draft 状态 → gh-proxy 下载安装包 → 静默装冒烟 → 清理临时目录。
 4. 发版前用 `git merge-base --is-ancestor` 确认所有资产 commit 已进 tag。
 
-> **远端仓待建**：本仓源码目前只在本地（git 已 init，尚无首笔 commit 之前不要推）。要跑 CI 发版，需把源码推到 GitHub——xiaosen6/fundet 可复用（其 Releases 已有历史资产；推源码属产品决策，确认两公司边界后再推），或新建仓后同步改 `electron-builder.yml` 的 publish.owner/repo。推上去后 CI 直接用 GITHUB_TOKEN，无需额外 PAT secret。
+> **远端现状**：源码已在内网 GitLab（fundet-harness/fundet-buddy，2026-09-03）。但 release.yml 是 GitHub Actions，GitLab 上不会跑——要继续 CI 发版仍需把源码推到 GitHub（xiaosen6/fundet 可复用，推源码属产品决策，确认两公司边界后再推；推上去后 CI 直接用 GITHUB_TOKEN），或改用 GitLab CI / 本地出包。发版路径未定前，别动 §6 其余流程。
 
 ---
 
@@ -239,7 +239,8 @@ Fundet/
 
 - 真 Key 全链路冒烟。
 - Mac 公证（需 Apple 开发者证书 + CI notarize）。
-- Cindy 上游可跟进项：browser-runtime 网络守卫竞态修复、MCP 懒加载、yield cells。
+- Cindy 上游可跟进项：browser-runtime 网络守卫竞态修复、MCP 懒加载（**截至 2026-09-03 上游均未落地**，vendor lock 仍 b972feb3 与本仓一致）。「yield cells」（= 上游 #3767 yield marker 收紧）经核查为纯 Codex 作用域（`agents/codex/yielded-exec-cell.ts`），本仓无 Codex harness，**已划掉**。
+- Cindy 功能级借鉴候选（2026-09-03 盘点，均在 Cindy「跳过登录」模式可用、不碰云）：会话搜索（`localDb/chatHistorySearch` FTS5+向量 RRF，可经 MCP `session_search` 给模型）、checkpoint/回滚（`main/git-snapshot` + RewindPreviewDialog）、错误分类重试补强（本仓已有基础重发，上游按限流/过载/断流/配额分类+倒计时）、effort/思考开关（`EffortSlider`/`ThinkingToggle`）、@ 文件引用+本轮产出文件卡（`AtMentionPanel`/`GeneratedFilesCard`）、计划/待办/提问交互卡（`PlanReviewBubble`/`TodoListCard`/`AskUserQuestionBubble`）、Goal 目标托管（`main/goal-host`，≠定时任务）、Ollama 本地模型托管（`main/local-model-runtime`）、消息排队（`PendingQueuePanel`）。会话导入/cross-agent-convert 数据源涉禁搬的 CC/Codex 生态，移植前需产品裁决。
 - 超长会话列表虚拟化（组件已 memo）。
 - 文件夹拖入 composer；Canvas 未覆盖类型仍「用系统打开」。
 - IPC 错误展示会裸露 `Error invoking remote method ...` 前缀（可统一剥壳只显中文）。
@@ -298,6 +299,15 @@ pnpm -r --if-present run test
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
 **上次同步点：a971f9e81（fix(feishu): 修复群聊引用回复上下文，2026-08-29 前后）**。
+
+**2026-09-03 窗口核查（a971f9e..944b1c261，126 提交，tag 至 v0.1.72-beta；只核查未移植，同步点未动）**。值得跟的提交：
+- `d7db9381e` #3751 真实登录态浏览器修复：生命周期串行队列（`createBrowserProfileLifecycleQueue`）+ 停浏览器判定改为 running **或 pid 存在**均算活 + status/stop 钉显式 profile。正对本仓 `main/browser/real-profile.ts`「拷贝/清除前停运行时」路径，优先移植。
+- `75cf82ffe` #3738 thinkingLevelMap 同步 Pi 目录：`pi-model-catalog.json` 大版本（+583）+ pi provider routing 测试。对照本仓 0.2.10 的 `pi-model-catalog.ts` 补全机制挑数据与逻辑。
+- `ae2945c1f` #3742 pi RPC 帧级定界诊断（帧直方图+标签白名单，治「成功轮正文整帧丢失」的定位盲区）：本仓 `agent-core/src/agents/pi/rpc-client.ts` 同源，近乎直移植（诊断埋点，非根因修复）。
+- `43b4fe1d3` #3706 Full access 不再拦截原生允许的读/搜（cindy-bridge-source.ts，本仓同名同源，需对照权限三档确认同类问题存在）。
+- `36d25a464` #3697 Windows 更新器内置 VC++ Runtime + 阻断重试死循环（updateService + windowsUpdaterPrerequisites），发行质量保险。
+- 次级：`1ee01ce26`/`c42883f84` Windows 后代清理超时放宽与 SIGKILL 收尸（对照 base-agent.ts）；`9646acdcb`+`944b1c261` 飞书话题群双投去重/线程回复不镜像群（对照自有 im/feishu.ts）；`e817f6e81` DeepSeek 历史 reasoning_content 回传；`68b46040e` vLLM responses 兼容重试；`4490eda20` 自定义 provider id 不被兜底映射改写。
+- 不适用/划掉：`5997c497e` pi settings.json 保留用户键（本仓不写 pi settings）；`360aeccf7` yield marker（Codex 作用域）；vendor browser-control-runtime 本窗口零改动，网络守卫竞态与 MCP 懒加载继续挂。
 
 ---
 
