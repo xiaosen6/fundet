@@ -13,5 +13,6 @@ The derived portions live in:
   packages/browser-runtime/upstream/browser-runtime.lock.json for the pinned commit)
 - packages/browser-mcp/ (derived from Cindy packages/lizi-mcps browser module)
 - tools/pi/, tools/shared/ (vendored binary-download tooling)
+- apps/desktop/src/main/browser/ (adapted from Cindy mcp-integrations browser modules)
 - apps/desktop/src/main/im/wechat-ilink/ (adapted from Cindy @cindy/wechat-ilink;
   Tencent iLink protocol utilities originally from Tencent/openclaw-weixin, MIT)

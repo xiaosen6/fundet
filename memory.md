@@ -298,16 +298,13 @@ pnpm -r --if-present run test
 
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
-**上次同步点：a971f9e81（fix(feishu): 修复群聊引用回复上下文，2026-08-29 前后）**。
+**上次同步点：944b1c261（fix(feishu): stop mirroring thread replies，2026-09-03；窗口 a971f9e..944b1c261 共 126 提交已处理完毕）**。
 
-**2026-09-03 窗口核查（a971f9e..944b1c261，126 提交，tag 至 v0.1.72-beta；只核查未移植，同步点未动）**。值得跟的提交：
-- `d7db9381e` #3751 真实登录态浏览器修复：生命周期串行队列（`createBrowserProfileLifecycleQueue`）+ 停浏览器判定改为 running **或 pid 存在**均算活 + status/stop 钉显式 profile。正对本仓 `main/browser/real-profile.ts`「拷贝/清除前停运行时」路径，优先移植。
-- `75cf82ffe` #3738 thinkingLevelMap 同步 Pi 目录：`pi-model-catalog.json` 大版本（+583）+ pi provider routing 测试。对照本仓 0.2.10 的 `pi-model-catalog.ts` 补全机制挑数据与逻辑。
-- `ae2945c1f` #3742 pi RPC 帧级定界诊断（帧直方图+标签白名单，治「成功轮正文整帧丢失」的定位盲区）：本仓 `agent-core/src/agents/pi/rpc-client.ts` 同源，近乎直移植（诊断埋点，非根因修复）。
-- `43b4fe1d3` #3706 Full access 不再拦截原生允许的读/搜（cindy-bridge-source.ts，本仓同名同源，需对照权限三档确认同类问题存在）。
-- `36d25a464` #3697 Windows 更新器内置 VC++ Runtime + 阻断重试死循环（updateService + windowsUpdaterPrerequisites），发行质量保险。
-- 次级：`1ee01ce26`/`c42883f84` Windows 后代清理超时放宽与 SIGKILL 收尸（对照 base-agent.ts）；`9646acdcb`+`944b1c261` 飞书话题群双投去重/线程回复不镜像群（对照自有 im/feishu.ts）；`e817f6e81` DeepSeek 历史 reasoning_content 回传；`68b46040e` vLLM responses 兼容重试；`4490eda20` 自定义 provider id 不被兜底映射改写。
-- 不适用/划掉：`5997c497e` pi settings.json 保留用户键（本仓不写 pi settings）；`360aeccf7` yield marker（Codex 作用域）；vendor browser-control-runtime 本窗口零改动，网络守卫竞态与 MCP 懒加载继续挂。
+**2026-09-03 窗口移植记录**（上游 hash 均见当日 commit message）：
+- 已移植 4 项：#3751 登录态浏览器（生命周期队列 + running/pid 双信号判停 + status/stop 钉显式 profile + Windows App-Bound 加密检测拒绝拷贝）；#3742 pi RPC 帧级定界诊断（帧直方图，agent-core rpc-client）；#3706 完全放行对齐原生 Pi（移除 /proc environ 与凭证读两处 bypassPermissions 硬拦，Ask/自动档审批不变）；#3738 智谱目录数据（thinkingLevelMap 显式 off/minimal/xhigh 键 + glm-4.6v；网关 efforts 路由半边不适用）。
+- 核查后不适用（勿再重查）：#3697 Windows 更新器 VC++/重试死循环——本仓 electron-updater 走自包含 NSIS、无自动重启机制，两半前提都不存在；#3662 后代清理超时——对应 PowerShell 清理机制本仓未移植（windows-git-path-lite 头注有声明）；#3723 SIGKILL 收尸——rpc-client.close() 已有 SIGTERM→3s→SIGKILL；#3554+944b1c261 飞书话题群——上游窗口内「加后撤」净变化≈0，本仓 feishu.ts 无话题/镜像机制；#3677 DeepSeek reasoning_content、#3741 vLLM responses——落在 codex-proxy / anthropic-compat-proxy 网关层，本仓无此层；#3768 provider id——落在 claude-code agent，未移植；`5997c497e` pi settings.json——本仓不写 pi settings；`360aeccf7` yield marker——Codex 作用域。
+- vendor browser-control-runtime 本窗口零改动（lock b972feb3 一致）；网络守卫竞态与 MCP 懒加载上游仍未落地，继续挂 §7。
+- 移植后真机项未做：`pnpm dev:win` 起应用 + §5.5 真机验证清单（模型/网络类改动：新会话选 glm-5.x → 贴图 → 确认描述 → 纯文本多轮）+ 设置里开合「使用我的浏览器登录态」。
 
 ---
 
