@@ -58,7 +58,7 @@ import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
 import { createConsoleLogger } from '@fundet/agent-core';
-import { ensureBrowserRuntime, stopManagedRuntime } from '../browser/host.js';
+import { ensureBrowserRuntime, runExclusiveBrowserOp, stopManagedRuntime } from '../browser/host.js';
 import {
   clearCopiedLogins,
   listInstalledChromium,
@@ -722,8 +722,11 @@ export function registerIpcHandlers(): void {
     const logger = createConsoleLogger('fundet');
     const runtime = await ensureBrowserRuntime(logger);
     if (!runtime) throw new Error('浏览器运行时不可用：本机未检测到 Chromium 系浏览器');
-    await runtime.call({ action: 'start' });
-    await runtime.call({ action: 'focus' });
+    // 排生命周期队列：登录态拷贝进行中时 start 会把浏览器拉起来锁 user-data
+    await runExclusiveBrowserOp(async () => {
+      await runtime.call({ action: 'start' });
+      await runtime.call({ action: 'focus' });
+    });
   });
 
   // ---------- 用量历史 ----------
@@ -738,25 +741,28 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(FUNDET_INVOKE.BROWSER_SET_REAL_LOGINS, async (_e, enabled: boolean) => {
-    // 先停托管浏览器（锁自己的 user-data）；失败由快照阶段报 PROFILE_LOCKED
-    await stopManagedRuntime();
-    const dir = managedUserDataMember().userDataDir;
-    if (enabled) {
-      const installed = listInstalledChromium();
-      if (installed.length === 0) {
-        throw new Error('未检测到系统 Chrome / Edge / Brave，无法拷贝登录状态。');
+    // 排生命周期队列与浏览动作互斥；队内先停托管浏览器（锁自己的 user-data），
+    // 停不干净直接抛错，不带病发布半份登录状态
+    await runExclusiveBrowserOp(async () => {
+      await stopManagedRuntime();
+      const dir = managedUserDataMember().userDataDir;
+      if (enabled) {
+        const installed = listInstalledChromium();
+        if (installed.length === 0) {
+          throw new Error('未检测到系统 Chrome / Edge / Brave，无法拷贝登录状态。');
+        }
+        try {
+          const result = snapshotRealProfile({ source: installed[0], destDir: dir });
+          setSetting(REAL_LOGINS_SOURCE_KEY, result.sourceKind);
+        } catch (err) {
+          if (err instanceof RealProfileError) throw new Error(err.message);
+          throw err;
+        }
+      } else {
+        clearCopiedLogins(dir);
+        setSetting(REAL_LOGINS_SOURCE_KEY, null);
       }
-      try {
-        const result = snapshotRealProfile({ source: installed[0], destDir: dir });
-        setSetting(REAL_LOGINS_SOURCE_KEY, result.sourceKind);
-      } catch (err) {
-        if (err instanceof RealProfileError) throw new Error(err.message);
-        throw err;
-      }
-    } else {
-      clearCopiedLogins(dir);
-      setSetting(REAL_LOGINS_SOURCE_KEY, null);
-    }
+    });
   });
 
   // ---------- 电脑操作 ----------

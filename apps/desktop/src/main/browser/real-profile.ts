@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { brand } from '../../shared/brand.js';
+import { brand } from '../../shared/brand.ts';
 
 export type ChromiumKind = 'chrome' | 'edge' | 'brave';
 
@@ -32,7 +32,12 @@ const PLAIN_PROFILE_FILES = ['Preferences'] as const;
 const SQLITE_SIDECARS = ['-wal', '-shm', '-journal'] as const;
 
 export class RealProfileError extends Error {
-  readonly code: 'NO_CHROMIUM' | 'PROFILE_LOCKED' | 'NO_AUTH_DB' | 'COPY_FAILED';
+  readonly code:
+    | 'NO_CHROMIUM'
+    | 'PROFILE_LOCKED'
+    | 'NO_AUTH_DB'
+    | 'COPY_FAILED'
+    | 'APP_BOUND_ENCRYPTION';
 
   constructor(code: RealProfileError['code'], message: string) {
     super(message);
@@ -151,9 +156,59 @@ export function profileIsLocked(profileDir: string, platform: NodeJS.Platform = 
   return false;
 }
 
+/**
+ * 托管浏览器判停：status 数据里 running=true 或 pid 还在都算活着（只看
+ * running 会漏掉「进程还在、标志未置位」的中间态）。返回 null=状态读不出来。
+ */
+export function managedRuntimeNeedsStop(data: unknown): boolean | null {
+  if (data === null || typeof data !== 'object') return null;
+  const rec = data as { running?: unknown; pid?: unknown };
+  const running = typeof rec['running'] === 'boolean' ? rec['running'] : null;
+  const pid = rec['pid'];
+  const pidPresent =
+    pid === undefined || pid === null
+      ? false
+      : typeof pid === 'number' && Number.isInteger(pid) && pid > 0
+        ? true
+        : null;
+  if (running === null || pidPresent === null) return null;
+  return running || pidPresent;
+}
+
+/**
+ * Chrome 127+ 在 Windows 上用 App-Bound 加密（encrypted_value v20 前缀），
+ * 密钥经系统服务绑定原浏览器与原 user-data——拷到托管 profile 后解不开，
+ * 检出即拒绝拷贝，不让用户拿到「看起来拷好了、实际全没登录」的状态。
+ */
+export function profileUsesAppBoundEncryption(
+  profileDir: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform !== 'win32') return false;
+  for (const relative of ['Cookies', path.join('Network', 'Cookies')]) {
+    const cookieDb = path.join(profileDir, relative);
+    if (!fs.existsSync(cookieDb)) continue;
+    const db = new Database(cookieDb, { readonly: true, timeout: 5000 });
+    try {
+      const columns = db.prepare('PRAGMA table_info(cookies)').all() as Array<{ name?: unknown }>;
+      if (!columns.some((column) => column.name === 'encrypted_value')) continue;
+      const row = db
+        .prepare("SELECT 1 AS detected FROM cookies WHERE substr(encrypted_value, 1, 3) = x'763230' LIMIT 1")
+        .get();
+      if (row !== undefined) return true;
+    } finally {
+      db.close();
+    }
+  }
+  return false;
+}
+
 function removeSqliteAndSidecars(filePath: string): void {
-  fs.rmSync(filePath, { force: true });
-  for (const suffix of SQLITE_SIDECARS) fs.rmSync(filePath + suffix, { force: true });
+  // Windows 下 Defender/索引器会短暂握住刚关掉的库：带重试删
+  fs.rmSync(filePath, { force: true, maxRetries: 3, retryDelay: 100 });
+  for (const suffix of SQLITE_SIDECARS) {
+    fs.rmSync(filePath + suffix, { force: true, maxRetries: 3, retryDelay: 100 });
+  }
 }
 
 function secureDir(dir: string): void {
@@ -229,6 +284,29 @@ export function snapshotRealProfile(options: {
       'PROFILE_LOCKED',
       '系统浏览器正在锁定它的 Cookie 数据库。请完全退出系统浏览器（包括托盘图标）后重试。',
     );
+  }
+  if (platform === 'win32') {
+    // 拷贝前先验 App-Bound 加密：库被占用时报锁定（与 profileIsLocked 同口径），
+    // 其余读库失败按 COPY_FAILED 处理
+    try {
+      if (profileUsesAppBoundEncryption(sourceProfileDir)) {
+        throw new RealProfileError(
+          'APP_BOUND_ENCRYPTION',
+          '系统浏览器的 Cookie 使用了 Chrome 127+ 的 App-Bound 加密，拷贝到托管浏览器后无法解密。请在托管浏览器里直接登录网站。',
+        );
+      }
+    } catch (err) {
+      if (err instanceof RealProfileError) throw err;
+      const code = (err as NodeJS.ErrnoException).code ?? '';
+      const text = String(code);
+      if (code === 'EPERM' || code === 'EACCES' || text.includes('BUSY') || text.includes('CANTOPEN')) {
+        throw new RealProfileError(
+          'PROFILE_LOCKED',
+          '系统浏览器正在锁定它的 Cookie 数据库。请完全退出系统浏览器后重试。',
+        );
+      }
+      throw new RealProfileError('COPY_FAILED', '拷贝前检查 Cookie 库失败。');
+    }
   }
 
   secureDir(path.dirname(destDir));
