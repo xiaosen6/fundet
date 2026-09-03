@@ -31,7 +31,9 @@ function createProcess() {
     warn: vi.fn(),
     error: vi.fn(),
     fatal: vi.fn(),
+    child: vi.fn(),
   };
+  logger.child.mockReturnValue(logger);
   const onEvent = vi.fn();
   mocks.spawn.mockReturnValue(makeChild());
   const proc = new PiRpcProcess({
