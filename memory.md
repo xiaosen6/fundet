@@ -120,6 +120,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.10 | 09-03 | **修复视觉发图 1210**（pi 0.84.4 + 已知模型补全表 + 空text块占位）+ 用户长消息折叠 + markdown 对齐 Cindy（数学/CJK/mermaid）+ update.mjs pin 模式 |
 | 0.2.9 | 08-31 | 界面硬编码品牌名全清（17 文件 → brand.name）；cua-driver 下载自动回退 |
 | 0.2.8 | 08-31 | **修复 0.2.7 安装包启动崩溃 + 旧图标**（见 §5 发版坑） |
 | 0.2.7 | 08-30 | **首次发版**。功能即全量：浏览器/电脑自动化、用量、IM、登录态拷贝 |
@@ -204,6 +205,22 @@ Fundet/
 | Windows 图标缓存 | 用户报「图标还是旧的」先答 `ie4uinit.exe -show` + 重启 explorer |
 
 环境：pi pin 0.83.0（`tools/pi/latest.json`）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
+
+### 5.5 v0.2.10 发版实录：视觉发图 1210 三层根因（2026-09-03，commit 0d98b3b/4a434c9/0f9d804/2524b49）
+
+**客诉「发图片报错」的完整排查记录，处理同类问题照此方法论**：
+
+1. **pi 0.83.0 太旧**：智谱 8 月底新模型（glm-5.3-flash 等）不在其内置目录，zai 兼容层不完整。已升 **pi 0.84.4**（tools/pi/latest.json，与 Cindy 项目所用版本一致，sha256 校验）。**升级方式：`node tools/pi/update.mjs --platform=<plat>`（不传版本，自动读 latest.json 的 pin）——pi 升级只需改 latest.json 一个文件，workflow 已去硬编码**。
+2. **空 text 块 1210**：BYOM 裸模型定义缺 reasoning/thinkingLevelMap 时，pi 对 open.bigmodel.cn（zai 兼容格式）不发 thinking 参数；且纯图片消息被 pi 编成 [{"type":"text","text":""}, image]——**智谱严格校验，拒绝空字符串 text 块**。修复：①pi-host 按 id 从 `main/host/pi-model-catalog.ts`（pi 0.84.4 智谱 9 模型字段：reasoning/thinkingLevelMap/input/contextWindow/maxTokens）补全缺失字段，用户显式配置优先；②PiAgent send/steer 对纯图片消息的空 promptText 补 '.' 占位（agent-core send+steer 两处）。
+3. **zip 解包丢 theme**（0.2.10 首发包全员启动崩的元凶）：pi v0.84+ 的 Windows zip 换了打包结构，update.mjs 原来用 bsdtar 从 **stdin 流式**解 zip 会静默丢 theme/ 目录 → 包内 pi 缺 theme，RPC 启动即崩（退出码 1）。extractArchive 已改：.zip 走 PowerShell Expand-Archive（seek 完整读取），.tar.gz 维持 stdin+tar。
+
+**诊断方法论（比逆向二进制快得多，优先使用）**：
+- 本地回显服务器：把 provider baseUrl 指向 `http://127.0.0.1:9876`（node http 服务器 dump 请求体），新会话发消息即可拿到 pi 发出的完整请求；
+- 解 API key：写 Electron 脚本 `app.setName('Fundet'); app.setPath('userData', %APPDATA%/Fundet)` 后 `safeStorage.decryptString` 读 `keys/<providerId>.bin`（密钥与 userData 绑定，路径必须一致）；
+- 拿到 key 后直接 fetch 智谱做**请求矩阵**（纯文本/图片/图片+tools/各字段变体逐个排除）——本次用 T1~T21 矩阵定位到「空 text 块」精确根因；
+- 注意 baseUrl 指向回显地址时 pi 的 compat 判定会变（127.0.0.1 ≠ zai 端点 → developer 角色/max_completion_tokens 等 openai 形态），对照真实请求时要修正这个假象。
+
+**真机验证清单（模型/网络类改动必做）**：新开对话 → 选目标模型 → 贴图发送 → 确认模型描述图片内容 → 再发一条纯文本确认多轮正常。
 
 ---
 
