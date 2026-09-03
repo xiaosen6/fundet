@@ -47,6 +47,18 @@ export interface PiRpcSpawnOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 3_000;
 
+/**
+ * 帧诊断日志的标签白名单:pi 协议的事件类型 / role / stopReason / 块类型都是短
+ * 标识符。扩展或畸形事件可能把任意正文塞进这些字段——不符合标识符形态的
+ * 一律归一为 '(other)',正文不进日志(白名单方向,不靠脱敏兜底)。
+ */
+const FRAME_LABEL_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function sanitizeFrameLabel(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) return '(untyped)';
+  return FRAME_LABEL_RE.test(value) ? value : '(other)';
+}
+
 export class PiRpcProcess {
   private child: ChildProcessWithoutNullStreams;
   private nextRequestId = 1;
@@ -58,6 +70,8 @@ export class PiRpcProcess {
   private closed = false;
   private readonly logger: Logger;
   private disposeProcessRegistration: (() => void) | undefined;
+  /** #3696 帧诊断:本轮按事件类型计数,agent_settled 落直方图(只记元数据)。 */
+  private readonly eventFrameCounts = new Map<string, number>();
 
   constructor(private readonly opts: PiRpcSpawnOptions) {
     this.logger = opts.logger;
@@ -196,7 +210,66 @@ export class PiRpcProcess {
       return;
     }
 
-    this.opts.onEvent(obj as PiRpcEvent);
+    const event = obj as PiRpcEvent;
+    this.recordEventFrameDiagnostics(event);
+    this.opts.onEvent(event);
+  }
+
+  /**
+   * #3696 定界诊断:成功轮的正文可能整帧消失(pi 侧 jsonl 有正文、DB/UI 均无),
+   * 离线无法复现。按事件类型计数,message_end / agent_settled 各落一行元数据
+   * 日志(块类型与字符数,绝不含消息正文),下次复现即可区分「pi 未发该帧」与
+   * 「宿主收到后下游丢失」。abort/进程异常的轮收不到 agent_settled,计数留到
+   * 下一轮 agent_start 先冲刷再清零——证据不丢,直方图不跨轮污染。
+   */
+  private recordEventFrameDiagnostics(event: PiRpcEvent): void {
+    const type = sanitizeFrameLabel(event.type);
+    if (type === 'agent_start' && this.eventFrameCounts.size > 0) {
+      this.logger.info('pi rpc turn frame histogram (no agent_settled)', {
+        frames: Object.fromEntries(this.eventFrameCounts),
+      });
+      this.eventFrameCounts.clear();
+    }
+    this.eventFrameCounts.set(type, (this.eventFrameCounts.get(type) ?? 0) + 1);
+    if (type === 'message_end') {
+      const message = event.message as
+        | { role?: unknown; stopReason?: unknown; content?: unknown }
+        | undefined;
+      const blocks = Array.isArray(message?.content) ? (message?.content as unknown[]) : [];
+      const blockTypes: string[] = [];
+      let textChars = 0;
+      let thinkingChars = 0;
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object') {
+          blockTypes.push('(invalid)');
+          continue;
+        }
+        const rec = block as Record<string, unknown>;
+        const blockType = sanitizeFrameLabel(rec['type']);
+        blockTypes.push(blockType);
+        if (rec['type'] === 'text' && typeof rec['text'] === 'string') textChars += rec['text'].length;
+        if (rec['type'] === 'thinking' && typeof rec['thinking'] === 'string') {
+          thinkingChars += rec['thinking'].length;
+        }
+      }
+      this.logger.info('pi rpc message_end frame', {
+        role: sanitizeFrameLabel(message?.role),
+        stopReason:
+          message?.stopReason === undefined || message?.stopReason === null
+            ? null
+            : sanitizeFrameLabel(message.stopReason),
+        blockTypes,
+        textChars,
+        thinkingChars,
+      });
+      return;
+    }
+    if (type === 'agent_settled') {
+      this.logger.info('pi rpc turn frame histogram', {
+        frames: Object.fromEntries(this.eventFrameCounts),
+      });
+      this.eventFrameCounts.clear();
+    }
   }
 
   private failAllPending(err: Error): void {
