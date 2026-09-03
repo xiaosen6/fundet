@@ -203,24 +203,45 @@ function targetsExist(version, targets) {
   });
 }
 
-/** 用 tar 解压归档到 destDir；GNU tar 从 stdin 读取 gzip 时必须显式传 -z。 */
+/**
+ * 用 tar 解压归档到 destDir；GNU tar 从 stdin 读取 gzip 时必须显式传 -z。
+ *
+ * .zip 特例：bsdtar 从 stdin 流式解 pi v0.84+ 的新结构 zip 会丢失 theme/ 等目录
+ * （2026-09-03 实锤，0.2.10 首发包因此缺 theme 全员启动崩），改走 PowerShell
+ * Expand-Archive（完整 seek 读取，行为可靠）。zip 只出现在 win32 产物上。
+ */
 export async function extractArchive(archivePath, destDir) {
-  const args = archivePath.endsWith('.tar.gz') ? ['-xzf', '-'] : ['-xf', '-'];
-  const child = spawn('tar', args, { cwd: destDir, stdio: ['pipe', 'inherit', 'inherit'] });
-  const exit = new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', (code) => (code === 0 ? resolve() : reject(new Error(`tar exited with code ${code}`))));
+  if (archivePath.endsWith('.zip')) {
+    const ps = spawn(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
+      ],
+      { stdio: ['ignore', 'inherit', 'inherit'] },
+    );
+    await new Promise((resolve, reject) => {
+      ps.once('error', reject);
+      ps.once('close', (code) => (code === 0 ? resolve() : reject(new Error(`Expand-Archive exited with code ${code}`))));
+    });
+    return;
+  }
+  const legacyArgs = archivePath.endsWith('.tar.gz') ? ['-xzf', '-'] : ['-xf', '-'];
+  const legacy = spawn('tar', legacyArgs, { cwd: destDir, stdio: ['pipe', 'inherit', 'inherit'] });
+  const legacyExit = new Promise((resolve, reject) => {
+    legacy.once('error', reject);
+    legacy.once('close', (code) => (code === 0 ? resolve() : reject(new Error(`tar exited with code ${code}`))));
   });
-  const input = pipeline(fs.createReadStream(archivePath), child.stdin);
+  const legacyInput = pipeline(fs.createReadStream(archivePath), legacy.stdin);
   try {
-    await Promise.all([input, exit]);
+    await Promise.all([legacyInput, legacyExit]);
   } catch (error) {
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-    await Promise.allSettled([input, exit]);
+    if (legacy.exitCode === null && legacy.signalCode === null) legacy.kill();
+    await Promise.allSettled([legacyInput, legacyExit]);
     throw error;
   }
 }
-
 /**
  * pi 归档解压出唯一的 `pi/` 目录；把其内容上移到 extractDir 本级并删除空壳，
  * 使 updates/<version>/<platform>/ 直接就是可运行的产物目录。
