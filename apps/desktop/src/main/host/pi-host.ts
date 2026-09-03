@@ -23,6 +23,7 @@ import { createByokAuthAdapter, isLoopbackBaseUrl, piNativeKeyEnvVar } from './a
 import { readProviderKey } from './secrets.js';
 import { resolvePiBinaryPath, resolveRipgrepPath } from './pi-binary.js';
 import { createFundetMemoryManager } from './memory.js';
+import { lookupKnownModel } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { createPreparePiExtraSpawnConfig } from './mcp-bridge.js';
 import systemPromptRaw from './system-prompt.md?raw';
@@ -67,15 +68,42 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
   for (const p of listProviders()) {
     const models = p.models
       .filter((m) => m.enabled !== false)
-      .map((m) => ({
-        id: m.id,
-        ...(m.reasoning !== undefined ? { reasoning: m.reasoning } : {}),
-        ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
-        ...(m.maxTokens !== undefined ? { maxTokens: m.maxTokens } : {}),
-        // 输入模态：只信库值（预设标注 / 编辑对话框勾选，对齐 Cindy 方案）。
-        // 没有该标记发图会被 PiAgent 拒发（PiImageInputUnsupportedError）
-        ...(m.input && m.input.includes('image') ? { input: m.input } : {}),
-      }));
+      .map((m) => {
+        // 已知模型补全（pi 0.84.4 内置目录）：BYOM 裸定义缺 reasoning/thinkingLevelMap
+        // 时，zai 系推理端点（open.bigmodel.cn）收不到 thinking 参数直接 1210。
+        // 用户显式配置优先，目录只补缺失字段。
+        const known = lookupKnownModel(m.id);
+        return {
+          id: m.id,
+          ...(m.reasoning !== undefined
+            ? { reasoning: m.reasoning }
+            : known.reasoning !== undefined
+              ? { reasoning: known.reasoning }
+              : {}),
+          ...(m.thinkingLevelMap !== undefined
+            ? { thinkingLevelMap: m.thinkingLevelMap }
+            : known.thinkingLevelMap !== undefined
+              ? { thinkingLevelMap: known.thinkingLevelMap }
+              : {}),
+          ...(m.contextWindow !== undefined
+            ? { contextWindow: m.contextWindow }
+            : known.contextWindow !== undefined
+              ? { contextWindow: known.contextWindow }
+              : {}),
+          ...(m.maxTokens !== undefined
+            ? { maxTokens: m.maxTokens }
+            : known.maxTokens !== undefined
+              ? { maxTokens: known.maxTokens }
+              : {}),
+          // 输入模态：只信库值（预设标注 / 编辑对话框勾选，对齐 Cindy 方案）。
+          // 没有该标记发图会被 PiAgent 拒发（PiImageInputUnsupportedError）
+          ...(m.input && m.input.includes('image')
+            ? { input: m.input }
+            : known.input && known.input.includes('image')
+              ? { input: known.input }
+              : {}),
+        };
+      });
     if (models.length === 0) {
       logger.warn(`provider "${p.name}" 没有模型，跳过`, { providerId: p.id });
       continue;

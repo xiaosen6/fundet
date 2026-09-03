@@ -7,7 +7,7 @@ export interface ProviderPreset {
   regionHint?: "cn" | "global";
   api: ProviderApi;
   baseUrl: string;
-  models: Array<{ id: string; contextWindow?: number; maxTokens?: number; input?: Array<'text' | 'image'> }>;
+  models: Array<{ id: string; reasoning?: boolean; thinkingLevelMap?: Record<string, string | null>; contextWindow?: number; maxTokens?: number; input?: Array<'text' | 'image'> }>;
 }
 
 /** Cindy catalog/providers.json 的预设，收成 LongMa 单 runtime（Pi BYOK）。 */
@@ -109,22 +109,45 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     "regionHint": "cn",
     "api": "openai-completions",
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-    "models": [
-      {
-        "id": "glm-4v-flash",
-        "input": ["text", "image"],
-        "maxTokens": 1024
-      },
+        "models": [
       {
         "id": "glm-5.3",
-        "contextWindow": 1000000
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text"]
+      },
+      {
+        "id": "glm-5.3-flash",
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text","image"]
+      },
+      {
+        "id": "glm-5.3-highspeed",
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text"]
       },
       {
         "id": "glm-5.2",
-        "contextWindow": 1000000
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"off":"none","high":"high","max":"max"},
+        "input": ["text"]
       },
       {
-        "id": "glm-5.1"
+        "id": "glm-5.1",
+        "contextWindow": 200000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "input": ["text"]
       }
     ]
   },
@@ -418,17 +441,45 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     "regionHint": "cn",
     "api": "openai-completions",
     "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
-    "models": [
+        "models": [
       {
         "id": "glm-5.3",
-        "contextWindow": 1000000
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text"]
+      },
+      {
+        "id": "glm-5.3-flash",
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text","image"]
+      },
+      {
+        "id": "glm-5.3-highspeed",
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"low":"low","medium":null,"high":"high","max":"max"},
+        "input": ["text"]
       },
       {
         "id": "glm-5.2",
-        "contextWindow": 1000000
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "thinkingLevelMap": {"off":"none","high":"high","max":"max"},
+        "input": ["text"]
       },
       {
-        "id": "glm-5.1"
+        "id": "glm-5.1",
+        "contextWindow": 200000,
+        "maxTokens": 131072,
+        "reasoning": true,
+        "input": ["text"]
       }
     ]
   },

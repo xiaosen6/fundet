@@ -22,11 +22,13 @@ export type ProviderApi = 'anthropic-messages' | 'openai-responses' | 'openai-co
 export interface ProviderModelSpec {
   id: string;
   reasoning?: boolean;
+  /** 思考档位映射（推理模型必配，缺了 zai 系端点不发 thinking 会 1210） */
+  thinkingLevelMap?: Record<string, string | null>;
   contextWindow?: number;
   maxTokens?: number;
   /** false = 不出现在模型选择器（Cindy 式「Shown in Model Picker」） */
   enabled?: boolean;
-  /** 显式声明的输入模态；缺省时按 id 推断（shared/model-input.ts） */
+  /** 显式声明的输入模态；只信库值（预设标注 / 编辑对话框勾选） */
   input?: Array<'text' | 'image'>;
 }
 
