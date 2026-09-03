@@ -427,20 +427,30 @@ function resolvePlatforms(platformKey) {
 
 async function main() {
   const { version: requestedVersion, force, platform } = parseArgs(process.argv.slice(2));
+  // 无显式版本时读 latest.json 的 pin（人审过的版本），而不是拉上游最新——
+  // 升级 pi 只需要改 latest.json 一处，workflow/CI 不用再跟着改。
+  let pinnedVersion = requestedVersion;
+  if (!pinnedVersion) {
+    try {
+      const thisDir = path.dirname(fileURLToPath(import.meta.url));
+      pinnedVersion = JSON.parse(fs.readFileSync(path.join(thisDir, 'latest.json'), 'utf-8')).version ?? null;
+      if (pinnedVersion) console.log(`==> No version specified; using pin from tools/pi/latest.json = ${pinnedVersion}`);
+    } catch { /* latest.json 缺失/损坏时保持原行为（拉上游最新） */ }
+  }
   const targets = resolvePlatforms(platform);
 
-  if (requestedVersion) {
-    const tag = `v${requestedVersion}`;
-    console.log(`==> Pinning pi to ${requestedVersion} (specified, tag=${tag})...`);
+  if (pinnedVersion) {
+    const tag = `v${pinnedVersion}`;
+    console.log(`==> Pinning pi to ${pinnedVersion} (pin: tools/pi/latest.json, tag=${tag})...`);
     const meta = await fetchReleaseMeta(tag);
     for (const { key, asset, binFile } of targets) {
-      await downloadAsset(meta, requestedVersion, key, asset, binFile, { force });
+      await downloadAsset(meta, pinnedVersion, key, asset, binFile, { force });
     }
-    promoteToVendorBin(requestedVersion, targets);
-    saveCache(meta, requestedVersion);
+    promoteToVendorBin(pinnedVersion, targets);
+    saveCache(meta, pinnedVersion);
     console.log('');
     console.log('=== Done ===');
-    console.log(`Version: ${requestedVersion}`);
+    console.log(`Version: ${pinnedVersion}`);
     console.log(`Output:  ${path.join(UPDATES_DIR, requestedVersion)}`);
     console.log(`Bin:     ${BIN_DIR}`);
     return;
