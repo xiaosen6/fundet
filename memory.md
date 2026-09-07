@@ -120,7 +120,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
-| 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6） |
+| 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6）；**安装包已发 GitLab Release**（fundet 包 0.2.11，静默装冒烟过） |
 | 0.2.10 | 09-03 | **修复视觉发图 1210**（pi 0.84.4 + 已知模型补全表 + 空text块占位）+ 用户长消息折叠 + markdown 对齐 Cindy（数学/CJK/mermaid）+ update.mjs pin 模式 |
 | 0.2.9 | 08-31 | 界面硬编码品牌名全清（17 文件 → brand.name）；cua-driver 下载自动回退 |
 | 0.2.8 | 08-31 | **修复 0.2.7 安装包启动崩溃 + 旧图标**（见 §5 发版坑） |
@@ -231,7 +231,7 @@ Fundet/
 2. `git tag vX.Y.Z && git push origin main vX.Y.Z`（源码 + tag 同步 GitLab）。
 3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。**本地出包同样撞 §5 的 Defender EBUSY 坑（cua-driver/pi/rg 被 signtool 拷贝时锁住）**：先对三个 bin 目录做 Get-FileHash 预热，EBUSY 就整体重跑 `pnpm dist:win`——实测预热后第 3 次过，别只修单个文件。
 4. 静默安装冒烟：`Fundet-Setup-<version>-x64.exe /S /D=<临时目录>` → 启动 → 杀进程 → 清理临时目录。
-5. 安装包（连同 `latest.yml`）挂 GitLab Release：UI 拖拽上传，或 API（项目 access token，scope=api）。
+5. 安装包（连同 `latest.yml`、`.blockmap`）挂 GitLab Release。已验证的 API 模式（2026-09-07，本 GitLab 版本资产链接用 `filepath` 属性，`direct_asset_path` 会报 invalid format）：①`PUT /api/v4/projects/272/packages/generic/fundet/<版本>/<文件名>`（curl --upload-file，PRIVATE-TOKEN 头）；②`POST /api/v4/projects/272/releases`，`assets.links[].url` 指向包文件。Token 用项目/个人 access token（scope=api），由发版人自持，**不进仓**。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
 
 > **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
