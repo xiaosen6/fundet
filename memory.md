@@ -120,6 +120,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6） |
 | 0.2.10 | 09-03 | **修复视觉发图 1210**（pi 0.84.4 + 已知模型补全表 + 空text块占位）+ 用户长消息折叠 + markdown 对齐 Cindy（数学/CJK/mermaid）+ update.mjs pin 模式 |
 | 0.2.9 | 08-31 | 界面硬编码品牌名全清（17 文件 → brand.name）；cua-driver 下载自动回退 |
 | 0.2.8 | 08-31 | **修复 0.2.7 安装包启动崩溃 + 旧图标**（见 §5 发版坑） |
@@ -224,14 +225,17 @@ Fundet/
 
 ---
 
-## 6. 发版流程
+## 6. 发版流程（GitLab 单线，2026-09-07 起）
 
-1. 升 `apps/desktop/package.json` version；提交（确认 logo 等资产已在 tag 里）。
-2. `git tag vX.Y.Z && git push origin vX.Y.Z` → CI（release.yml：win + mac 两 job）自动出包发到 xiaosen6/fundet Releases（含 latest.yml/latest-mac.yml，应用内更新靠它）。
-3. CI 绿后：查 draft 状态 → gh-proxy 下载安装包 → 静默装冒烟 → 清理临时目录。
-4. 发版前用 `git merge-base --is-ancestor` 确认所有资产 commit 已进 tag。
+1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交（确认 logo 等资产已在 tag 里）。
+2. `git tag vX.Y.Z && git push origin main vX.Y.Z`（源码 + tag 同步 GitLab）。
+3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。
+4. 静默安装冒烟：`Fundet-Setup-<version>-x64.exe /S /D=<临时目录>` → 启动 → 杀进程 → 清理临时目录。
+5. 安装包（连同 `latest.yml`）挂 GitLab Release：UI 拖拽上传，或 API（项目 access token，scope=api）。
+6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
 
-> **远端现状**：源码已在内网 GitLab（fundet-harness/fundet-buddy，2026-09-03）。但 release.yml 是 GitHub Actions，GitLab 上不会跑——要继续 CI 发版仍需把源码推到 GitHub（xiaosen6/fundet 可复用，推源码属产品决策，确认两公司边界后再推；推上去后 CI 直接用 GITHUB_TOKEN），或改用 GitLab CI / 本地出包。发版路径未定前，别动 §6 其余流程。
+> **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
+> mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
 ---
 
