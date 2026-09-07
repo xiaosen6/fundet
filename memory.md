@@ -229,7 +229,7 @@ Fundet/
 
 1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交（确认 logo 等资产已在 tag 里）。
 2. `git tag vX.Y.Z && git push origin main vX.Y.Z`（源码 + tag 同步 GitLab）。
-3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。
+3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。**本地出包同样撞 §5 的 Defender EBUSY 坑（cua-driver/pi/rg 被 signtool 拷贝时锁住）**：先对三个 bin 目录做 Get-FileHash 预热，EBUSY 就整体重跑 `pnpm dist:win`——实测预热后第 3 次过，别只修单个文件。
 4. 静默安装冒烟：`Fundet-Setup-<version>-x64.exe /S /D=<临时目录>` → 启动 → 杀进程 → 清理临时目录。
 5. 安装包（连同 `latest.yml`）挂 GitLab Release：UI 拖拽上传，或 API（项目 access token，scope=api）。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
