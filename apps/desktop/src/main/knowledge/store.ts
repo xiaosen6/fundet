@@ -19,6 +19,7 @@ import type {
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeSearchResult,
+  KnowledgeSessionBinding,
 } from '../../shared/knowledge.js';
 
 let tablesReady = false;
@@ -295,20 +296,38 @@ function buildSnippetLocal(text: string, terms: string[]): string {
 
 // ---------- 会话绑定 ----------
 
-export function getSessionKnowledgeKbs(sessionId: string): string[] {
+export function getSessionKnowledgeBinding(sessionId: string): KnowledgeSessionBinding {
   ensureTables();
   const raw = getSetting(bindingKey(sessionId));
-  if (!raw) return [];
+  if (!raw) return { ids: [], auto: false };
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((v): v is string => typeof v === 'string');
+    if (Array.isArray(parsed)) {
+      // 旧格式：纯 id 数组（无自动注入）
+      return { ids: parsed.filter((v): v is string => typeof v === 'string'), auto: false };
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { ids?: unknown }).ids)) {
+      return {
+        ids: (parsed as { ids: unknown[] }).ids.filter((v): v is string => typeof v === 'string'),
+        auto: (parsed as { auto?: unknown }).auto === true,
+      };
+    }
+    return { ids: [], auto: false };
   } catch {
-    return [];
+    return { ids: [], auto: false };
   }
 }
 
-export function setSessionKnowledgeKbs(sessionId: string, ids: string[]): void {
+/** 兼容旧调用：只取绑定 id */
+export function getSessionKnowledgeKbs(sessionId: string): string[] {
+  return getSessionKnowledgeBinding(sessionId).ids;
+}
+
+export function setSessionKnowledgeBinding(
+  sessionId: string,
+  ids: string[],
+  auto: boolean,
+): void {
   ensureTables();
   const valid = new Set(
     (
@@ -318,5 +337,6 @@ export function setSessionKnowledgeKbs(sessionId: string, ids: string[]): void {
     ).map((r) => r.id),
   );
   const filtered = [...new Set(ids)].filter((id) => valid.has(id));
-  setSetting(bindingKey(sessionId), filtered.length > 0 ? JSON.stringify(filtered) : null);
+  const empty = filtered.length === 0 && !auto;
+  setSetting(bindingKey(sessionId), empty ? null : JSON.stringify({ ids: filtered, auto }));
 }

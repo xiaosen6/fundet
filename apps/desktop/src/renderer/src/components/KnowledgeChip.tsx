@@ -1,34 +1,46 @@
 /**
  * KnowledgeChip — composer 工具行的会话知识库绑定 chip。
  *
- * 勾选后（新消息起）该会话注入 knowledge MCP：助手获得 knowledge_search
- * 工具，检索返回带来源编号的原文片段。绑定按会话存 SQLite。
+ * 两种用法（可并存）：
+ * - 勾选库：新消息注入 knowledge MCP，助手按需调 knowledge_search；
+ * - 「发送前自动检索」开关：每条消息发送前按原话检索 top4 直接拼进上下文，
+ *   不依赖模型调工具（④ 自动 RAG）。
+ * 绑定按会话存 SQLite。
  */
 import { useEffect, useState } from 'react';
 import { ChevronDown, Library, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import * as Switch from '@radix-ui/react-switch';
 import { cn } from '../lib/cn';
 import { MorphPopover } from './ui/MorphPopover';
-import type { KnowledgeBaseView } from '../../../shared/fundet-api.ts';
+import type { KnowledgeBaseView, KnowledgeSessionBinding } from '../../../shared/fundet-api.ts';
+
+const IDLE: KnowledgeSessionBinding = { ids: [], auto: false };
 
 export function KnowledgeChip({ sessionId }: { sessionId: string | null }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBaseView[]>([]);
-  const [bound, setBound] = useState<string[]>([]);
+  const [binding, setBinding] = useState<KnowledgeSessionBinding>(IDLE);
 
   useEffect(() => {
     if (!sessionId) {
-      setBound([]);
+      setBinding(IDLE);
       return;
     }
-    void window.fundet.getSessionKnowledgeKbs(sessionId).then(setBound).catch(() => undefined);
+    void window.fundet.getSessionKnowledgeBinding(sessionId).then(setBinding).catch(() => undefined);
   }, [sessionId]);
 
-  const toggle = (id: string): void => {
+  const persist = (next: KnowledgeSessionBinding): void => {
     if (!sessionId) return;
-    const next = bound.includes(id) ? bound.filter((x) => x !== id) : [...bound, id];
-    setBound(next);
-    void window.fundet.setSessionKnowledgeKbs(sessionId, next).catch(() => undefined);
+    setBinding(next);
+    void window.fundet.setSessionKnowledgeBinding(sessionId, next).catch(() => undefined);
+  };
+
+  const toggleKb = (id: string): void => {
+    const ids = binding.ids.includes(id)
+      ? binding.ids.filter((x) => x !== id)
+      : [...binding.ids, id];
+    persist({ ...binding, ids });
   };
 
   const trigger = (
@@ -41,11 +53,12 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       }}
       className={cn(
         'inline-flex h-[30px] items-center gap-2 rounded-full border border-transparent bg-transparent px-2.5 text-13 text-primary transition-colors select-none hover:border-board hover:bg-composer-pill',
-        bound.length > 0 && 'border-board bg-composer-pill',
+        (binding.ids.length > 0 || binding.auto) && 'border-board bg-composer-pill',
       )}
     >
       <Library size={14} className="shrink-0" />
-      <span>知识库{bound.length > 0 ? ` · ${bound.length}` : ''}</span>
+      <span>知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : ''}</span>
+      {binding.auto && <span className="text-11 text-accent">自动</span>}
       <ChevronDown size={14} className="shrink-0 text-muted" />
     </button>
   );
@@ -54,7 +67,7 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
     <MorphPopover
       open={open}
       onOpenChange={setOpen}
-      panelWidth={300}
+      panelWidth={320}
       panelClassName="p-2"
       panelAriaLabel="绑定知识库"
       wrapperClassName="shrink-0"
@@ -77,12 +90,12 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
         ) : (
           <>
             {kbs.map((kb) => {
-              const on = bound.includes(kb.id);
+              const on = binding.ids.includes(kb.id);
               return (
                 <button
                   key={kb.id}
                   type="button"
-                  onClick={() => toggle(kb.id)}
+                  onClick={() => toggleKb(kb.id)}
                   className="flex w-full items-center gap-3 rounded-inner px-3 py-2 text-left hover:bg-menu-item-hover"
                 >
                   <Library size={16} className={cn('shrink-0', on ? 'text-accent' : 'text-muted')} />
@@ -102,8 +115,24 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
               );
             })}
             <div className="mx-2 my-1 h-px bg-board" />
-            <div className="px-3 py-2 text-11 leading-snug text-muted">
-              勾选后助手可在新消息里检索这些文档（knowledge_search，带来源标注）。
+            <div className="flex items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-13 text-primary">发送前自动检索注入</p>
+                <p className="mt-0.5 text-11 leading-snug text-muted">
+                  每条消息发送前按原话检索片段直接拼进上下文（不依赖模型调工具）
+                </p>
+              </div>
+              <Switch.Root
+                checked={binding.auto}
+                onCheckedChange={(v) => persist({ ...binding, auto: v === true })}
+                className="h-[20px] w-[36px] shrink-0 cursor-pointer rounded-full bg-chip data-[state=checked]:bg-accent"
+              >
+                <Switch.Thumb className="block h-[16px] w-[16px] translate-x-[2px] rounded-full bg-card transition-transform data-[state=checked]:translate-x-[18px]" />
+              </Switch.Root>
+            </div>
+            <div className="mx-2 my-1 h-px bg-board" />
+            <div className="px-3 pb-1 text-11 leading-snug text-muted">
+              绑定后助手可在新消息里检索这些文档（knowledge_search，带来源标注）。
               <Link
                 to="/settings"
                 state={{ tab: 'knowledge' }}

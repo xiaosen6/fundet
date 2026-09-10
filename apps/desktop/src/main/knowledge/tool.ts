@@ -5,6 +5,18 @@
 import type { KnowledgeSearchResult } from '../../shared/knowledge.js';
 import { resolveDefaultTopK, searchKnowledgeChunks } from './store.js';
 
+/** 自动注入（④）：检索结果 → 拼进用户消息前的上下文块 */
+export function formatKnowledgeContextBlock(results: KnowledgeSearchResult[]): string {
+  const body = results
+    .map((r, i) => `【${i + 1}】来源：${r.docName}（第 ${r.ord} 块）\n${r.snippet}`)
+    .join('\n\n');
+  return (
+    '[以下为本机知识库自动检索结果，供本次回答参考]\n\n' +
+    body +
+    '\n[检索结果结束] 请优先依据以上内容回答并在对应句子标注【n】与来源文档名；以上未覆盖的部分请如实说明，不要编造。'
+  );
+}
+
 export interface KnowledgeToolOutput {
   text: string;
   isError: boolean;

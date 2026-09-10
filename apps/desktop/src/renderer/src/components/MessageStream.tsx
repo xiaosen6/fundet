@@ -27,6 +27,7 @@ import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
+import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
 
 /** 用户消息气泡：长文本自动收起（抄 Cindy userMessageCollapse：镜像节点实测行数
  * + ResizeObserver 跟宽重算），折叠态 line-clamp-10 + 「展开全文 / 收起」。 */
@@ -124,6 +125,25 @@ function isTurnTailAssistant(
   return !isRunning && !hasStreaming;
 }
 
+const KNOWLEDGE_TOOL_NAME = 'mcp__knowledge__knowledge_search';
+
+/** 本轮 knowledge_search 的来源清单（回复中的【n】角标可点开溯源） */
+function knowledgeSourcesFor(items: DisplayItem[], assistantId: string): KnowledgeSource[] {
+  const idx = items.findIndex((it) => it.kind === 'assistant' && it.id === assistantId);
+  if (idx < 0) return [];
+  const sources: KnowledgeSource[] = [];
+  for (let i = idx - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (it.kind === 'user') break;
+    if (it.kind === 'tool' && it.toolName === KNOWLEDGE_TOOL_NAME && it.resultText) {
+      for (const src of parseKnowledgeSources(it.resultText)) {
+        if (!sources.some((s) => s.n === src.n)) sources.push(src);
+      }
+    }
+  }
+  return sources;
+}
+
 function lastUserTextBefore(items: DisplayItem[], assistantId: string): string {
   const idx = items.findIndex((it) => it.kind === 'assistant' && it.id === assistantId);
   if (idx < 0) return '';
@@ -143,6 +163,7 @@ function AssistantTurn({
   onFork,
   onAddToChat,
   onDelete,
+  knowledgeSources,
 }: {
   item: AssistantItem;
   pinned: boolean;
@@ -152,6 +173,7 @@ function AssistantTurn({
   onFork?: () => Promise<void>;
   onAddToChat?: () => void;
   onDelete?: () => Promise<void>;
+  knowledgeSources?: KnowledgeSource[];
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   return (
@@ -161,7 +183,12 @@ function AssistantTurn({
       onMouseLeave={() => setHovered(false)}
     >
       <div className="w-full max-w-full min-w-0">
-        <AssistantMessage text={item.text} workDir={workDir} onOpenFile={onOpenFile} />
+        <AssistantMessage
+          text={item.text}
+          workDir={workDir}
+          onOpenFile={onOpenFile}
+          knowledgeSources={knowledgeSources}
+        />
         <MessageActionBar
           createdAt={item.createdAt}
           copyText={item.text}
@@ -339,11 +366,17 @@ export function MessageStream({
               return <UserBubble key={item.id} text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
             case 'assistant': {
               const showBar = isTurnTailAssistant(grouped, index, slice.isRunning, hasStreaming);
+              const kbSources = knowledgeSourcesFor(slice.items, item.id);
               if (!showBar) {
                 return (
                   <div key={item.id} className="flex justify-start">
                     <div className="w-full max-w-full min-w-0">
-                      <AssistantMessage text={item.text} workDir={workDir} onOpenFile={onOpenFile} />
+                      <AssistantMessage
+                        text={item.text}
+                        workDir={workDir}
+                        onOpenFile={onOpenFile}
+                        knowledgeSources={kbSources}
+                      />
                     </div>
                   </div>
                 );
@@ -357,6 +390,7 @@ export function MessageStream({
                   pinned={item.id === pinnedId}
                   workDir={workDir}
                   onOpenFile={onOpenFile}
+                  knowledgeSources={kbSources}
                   onShare={() =>
                     setSharePayload({
                       userText,

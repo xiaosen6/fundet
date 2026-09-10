@@ -197,6 +197,7 @@ import type {
   KnowledgeDocView,
   KnowledgeSearchResult,
   KnowledgeImportResult,
+  KnowledgeSessionBinding,
 } from './knowledge.js';
 export type {
   KnowledgeBaseParams,
@@ -204,6 +205,7 @@ export type {
   KnowledgeDocView,
   KnowledgeSearchResult,
   KnowledgeImportResult,
+  KnowledgeSessionBinding,
 } from './knowledge.js';
 
 export interface SkillView {
@@ -275,8 +277,8 @@ export interface FundetApi {
   importKnowledgeFiles(kbId: string, paths: string[]): Promise<KnowledgeImportResult[]>;
   searchKnowledge(kbIds: string[], query: string, limit?: number): Promise<KnowledgeSearchResult[]>;
   pickKnowledgeFiles(): Promise<string[]>;
-  getSessionKnowledgeKbs(sessionId: string): Promise<string[]>;
-  setSessionKnowledgeKbs(sessionId: string, ids: string[]): Promise<void>;
+  getSessionKnowledgeBinding(sessionId: string): Promise<KnowledgeSessionBinding>;
+  setSessionKnowledgeBinding(sessionId: string, binding: { ids: string[]; auto: boolean }): Promise<void>;
 
   listMcpServers(): Promise<McpServerView[]>;
   createMcpServer(input: McpServerInput): Promise<McpServerView>;

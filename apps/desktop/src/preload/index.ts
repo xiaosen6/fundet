@@ -96,9 +96,10 @@ const api: FundetApi = {
   searchKnowledge: (kbIds, query, limit) =>
     ipcRenderer.invoke(FUNDET_INVOKE.KB_SEARCH, kbIds, query, limit),
   pickKnowledgeFiles: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_PICK),
-  getSessionKnowledgeKbs: (sessionId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_GET, sessionId),
-  setSessionKnowledgeKbs: (sessionId, ids) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_SET, sessionId, ids),
+  getSessionKnowledgeBinding: (sessionId) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_GET, sessionId),
+  setSessionKnowledgeBinding: (sessionId, binding) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_SET, sessionId, binding),
 
   listSkills: (workDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_LIST, workDir),
   pickSkillFile: () => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_PICK),

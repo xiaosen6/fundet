@@ -78,15 +78,16 @@ import {
   createKnowledgeBase,
   updateKnowledgeBaseParams,
   deleteKnowledgeBase,
-  getSessionKnowledgeKbs,
   importDocumentChunks,
   listKnowledgeBases,
   listKnowledgeDocs,
   removeKnowledgeDoc,
   searchKnowledgeChunks,
-  setSessionKnowledgeKbs,
+  getSessionKnowledgeBinding,
+  setSessionKnowledgeBinding,
 } from '../knowledge/store.js';
 import { extractKnowledgeDocumentText } from '../doc-text.js';
+import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
@@ -417,7 +418,20 @@ export function registerIpcHandlers(): void {
         session.id,
         input.text.trim() || attachments.map((a) => a.name).join(' ') || '',
       );
-      const result = await session.send(await buildUserMessage(input.text, attachments));
+      // ④ 自动 RAG：会话开启「发送前自动检索」且绑定了知识库时，按用户原话
+      // 检索 topN 片段拼进消息上下文（库里/DB 仍存用户原话，注入只影响发给
+      // 模型的内容）；未命中或未开启时零改动。
+      const binding = getSessionKnowledgeBinding(session.id);
+      let sendText = input.text;
+      if (binding.auto && binding.ids.length > 0 && input.text.trim()) {
+        const hits = searchKnowledgeChunks(binding.ids, input.text, 4);
+        if (hits.length > 0) {
+          sendText = `${formatKnowledgeContextBlock(hits)}
+
+${input.text}`;
+        }
+      }
+      const result = await session.send(await buildUserMessage(sendText, attachments));
       return result.accepted ? { accepted: true } : { accepted: false, reason: result.reason };
     },
   );
@@ -681,12 +695,15 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(FUNDET_INVOKE.KB_SESSION_GET, async (_e, sessionId: string) =>
-    getSessionKnowledgeKbs(sessionId),
+    getSessionKnowledgeBinding(sessionId),
   );
 
-  ipcMain.handle(FUNDET_INVOKE.KB_SESSION_SET, async (_e, sessionId: string, ids: string[]) => {
-    setSessionKnowledgeKbs(sessionId, Array.isArray(ids) ? ids : []);
-  });
+  ipcMain.handle(
+    FUNDET_INVOKE.KB_SESSION_SET,
+    async (_e, sessionId: string, binding: { ids?: string[]; auto?: boolean }) => {
+      setSessionKnowledgeBinding(sessionId, binding?.ids ?? [], binding?.auto === true);
+    },
+  );
 
   ipcMain.handle(FUNDET_INVOKE.FS_HOME, async () => os.homedir());
   ipcMain.handle(FUNDET_INVOKE.FS_PICK_DIR, async (e) => {

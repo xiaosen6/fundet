@@ -15,6 +15,12 @@ export interface KnowledgeBaseParams {
   chunkOverlap: number;
 }
 
+/** 会话绑定：勾选的库 + 是否发送前自动检索注入 */
+export interface KnowledgeSessionBinding {
+  ids: string[];
+  auto: boolean;
+}
+
 export interface KnowledgeBaseView {
   id: string;
   name: string;

@@ -10,7 +10,7 @@
  *   连同账本一起冻结，不重播。reduced-motion 下整条链不挂。
  * 终版渲染单次 ReactMarkdown 原文，零 span 包装。
  */
-import { memo, useMemo, useRef, type ReactNode } from 'react';
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -23,6 +23,8 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { isImagePath } from '../lib/artifacts';
 import { createStreamFadeState, rehypeStreamWordFade, type StreamFadeState } from '../lib/streamWordFade';
 import { repairStreamingMarkdown, splitStreamingMarkdownChunks } from '../lib/streamingMarkdown';
+import { rehypeKnowledgeCite, type KnowledgeSource } from '../lib/knowledgeCite';
+import { cn } from '../lib/cn';
 import { LocalImagePreview, looksLikeFilePath } from './LocalImagePreview';
 import { isMermaidClassName, MarkdownMermaidBlock } from './chat/MarkdownMermaidBlock';
 
@@ -32,6 +34,8 @@ interface AssistantMessageProps {
   streaming?: boolean;
   workDir?: string;
   onOpenFile?: (path: string) => void;
+  /** 本轮 knowledge_search 的来源清单：回复里的【n】会被渲染成可点角标 */
+  knowledgeSources?: KnowledgeSource[];
 }
 
 function flattenText(node: ReactNode): string {
@@ -58,9 +62,13 @@ function AssistantMessageImpl({
   streaming,
   workDir,
   onOpenFile,
+  knowledgeSources,
 }: AssistantMessageProps): React.JSX.Element {
   const reducedMotion = useReducedMotion();
   const streamingOn = streaming === true && !reducedMotion;
+  const [citePanelOpen, setCitePanelOpen] = useState(false);
+  const [activeCite, setActiveCite] = useState<number | null>(null);
+  const hasSources = (knowledgeSources?.length ?? 0) > 0;
 
   // 回调经 ref 中转成稳定引用：分块 memo 的比较器只看内容，交互回调永远最新
   const callbacksRef = useRef<MarkdownCallbacks>({ workDir, onOpenFile });
@@ -89,15 +97,72 @@ function AssistantMessageImpl({
   );
 
   if (!streamingOn || chunks === null) {
+    const rehypePlugins = hasSources
+      ? [rehypeKnowledgeCite(knowledgeSources!), rehypeHighlight, rehypeKatex]
+      : [rehypeHighlight, rehypeKatex];
     return (
-      <div className="md text-primary select-text">
-        <ReactMarkdown
-          remarkPlugins={REMARK_PLUGINS}
-          rehypePlugins={[rehypeHighlight, rehypeKatex]}
-          components={buildMarkdownComponents(callbacksRef)}
-        >
-          {normalizedText}
-        </ReactMarkdown>
+      <div className="flex w-full min-w-0 flex-col">
+        <div className="md text-primary select-text">
+          <ReactMarkdown
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={rehypePlugins}
+            components={{
+              ...buildMarkdownComponents(callbacksRef),
+              sup: (props) => {
+                const cls = String(props.className ?? '');
+                if (!cls.includes('kb-cite')) return <sup {...props} />;
+                const n = Number(props['data-n' as keyof typeof props] ?? 0) || Number((props as { 'data-n'?: unknown })['data-n'] ?? 0);
+                return (
+                  <button
+                    type="button"
+                    title={`查看来源【${n}】`}
+                    onClick={() => {
+                      setActiveCite(n);
+                      setCitePanelOpen(true);
+                    }}
+                    className={cn(
+                      'mx-px inline-flex h-[16px] min-w-[16px] cursor-pointer items-center justify-center rounded-full border px-1 align-super text-[10px] leading-none transition-colors',
+                      activeCite === n
+                        ? 'border-accent bg-accent text-accent-fg'
+                        : 'border-board bg-chip text-secondary hover:border-accent hover:text-accent',
+                    )}
+                  >
+                    {n}
+                  </button>
+                );
+              },
+            }}
+          >
+            {normalizedText}
+          </ReactMarkdown>
+        </div>
+        {hasSources && (citePanelOpen || activeCite !== null) && (
+          <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-board bg-chip px-3 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-11 font-medium text-secondary">引用来源</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCitePanelOpen(false);
+                  setActiveCite(null);
+                }}
+                className="text-11 text-muted hover:text-primary"
+              >
+                收起
+              </button>
+            </div>
+            {(knowledgeSources ?? [])
+              .filter((src) => activeCite === null || activeCite === src.n)
+              .map((src) => (
+                <div key={src.n} className={cn('rounded-md px-2 py-1.5', activeCite === src.n && 'bg-card')}>
+                  <p className="text-11 text-muted">
+                    【{src.n}】{src.docName}（第 {src.ord} 块）
+                  </p>
+                  <p className="mt-0.5 text-12 leading-[1.6] text-primary select-text">{src.snippet}</p>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
     );
   }
