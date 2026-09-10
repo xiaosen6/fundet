@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-09-03。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
+> 最后更新：2026-09-10。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
 >
 > 仓库路径：源码已推内网 GitLab `git@172.16.56.11:fundet-harness/fundet-buddy.git`（2026-09-03 起）。**活跃分支 `main`；`master` 是收编进来的落后占位历史，不要在上面开发**。初始开发机工作副本 `D:\AI\Fundet`。
 >
@@ -121,6 +121,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.12 | 09-10 | 同步 Cindy 上游 #3832（未知端点收敛 system role）/ #4182（exit 权威收口）+ **设置新增「MCP 服务器」用户面**（连通状态点/增删改/启停）+ 技能启停开关 + 全套新 logo（白卡 tile app icon + 透明球 UI 标） |
 | 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6）；**安装包已发 GitLab Release**（fundet 包 0.2.11，静默装冒烟过） |
 | 0.2.10 | 09-03 | **修复视觉发图 1210**（pi 0.84.4 + 已知模型补全表 + 空text块占位）+ 用户长消息折叠 + markdown 对齐 Cindy（数学/CJK/mermaid）+ update.mjs pin 模式 |
 | 0.2.9 | 08-31 | 界面硬编码品牌名全清（17 文件 → brand.name）；cua-driver 下载自动回退 |
