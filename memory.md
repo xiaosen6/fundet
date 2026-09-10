@@ -4,7 +4,7 @@
 >
 > 仓库路径：源码已推内网 GitLab `git@172.16.56.11:fundet-harness/fundet-buddy.git`（2026-09-03 起）。**活跃分支 `main`；`master` 是收编进来的落后占位历史，不要在上面开发**。初始开发机工作副本 `D:\AI\Fundet`。
 >
-> **品牌**：本产品是 **Fundet**（山东未来互联科技的本地 AI 智能体）。构建系统（`shared/brand.ts` + `BRAND` 环境变量）源自一个支持多品牌的底座，里面保留着一个由另一团队维护的变体分支（`longma`）——**本仓一切开发/构建/发版都是 Fundet，默认即 Fundet，不要动 brand.ts 里的变体分支，不要用它出包**。
+> **品牌**：本产品是 **Fundet**（山东未来互联科技的本地 AI 智能体）。Logo 为红球经纬线球体（2026-09-10 全套换新：白卡圆角 tile 版做 app icon——`resources/fundet/` ico/png/svg + renderer favicon；抠底透明球做 UI 内 BrandMark。`logo-raw.png` 是原始图；再生用 PIL，ICO 是多尺寸标准容器，UI 标用「左/上弧边界点最小二乘圆拟合 + 圆掩膜」从白卡里抠球——别用颜色阈值硬分，瓷砖右下粉色渐变和球体分不开）。构建系统（`shared/brand.ts` + `BRAND` 环境变量）源自一个支持多品牌的底座，里面保留着一个由另一团队维护的变体分支（`longma`）——**本仓一切开发/构建/发版都是 Fundet，默认即 Fundet，不要动 brand.ts 里的变体分支，不要用它出包**。
 >
 > 历史命名：仓库/包名大量使用 `fundet`（`@fundet/agent-core`、`window.fundet`、`FUNDET_*` IPC、`fundet-file://`）——这些就是本项目的主命名，保持即可。
 
