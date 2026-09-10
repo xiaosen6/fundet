@@ -1,15 +1,17 @@
 /**
  * KnowledgePanel —— 设置 → 知识库。
  *
- * 纯本地 FTS5 关键词检索：新建/删除知识库、导入 PDF/DOCX/TXT/MD、
- * 管理已导入文档、召回测试。会话在对话页绑定知识库后，
- * 助手获得 knowledge_search 工具（带来源编号的原文片段）。
+ * 纯本地 FTS5 关键词检索：新建/删除知识库、导入文件或整个文件夹（PDF/DOCX/TXT/MD）、
+ * 管理已导入文档、KB 级检索/分块参数、召回测试、失败项重试。
+ * 会话在对话页绑定知识库后，助手获得 knowledge_search 工具（带来源编号的原文片段）。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { FilePlus2, Trash2 } from 'lucide-react';
+import { FilePlus2, FolderPlus, RotateCw, Trash2 } from 'lucide-react';
 import type {
+  KnowledgeBaseParams,
   KnowledgeBaseView,
   KnowledgeDocView,
+  KnowledgeImportResult,
   KnowledgeSearchResult,
 } from '../../../../shared/fundet-api.js';
 
@@ -25,6 +27,8 @@ export function KnowledgePanel(): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [docs, setDocs] = useState<KnowledgeDocView[]>([]);
+  const [importResults, setImportResults] = useState<KnowledgeImportResult[] | null>(null);
+  const [paramsDraft, setParamsDraft] = useState<KnowledgeBaseParams>({ topK: 6, chunkSize: 800, chunkOverlap: 120 });
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<KnowledgeSearchResult[] | null>(null);
   const [error, setError] = useState('');
@@ -55,6 +59,8 @@ export function KnowledgePanel(): React.JSX.Element {
       await refresh();
       setExpandedId(kb.id);
       setDocs([]);
+      setImportResults(null);
+      if (kb.params) setParamsDraft(kb.params);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -78,26 +84,35 @@ export function KnowledgePanel(): React.JSX.Element {
     setExpandedId(kb.id);
     setResults(null);
     setQuery('');
+    setImportResults(null);
+    if (kb.params) setParamsDraft(kb.params);
     await loadDocs(kb.id);
   };
 
-  const importFiles = async (kb: KnowledgeBaseView): Promise<void> => {
-    setError('');
-    const paths = await window.fundet.pickKnowledgeFiles();
-    if (paths.length === 0) return;
+  const runImport = async (kbId: string, run: () => Promise<KnowledgeImportResult[]>): Promise<void> => {
     setBusy(true);
+    setError('');
     try {
-      const results = await window.fundet.importKnowledgeFiles(kb.id, paths);
-      const failed = results.filter((r) => !r.ok);
-      if (failed.length > 0) {
-        setError(failed.map((f) => `${f.name}：${f.error ?? '失败'}`).join('；'));
-      }
-      await loadDocs(kb.id);
+      const imported = await run();
+      setImportResults(imported);
+      await loadDocs(kbId);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const failedPaths = (importResults ?? []).filter((r) => !r.ok && r.path).map((r) => r.path!);
+
+  const saveParams = async (kbId: string): Promise<void> => {
+    setError('');
+    try {
+      await window.fundet.updateKnowledgeBaseParams(kbId, paramsDraft);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -117,7 +132,7 @@ export function KnowledgePanel(): React.JSX.Element {
     if (!query.trim()) return;
     setBusy(true);
     try {
-      setResults(await window.fundet.searchKnowledge([kb.id], query.trim(), 8));
+      setResults(await window.fundet.searchKnowledge([kb.id], query.trim(), paramsDraft.topK));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -130,7 +145,7 @@ export function KnowledgePanel(): React.JSX.Element {
       <div>
         <SectionTitle>知识库</SectionTitle>
         <p className="mt-1 text-13 text-secondary">
-          导入自己的文档（PDF / DOCX / TXT / MD），在对话页把知识库绑定到会话，
+          导入自己的文档（PDF / DOCX / TXT / MD，可整文件夹导入），在对话页把知识库绑定到会话，
           助手即可检索原文片段并标注来源。检索在本机全文匹配，不上传任何内容。
         </p>
       </div>
@@ -164,11 +179,7 @@ export function KnowledgePanel(): React.JSX.Element {
           {kbs.map((kb) => (
             <div key={kb.id} className="rounded-xl border border-board bg-card-ivory px-4 py-3">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void expand(kb)}
-                  className="min-w-0 flex-1 text-left"
-                >
+                <button type="button" onClick={() => void expand(kb)} className="min-w-0 flex-1 text-left">
                   <span className="truncate text-14 font-medium text-primary">{kb.name}</span>
                   <span className="ml-2 text-12 text-muted">
                     {kb.docCount} 份文档 · {kb.chunkCount} 个片段
@@ -186,19 +197,59 @@ export function KnowledgePanel(): React.JSX.Element {
 
               {expandedId === kb.id && (
                 <div className="mt-3 flex flex-col gap-3 border-t border-board pt-3">
-                  <div className="flex items-center gap-2">
+                  {/* 导入 */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void importFiles(kb)}
+                      onClick={() => void runImport(kb.id, () => window.fundet.pickKnowledgeFiles().then((paths) => (paths.length > 0 ? window.fundet.importKnowledgeFiles(kb.id, paths) : [])))}
                       className="flex h-8 items-center gap-1 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary disabled:opacity-50"
                     >
                       <FilePlus2 size={13} />
                       导入文档
                     </button>
-                    <span className="text-11 text-muted">支持 PDF / DOCX / TXT / MD，可多选</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runImport(kb.id, () => window.fundet.pickDirectory().then((dir) => (dir ? window.fundet.importKnowledgeDir(kb.id, dir) : [])))}
+                      className="flex h-8 items-center gap-1 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary disabled:opacity-50"
+                    >
+                      <FolderPlus size={13} />
+                      导入文件夹
+                    </button>
+                    <span className="text-11 text-muted">递归收集 PDF / DOCX / TXT / MD，跳过隐藏目录</span>
                   </div>
 
+                  {/* 导入结果（逐文件 + 失败重试） */}
+                  {importResults !== null && importResults.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      {importResults.map((r, i) => (
+                        <div key={`${r.path ?? r.name}-${i}`} className="flex items-center gap-2 rounded-lg bg-chip px-3 py-1.5">
+                          <span className="min-w-0 flex-1 truncate font-mono text-12 text-primary">{r.name}</span>
+                          {r.ok ? (
+                            <span className="shrink-0 text-11 text-success">{r.chunks} 片段</span>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate text-right text-11 text-error" title={r.error}>
+                              失败：{r.error}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {failedPaths.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void runImport(kb.id, () => window.fundet.importKnowledgeFiles(kb.id, failedPaths))}
+                          className="flex h-8 w-fit items-center gap-1 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary disabled:opacity-50"
+                        >
+                          <RotateCw size={12} />
+                          重试失败项（{failedPaths.length}）
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 文档列表 */}
                   {docs.length > 0 && (
                     <div className="flex flex-col gap-1">
                       {docs.map((d) => (
@@ -220,6 +271,45 @@ export function KnowledgePanel(): React.JSX.Element {
                     </div>
                   )}
 
+                  {/* KB 级参数 */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-12 text-secondary">
+                      检索与分块参数
+                      <span className="ml-1 text-muted">（改分块参数后需重新导入文档才生效）</span>
+                    </span>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {(
+                        [
+                          { key: 'topK', label: '检索条数', min: 1, max: 20 },
+                          { key: 'chunkSize', label: '块长度', min: 200, max: 4000 },
+                          { key: 'chunkOverlap', label: '块重叠', min: 0, max: 1000 },
+                        ] as const
+                      ).map(({ key, label, min, max }) => (
+                        <label key={key} className="flex items-center gap-1.5 text-12 text-secondary">
+                          {label}
+                          <input
+                            type="number"
+                            min={min}
+                            max={max}
+                            value={paramsDraft[key]}
+                            onChange={(e) =>
+                              setParamsDraft({ ...paramsDraft, [key]: Number(e.target.value) })
+                            }
+                            className="h-7 w-20 rounded-md border border-board bg-card px-2 text-12 text-primary focus:border-accent focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => void saveParams(kb.id)}
+                        className="h-7 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary"
+                      >
+                        保存参数
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 召回测试 */}
                   <div className="flex flex-col gap-2">
                     <span className="text-12 text-secondary">召回测试：输入一个用户可能会问的问题</span>
                     <div className="flex gap-2">

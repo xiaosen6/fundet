@@ -43,6 +43,8 @@ export const FUNDET_INVOKE = {
   KB_PICK: 'kb:pick',
   KB_SESSION_GET: 'kb:session-get',
   KB_SESSION_SET: 'kb:session-set',
+  KB_UPDATE_PARAMS: 'kb:update-params',
+  KB_IMPORT_DIR: 'kb:import-dir',
   SKILLS_LIST: 'skills:list',
   SKILLS_PICK: 'skills:pick',
   SKILLS_IMPORT: 'skills:import',

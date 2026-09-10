@@ -5,12 +5,23 @@
 export const KNOWLEDGE_MCP_SERVER_NAME = 'knowledge';
 export const KNOWLEDGE_MCP_TOOL_NAME = 'knowledge_search';
 
+/** KB 级检索/分块参数（MCP 默认 limit、导入分块都用它） */
+export interface KnowledgeBaseParams {
+  /** 检索返回条数 */
+  topK: number;
+  /** 分块目标长度（字符） */
+  chunkSize: number;
+  /** 相邻块重叠（字符） */
+  chunkOverlap: number;
+}
+
 export interface KnowledgeBaseView {
   id: string;
   name: string;
   docCount: number;
   chunkCount: number;
   createdAt: number;
+  params?: KnowledgeBaseParams;
 }
 
 export interface KnowledgeDocView {
@@ -35,6 +46,8 @@ export interface KnowledgeSearchResult {
 
 export interface KnowledgeImportResult {
   name: string;
+  /** 原始路径（失败重试用） */
+  path?: string;
   ok: boolean;
   chunks?: number;
   error?: string;

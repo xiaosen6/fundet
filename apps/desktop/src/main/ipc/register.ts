@@ -76,6 +76,7 @@ import { importSkillFile, listSkills, setSkillEnabled, uninstallSkill } from '..
 import { probeMcpServer } from '../host/mcp-bridge.js';
 import {
   createKnowledgeBase,
+  updateKnowledgeBaseParams,
   deleteKnowledgeBase,
   getSessionKnowledgeKbs,
   importDocumentChunks,
@@ -596,7 +597,46 @@ export function registerIpcHandlers(): void {
   // ---------- 知识库（纯 FTS5 关键词检索） ----------
   ipcMain.handle(FUNDET_INVOKE.KB_LIST, async () => listKnowledgeBases());
 
-  ipcMain.handle(FUNDET_INVOKE.KB_CREATE, async (_e, name: string) => createKnowledgeBase(String(name ?? '')));
+  ipcMain.handle(FUNDET_INVOKE.KB_CREATE, async (_e, name: string, params?: unknown) =>
+    createKnowledgeBase(String(name ?? ''), (params ?? {}) as Record<string, never>),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_UPDATE_PARAMS, async (_e, id: string, params: unknown) =>
+    updateKnowledgeBaseParams(id, (params ?? {}) as Record<string, never>),
+  );
+
+  // 目录导入：递归收集支持格式（跳过隐藏目录/node_modules），逐个走同一导入管线
+  ipcMain.handle(FUNDET_INVOKE.KB_IMPORT_DIR, async (_e, kbId: string, dirPath: string) => {
+    const SUPPORTED = new Set(['.pdf', '.docx', '.txt', '.md']);
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      let entries: Array<{ name: string; isDirectory: () => boolean }>;
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true }) as never;
+      } catch {
+        return;
+      }
+      for (const ent of entries) {
+        if (ent.name.startsWith('.') || ent.name === 'node_modules') continue;
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(full);
+        else if (SUPPORTED.has(path.extname(ent.name).toLowerCase())) files.push(full);
+      }
+    };
+    walk(String(dirPath ?? ''));
+    const results: Array<{ name: string; path?: string; ok: boolean; chunks?: number; error?: string }> = [];
+    for (const p of files) {
+      const name = path.basename(p);
+      try {
+        const text = await extractKnowledgeDocumentText(p);
+        const { chunks } = importDocumentChunks(kbId, name, text);
+        results.push({ name, path: p, ok: true, chunks });
+      } catch (err) {
+        results.push({ name, path: p, ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return results;
+  });
 
   ipcMain.handle(FUNDET_INVOKE.KB_DELETE, async (_e, id: string) => {
     deleteKnowledgeBase(id);
@@ -609,15 +649,15 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(FUNDET_INVOKE.KB_IMPORT, async (_e, kbId: string, paths: string[]) => {
-    const results: Array<{ name: string; ok: boolean; chunks?: number; error?: string }> = [];
+    const results: Array<{ name: string; path?: string; ok: boolean; chunks?: number; error?: string }> = [];
     for (const p of paths) {
       const name = path.basename(p);
       try {
         const text = await extractKnowledgeDocumentText(p);
         const { chunks } = importDocumentChunks(kbId, name, text);
-        results.push({ name, ok: true, chunks });
+        results.push({ name, path: p, ok: true, chunks });
       } catch (err) {
-        results.push({ name, ok: false, error: err instanceof Error ? err.message : String(err) });
+        results.push({ name, path: p, ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return results;

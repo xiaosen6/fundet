@@ -3,7 +3,7 @@
  * 与 search/tool.ts 同职责切分：本文件可依赖 store（主进程），MCP 协议层不依赖。
  */
 import type { KnowledgeSearchResult } from '../../shared/knowledge.js';
-import { searchKnowledgeChunks } from './store.js';
+import { resolveDefaultTopK, searchKnowledgeChunks } from './store.js';
 
 export interface KnowledgeToolOutput {
   text: string;
@@ -24,7 +24,7 @@ export function handleKnowledgeSearch(
   if (kbIds.length === 0) {
     return { text: '当前会话没有绑定知识库。', isError: true };
   }
-  const rawLimit = typeof args.limit === 'number' ? Math.round(args.limit) : DEFAULT_LIMIT;
+  const rawLimit = typeof args.limit === 'number' ? Math.round(args.limit) : resolveDefaultTopK(kbIds);
   const limit = Math.min(Math.max(rawLimit || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
   const results: KnowledgeSearchResult[] = searchKnowledgeChunks(kbIds, query, limit);

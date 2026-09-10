@@ -192,12 +192,14 @@ export interface McpStatusResult {
 
 /** 本地知识库（纯 FTS5 关键词检索） */
 import type {
+  KnowledgeBaseParams,
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeSearchResult,
   KnowledgeImportResult,
 } from './knowledge.js';
 export type {
+  KnowledgeBaseParams,
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeSearchResult,
@@ -264,7 +266,9 @@ export interface FundetApi {
   fetchProviderModels(input: FetchModelsInput): Promise<FetchModelsResult>;
 
   listKnowledgeBases(): Promise<KnowledgeBaseView[]>;
-  createKnowledgeBase(name: string): Promise<KnowledgeBaseView>;
+  createKnowledgeBase(name: string, params?: Partial<KnowledgeBaseParams>): Promise<KnowledgeBaseView>;
+  updateKnowledgeBaseParams(id: string, params: Partial<KnowledgeBaseParams>): Promise<void>;
+  importKnowledgeDir(kbId: string, dirPath: string): Promise<KnowledgeImportResult[]>;
   deleteKnowledgeBase(id: string): Promise<void>;
   listKnowledgeDocs(kbId: string): Promise<KnowledgeDocView[]>;
   removeKnowledgeDoc(docId: string): Promise<void>;

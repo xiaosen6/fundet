@@ -85,7 +85,10 @@ const api: FundetApi = {
   checkMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
   listKnowledgeBases: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_LIST),
-  createKnowledgeBase: (name) => ipcRenderer.invoke(FUNDET_INVOKE.KB_CREATE, name),
+  createKnowledgeBase: (name, params) => ipcRenderer.invoke(FUNDET_INVOKE.KB_CREATE, name, params),
+  updateKnowledgeBaseParams: (id, params) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_UPDATE_PARAMS, id, params),
+  importKnowledgeDir: (kbId, dirPath) => ipcRenderer.invoke(FUNDET_INVOKE.KB_IMPORT_DIR, kbId, dirPath),
   deleteKnowledgeBase: (id) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DELETE, id),
   listKnowledgeDocs: (kbId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOCS, kbId),
   removeKnowledgeDoc: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOC_REMOVE, docId),

@@ -15,6 +15,7 @@ import { getSetting, setSetting } from '../db/settings.js';
 import { chunkText } from './chunk.js';
 import { indexText, matchExpression, queryTerms } from './tokenize.js';
 import type {
+  KnowledgeBaseParams,
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeSearchResult,
@@ -29,7 +30,10 @@ function ensureTables(): void {
     CREATE TABLE IF NOT EXISTS knowledge_bases (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      top_k INTEGER NOT NULL DEFAULT 6,
+      chunk_size INTEGER NOT NULL DEFAULT 800,
+      chunk_overlap INTEGER NOT NULL DEFAULT 120
     );
     CREATE TABLE IF NOT EXISTS knowledge_docs (
       id TEXT PRIMARY KEY,
@@ -50,6 +54,17 @@ function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
     CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(seg, tokenize='unicode61');
   `);
+  // 早期建表无参数列：逐列补齐（幂等）
+  const cols = new Set(
+    (db.prepare('PRAGMA table_info(knowledge_bases)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  for (const [col, decl] of [
+    ['top_k', 'INTEGER NOT NULL DEFAULT 6'],
+    ['chunk_size', 'INTEGER NOT NULL DEFAULT 800'],
+    ['chunk_overlap', 'INTEGER NOT NULL DEFAULT 120'],
+  ] as const) {
+    if (!cols.has(col)) db.exec(`ALTER TABLE knowledge_bases ADD COLUMN ${col} ${decl}`);
+  }
   tablesReady = true;
 }
 
@@ -57,27 +72,82 @@ const bindingKey = (sessionId: string): string => `kb.session.${sessionId}`;
 
 // ---------- KB ----------
 
+const KB_PARAM_DEFAULTS: KnowledgeBaseParams = { topK: 6, chunkSize: 800, chunkOverlap: 120 };
+
+function clampParams(p: Partial<KnowledgeBaseParams>): KnowledgeBaseParams {
+  const clamp = (v: number | undefined, lo: number, hi: number, dflt: number): number => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return dflt;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  return {
+    topK: clamp(p.topK, 1, 20, KB_PARAM_DEFAULTS.topK),
+    chunkSize: clamp(p.chunkSize, 200, 4000, KB_PARAM_DEFAULTS.chunkSize),
+    chunkOverlap: clamp(p.chunkOverlap, 0, 1000, KB_PARAM_DEFAULTS.chunkOverlap),
+  };
+}
+
 export function listKnowledgeBases(): KnowledgeBaseView[] {
   ensureTables();
   const db = getSqlite();
   const rows = db
     .prepare(
-      `SELECT b.id, b.name, b.created_at,
+      `SELECT b.id, b.name, b.created_at, b.top_k, b.chunk_size, b.chunk_overlap,
               (SELECT COUNT(*) FROM knowledge_docs d WHERE d.kb_id = b.id) AS doc_count,
               (SELECT COUNT(*) FROM kb_chunks c WHERE c.kb_id = b.id) AS chunk_count
        FROM knowledge_bases b ORDER BY b.created_at DESC`,
     )
-    .all() as Array<{ id: string; name: string; created_at: number; doc_count: number; chunk_count: number }>;
+    .all() as Array<{
+    id: string;
+    name: string;
+    created_at: number;
+    top_k: number;
+    chunk_size: number;
+    chunk_overlap: number;
+    doc_count: number;
+    chunk_count: number;
+  }>;
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     docCount: r.doc_count,
     chunkCount: r.chunk_count,
     createdAt: r.created_at,
+    params: { topK: r.top_k, chunkSize: r.chunk_size, chunkOverlap: r.chunk_overlap },
   }));
 }
 
-export function createKnowledgeBase(name: string): KnowledgeBaseView {
+/** 更新 KB 检索/分块参数（不影响已建索引；改块参数后需重新导入文档才生效） */
+export function updateKnowledgeBaseParams(id: string, params: Partial<KnowledgeBaseParams>): void {
+  ensureTables();
+  const p = clampParams(params);
+  getSqlite()
+    .prepare('UPDATE knowledge_bases SET top_k = ?, chunk_size = ?, chunk_overlap = ? WHERE id = ?')
+    .run(p.topK, p.chunkSize, p.chunkOverlap, id);
+}
+
+export function getKnowledgeBaseParams(id: string): KnowledgeBaseParams {
+  ensureTables();
+  const row = getSqlite()
+    .prepare('SELECT top_k, chunk_size, chunk_overlap FROM knowledge_bases WHERE id = ?')
+    .get(id) as { top_k: number; chunk_size: number; chunk_overlap: number } | undefined;
+  if (!row) return { ...KB_PARAM_DEFAULTS };
+  return { topK: row.top_k, chunkSize: row.chunk_size, chunkOverlap: row.chunk_overlap };
+}
+
+/** 多库取参数默认值（绑多库时取最大 topK，块参数取首个命中库） */
+export function resolveDefaultTopK(kbIds: string[]): number {
+  let topK = KB_PARAM_DEFAULTS.topK;
+  for (const id of kbIds) {
+    topK = Math.max(topK, getKnowledgeBaseParams(id).topK);
+  }
+  return topK;
+}
+
+export function createKnowledgeBase(
+  name: string,
+  params?: Partial<KnowledgeBaseParams>,
+): KnowledgeBaseView {
   ensureTables();
   const trimmed = name.trim();
   if (!trimmed) throw new Error('知识库名称不能为空');
@@ -85,13 +155,20 @@ export function createKnowledgeBase(name: string): KnowledgeBaseView {
   const db = getSqlite();
   const exists = db.prepare('SELECT 1 FROM knowledge_bases WHERE name = ?').get(trimmed);
   if (exists) throw new Error(`已存在同名知识库「${trimmed}」`);
+  const p = clampParams(params ?? {});
   const id = randomUUID();
-  db.prepare('INSERT INTO knowledge_bases (id, name, created_at) VALUES (?, ?, ?)').run(
+  const createdAt = Date.now();
+  db.prepare(
+    'INSERT INTO knowledge_bases (id, name, created_at, top_k, chunk_size, chunk_overlap) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, trimmed, createdAt, p.topK, p.chunkSize, p.chunkOverlap);
+  return {
     id,
-    trimmed,
-    Date.now(),
-  );
-  return { id, name: trimmed, docCount: 0, chunkCount: 0, createdAt: Date.now() };
+    name: trimmed,
+    docCount: 0,
+    chunkCount: 0,
+    createdAt,
+    params: p,
+  };
 }
 
 export function deleteKnowledgeBase(id: string): void {
@@ -129,7 +206,8 @@ export function listKnowledgeDocs(kbId: string): KnowledgeDocView[] {
 export function importDocumentChunks(kbId: string, name: string, text: string): { docId: string; chunks: number } {
   ensureTables();
   const db = getSqlite();
-  const pieces = chunkText(text);
+  const p = getKnowledgeBaseParams(kbId);
+  const pieces = chunkText(text, { size: p.chunkSize, overlap: p.chunkOverlap });
   if (pieces.length === 0) throw new Error(`「${name}」没有可索引的正文内容`);
   const docId = randomUUID();
   const insertDoc = db.prepare(
