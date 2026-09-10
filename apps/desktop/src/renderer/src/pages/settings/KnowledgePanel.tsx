@@ -6,7 +6,7 @@
  * 会话在对话页绑定知识库后，助手获得 knowledge_search 工具（带来源编号的原文片段）。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { FilePlus2, FolderPlus, RotateCw, Trash2 } from 'lucide-react';
+import { FilePlus2, FolderPlus, Globe, NotebookPen, Pencil, RotateCw, Trash2 } from 'lucide-react';
 import type {
   KnowledgeBaseParams,
   KnowledgeBaseView,
@@ -33,6 +33,8 @@ export function KnowledgePanel(): React.JSX.Element {
   const [results, setResults] = useState<KnowledgeSearchResult[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [noteDraft, setNoteDraft] = useState<{ id: string | null; title: string; content: string } | null>(null);
+  const [snapshotUrl, setSnapshotUrl] = useState('');
 
   const refresh = useCallback(async (): Promise<void> => {
     setKbs(await window.fundet.listKnowledgeBases());
@@ -124,6 +126,48 @@ export function KnowledgePanel(): React.JSX.Element {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const saveNote = async (kb: KnowledgeBaseView): Promise<void> => {
+    if (!noteDraft) return;
+    setError('');
+    setBusy(true);
+    try {
+      await window.fundet.saveKnowledgeNote(kb.id, noteDraft.id, noteDraft.title, noteDraft.content);
+      setNoteDraft(null);
+      await loadDocs(kb.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editNote = async (kb: KnowledgeBaseView, doc: KnowledgeDocView): Promise<void> => {
+    setError('');
+    try {
+      const content = (await window.fundet.getKnowledgeNoteContent(doc.id)) ?? '';
+      setNoteDraft({ id: doc.id, title: doc.name.replace(/^笔记：/, ''), content });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const runSnapshot = async (kb: KnowledgeBaseView): Promise<void> => {
+    setError('');
+    if (!snapshotUrl.trim()) return;
+    setBusy(true);
+    try {
+      await window.fundet.snapshotKnowledgeUrl(kb.id, snapshotUrl.trim());
+      setSnapshotUrl('');
+      await loadDocs(kb.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -220,6 +264,78 @@ export function KnowledgePanel(): React.JSX.Element {
                     <span className="text-11 text-muted">递归收集 PDF / DOCX / TXT / MD，跳过隐藏目录</span>
                   </div>
 
+                  {/* 笔记：新建/编辑 */}
+                  {noteDraft ? (
+                    <div className="flex flex-col gap-2 rounded-lg bg-chip px-3 py-2">
+                      <input
+                        className={inputCls}
+                        value={noteDraft.title}
+                        placeholder="笔记标题"
+                        onChange={(e) => setNoteDraft({ ...noteDraft, title: e.target.value })}
+                      />
+                      <textarea
+                        className={`${inputCls} h-32 py-2 leading-[1.6]`}
+                        value={noteDraft.content}
+                        placeholder="笔记内容（保存后可被检索）"
+                        onChange={(e) => setNoteDraft({ ...noteDraft, content: e.target.value })}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void saveNote(kb)}
+                          className="h-7 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg disabled:opacity-50"
+                        >
+                          保存笔记
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNoteDraft(null)}
+                          className="h-7 rounded-full border border-board px-3 text-12 text-secondary"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError('');
+                          setNoteDraft({ id: null, title: '', content: '' });
+                        }}
+                        className="flex h-8 items-center gap-1 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary"
+                      >
+                        <NotebookPen size={13} />
+                        新建笔记
+                      </button>
+                      <span className="text-11 text-muted">笔记可随时再编辑，改动会重建索引</span>
+                    </div>
+                  )}
+
+                  {/* URL 快照 */}
+                  <div className="flex items-center gap-2">
+                    <Globe size={13} className="shrink-0 text-muted" />
+                    <input
+                      className={`${inputCls} h-8`}
+                      value={snapshotUrl}
+                      placeholder="https://…（抓取网页正文入库，仅公网地址）"
+                      onChange={(e) => setSnapshotUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void runSnapshot(kb);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || !snapshotUrl.trim()}
+                      onClick={() => void runSnapshot(kb)}
+                      className="h-8 shrink-0 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary disabled:opacity-50"
+                    >
+                      抓取
+                    </button>
+                  </div>
+
                   {/* 导入结果（逐文件 + 失败重试） */}
                   {importResults !== null && importResults.length > 0 && (
                     <div className="flex flex-col gap-1">
@@ -258,6 +374,16 @@ export function KnowledgePanel(): React.JSX.Element {
                           <span className="shrink-0 text-11 text-muted">
                             {d.chunkCount} 片段 · {Math.max(1, Math.round(d.chars / 1000))}k 字
                           </span>
+                          {d.kind === 'note' && (
+                            <button
+                              type="button"
+                              title="编辑笔记"
+                              onClick={() => void editNote(kb, d)}
+                              className="flex h-6 w-6 items-center justify-center rounded-full text-muted hover:text-primary"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             title="移除文档"

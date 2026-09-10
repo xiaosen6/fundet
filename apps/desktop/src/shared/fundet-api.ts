@@ -274,6 +274,9 @@ export interface FundetApi {
   deleteKnowledgeBase(id: string): Promise<void>;
   listKnowledgeDocs(kbId: string): Promise<KnowledgeDocView[]>;
   removeKnowledgeDoc(docId: string): Promise<void>;
+  saveKnowledgeNote(kbId: string, noteId: string | null, title: string, content: string): Promise<KnowledgeDocView>;
+  getKnowledgeNoteContent(docId: string): Promise<string | null>;
+  snapshotKnowledgeUrl(kbId: string, url: string): Promise<KnowledgeDocView>;
   importKnowledgeFiles(kbId: string, paths: string[]): Promise<KnowledgeImportResult[]>;
   searchKnowledge(kbIds: string[], query: string, limit?: number): Promise<KnowledgeSearchResult[]>;
   pickKnowledgeFiles(): Promise<string[]>;

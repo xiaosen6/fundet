@@ -66,6 +66,12 @@ function ensureTables(): void {
   ] as const) {
     if (!cols.has(col)) db.exec(`ALTER TABLE knowledge_bases ADD COLUMN ${col} ${decl}`);
   }
+  // 笔记：kind 区分来源，content 存笔记原文（供再编辑）
+  const docCols = new Set(
+    (db.prepare('PRAGMA table_info(knowledge_docs)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!docCols.has('kind')) db.exec("ALTER TABLE knowledge_docs ADD COLUMN kind TEXT NOT NULL DEFAULT 'file'");
+  if (!docCols.has('content')) db.exec('ALTER TABLE knowledge_docs ADD COLUMN content TEXT');
   tablesReady = true;
 }
 
@@ -188,11 +194,20 @@ export function listKnowledgeDocs(kbId: string): KnowledgeDocView[] {
   const db = getSqlite();
   const rows = db
     .prepare(
-      `SELECT d.id, d.kb_id, d.name, d.chars, d.created_at,
+      `SELECT d.id, d.kb_id, d.name, d.chars, d.created_at, d.kind, d.content,
               (SELECT COUNT(*) FROM kb_chunks c WHERE c.doc_id = d.id) AS chunk_count
        FROM knowledge_docs d WHERE d.kb_id = ? ORDER BY d.created_at DESC`,
     )
-    .all(kbId) as Array<{ id: string; kb_id: string; name: string; chars: number; created_at: number; chunk_count: number }>;
+    .all(kbId) as Array<{
+    id: string;
+    kb_id: string;
+    name: string;
+    chars: number;
+    created_at: number;
+    kind: string;
+    content: string | null;
+    chunk_count: number;
+  }>;
   return rows.map((r) => ({
     id: r.id,
     kbId: r.kb_id,
@@ -200,6 +215,8 @@ export function listKnowledgeDocs(kbId: string): KnowledgeDocView[] {
     chars: r.chars,
     chunkCount: r.chunk_count,
     createdAt: r.created_at,
+    kind: (r.kind === 'note' ? 'note' : 'file') as 'note' | 'file',
+    noteContent: r.kind === 'note' ? (r.content ?? '') : undefined,
   }));
 }
 
@@ -230,6 +247,39 @@ export function importDocumentChunks(kbId: string, name: string, text: string): 
   });
   txn();
   return { docId, chunks: pieces.length };
+}
+
+/** 新建/更新笔记（按 docId 判定更新；同名互斥由调用侧界面保证） */
+export function saveKnowledgeNote(
+  kbId: string,
+  noteId: string | null,
+  title: string,
+  content: string,
+): { docId: string; chunks: number } {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) throw new Error('笔记标题不能为空');
+  if (!content.trim()) throw new Error('笔记内容不能为空');
+  if (noteId) {
+    const existing = getSqlite()
+      .prepare("SELECT id FROM knowledge_docs WHERE id = ? AND kind = 'note'")
+      .get(noteId) as { id: string } | undefined;
+    if (!existing) throw new Error('笔记不存在或已删除');
+    removeKnowledgeDoc(noteId);
+  }
+  const name = `笔记：${trimmedTitle.slice(0, 60)}`;
+  const imported = importDocumentChunks(kbId, name, content);
+  getSqlite()
+    .prepare("UPDATE knowledge_docs SET kind = 'note', content = ? WHERE id = ?")
+    .run(content, imported.docId);
+  return imported;
+}
+
+/** 笔记原文（编辑回填用） */
+export function getKnowledgeNoteContent(docId: string): string | null {
+  const row = getSqlite()
+    .prepare("SELECT content FROM knowledge_docs WHERE id = ? AND kind = 'note'")
+    .get(docId) as { content: string | null } | undefined;
+  return row?.content ?? null;
 }
 
 export function removeKnowledgeDoc(docId: string): void {

@@ -37,6 +37,10 @@ export interface KnowledgeDocView {
   chunkCount: number;
   chars: number;
   createdAt: number;
+  /** note = 手动笔记（可再编辑） */
+  kind?: 'file' | 'note';
+  /** 笔记原文（仅 note 有，编辑回填用） */
+  noteContent?: string;
 }
 
 export interface KnowledgeSearchResult {

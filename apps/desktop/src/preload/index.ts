@@ -92,6 +92,10 @@ const api: FundetApi = {
   deleteKnowledgeBase: (id) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DELETE, id),
   listKnowledgeDocs: (kbId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOCS, kbId),
   removeKnowledgeDoc: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOC_REMOVE, docId),
+  saveKnowledgeNote: (kbId, noteId, title, content) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_NOTE_SAVE, kbId, noteId, title, content),
+  getKnowledgeNoteContent: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_NOTE_CONTENT, docId),
+  snapshotKnowledgeUrl: (kbId, url) => ipcRenderer.invoke(FUNDET_INVOKE.KB_SNAPSHOT_URL, kbId, url),
   importKnowledgeFiles: (kbId, paths) => ipcRenderer.invoke(FUNDET_INVOKE.KB_IMPORT, kbId, paths),
   searchKnowledge: (kbIds, query, limit) =>
     ipcRenderer.invoke(FUNDET_INVOKE.KB_SEARCH, kbIds, query, limit),

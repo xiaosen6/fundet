@@ -85,7 +85,10 @@ import {
   searchKnowledgeChunks,
   getSessionKnowledgeBinding,
   setSessionKnowledgeBinding,
+  saveKnowledgeNote,
+  getKnowledgeNoteContent,
 } from '../knowledge/store.js';
+import { fetchPageText } from '../knowledge/url.js';
 import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
@@ -660,6 +663,27 @@ ${input.text}`;
 
   ipcMain.handle(FUNDET_INVOKE.KB_DOC_REMOVE, async (_e, docId: string) => {
     removeKnowledgeDoc(docId);
+  });
+
+  ipcMain.handle(
+    FUNDET_INVOKE.KB_NOTE_SAVE,
+    async (_e, kbId: string, noteId: string | null, title: string, content: string) => {
+      const imported = saveKnowledgeNote(kbId, noteId, String(title ?? ''), String(content ?? ''));
+      const docs = listKnowledgeDocs(kbId);
+      return docs.find((d) => d.id === imported.docId) ?? null;
+    },
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_NOTE_CONTENT, async (_e, docId: string) =>
+    getKnowledgeNoteContent(docId),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_SNAPSHOT_URL, async (_e, kbId: string, url: string) => {
+    const { title, text } = await fetchPageText(String(url ?? ''));
+    const name = `网页：${title}`;
+    const { chunks } = importDocumentChunks(kbId, name, text);
+    const docs = listKnowledgeDocs(kbId);
+    return docs.find((d) => d.name === name && d.chars === text.length) ?? null;
   });
 
   ipcMain.handle(FUNDET_INVOKE.KB_IMPORT, async (_e, kbId: string, paths: string[]) => {
