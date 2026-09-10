@@ -145,6 +145,7 @@ Fundet/
 ### 4.2 UI（Cindy 风格）
 - 两栏 + Canvas 右侧 380px；无边框窗口 + WindowControls；Win 关窗=最小化到托盘（IM 保持在线），托盘菜单「打开 Fundet / 退出」。
 - 上下文用量环在输入卡下方右侧 + 会话短 id（前 8 位）。
+- 侧栏「新对话」上方置顶三个能力入口：IM 机器人 / 技能 / MCP 服务器（点击带 `state.tab` 直达设置对应分区，SettingsPage 从 location.state 初始化 tab）。
 - Canvas 开关钉窗口右上（fixed）；贴附件不强制打开 Canvas。
 - 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）。
 - 用量：首页折叠仪表盘（20 周热力图 + 30 天堆叠柱）+ 设置「用量历史」页（概览 5 格/热力图/按模型表含缓存命中率）。

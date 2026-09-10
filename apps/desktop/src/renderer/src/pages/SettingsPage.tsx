@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 import { ArrowLeft, Monitor, Moon, Sun } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { UserProfileCard } from '../components/settings/UserProfileCard';
 import { FontFamilyPicker } from '../components/settings/FontFamilyPicker';
 import { ProvidersPanel } from '../components/settings/ProvidersPanel';
@@ -91,7 +91,12 @@ function SectionCard({ children }: { children: React.ReactNode }): React.JSX.Ele
 
 export function SettingsPage(): React.JSX.Element {
   const { mode, setMode } = useTheme();
-  const [tab, setTab] = useState<SettingsTab>('general');
+  // 侧栏快捷入口直达：/settings 带 state.tab 时定位到对应分区
+  const location = useLocation();
+  const requestedTab = (location.state as { tab?: SettingsTab } | null)?.tab;
+  const [tab, setTab] = useState<SettingsTab>(
+    requestedTab && requestedTab in TAB_LABELS ? requestedTab : 'general',
+  );
   const [workDir, setWorkDir] = useState(getDefaultWorkDir());
   const [uiFont, setUiFontState] = useState(getUiFont);
   const [codeFont, setCodeFontState] = useState(getCodeFont);

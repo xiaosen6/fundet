@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { useRef, useState, useSyncExternalStore } from 'react';
-import { CirclePlus, MessageSquare, Pencil, Trash2, UserRound } from 'lucide-react';
+import { Bot, CirclePlus, MessageSquare, Pencil, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -222,8 +222,28 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* 顶部常驻动作行（对齐 SidebarTopNav：同级等权 pill 行） */}
+      {/* 顶部常驻动作行（对齐 SidebarTopNav：同级等权 pill 行）。
+          MCP / 技能 / IM 三个能力入口置顶（用户要求：比「新对话」更醒目），
+          点击直达设置页对应 tab。 */}
       <div className="flex flex-col gap-0.5 px-3 pt-1 pb-2.5">
+        {(
+          [
+            { tab: 'im', label: 'IM 机器人', Icon: Bot },
+            { tab: 'skills', label: '技能', Icon: Zap },
+            { tab: 'mcp', label: 'MCP 服务器', Icon: Puzzle },
+          ] as const
+        ).map(({ tab, label, Icon }) => (
+          <Link
+            key={tab}
+            to="/settings"
+            state={{ tab }}
+            className={NAV_ROW_CLASS}
+            aria-label={label}
+          >
+            <Icon size={15} strokeWidth={1.8} className="shrink-0 text-muted" />
+            <span className="leading-none">{label}</span>
+          </Link>
+        ))}
         <div className="group/new relative">
           <button
             type="button"
