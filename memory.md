@@ -41,7 +41,8 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 | 账号 | 无。纯本地 + BYOK |
 | 预装技能 | **无**（`brand.bundledSkills=false`；`resources/bundled-skills/` 已从本仓删除，`ensureBundledSkills` 对缺目录静默跳过） |
 | 窗口 | Windows `frame: false` + 自绘 `WindowControls`；mac hidden titleBar |
-| 设置 Tab | 通用 / 模型供应商 / 自动操作 / 用量历史 / 搜索 / IM 机器人 / 技能。MCP Servers 无用户面 |
+| 设置 Tab | 通用 / 模型供应商 / 自动操作 / 用量历史 / 搜索 / IM 机器人 / MCP 服务器 / 技能 |
+| MCP 用户面 | 设置 → MCP 服务器：stdio 命令（cross-spawn 解 Windows .cmd shim）/ streamable-http（非 loopback 强制 https），开关默认开、可停用；新会话注入（`mcp__<名称>__<工具>`），审批跟会话权限档 |
 | 复制 | 必须走 Electron `clipboard` IPC（权限处理器拒绝 `navigator.clipboard`） |
 | 分享 | 截当前回合卡片为图片进剪贴板 |
 | Mac 包 | 未签名（`identity: null`），macOS 新版对 quarantine 包报「文件已损坏」，用户须 `sudo xattr -cr /Applications/Fundet.app`；根治要 Apple 开发者证书 |
@@ -135,7 +136,7 @@ Fundet/
 ### 4.1 核心
 - Pi 会话：流式、工具调用、权限三档（ask/自动/完全放行，审批超时 10min deny）、草稿会话（空草稿不进侧栏）。
 - 记忆：产品面固定关闭（`memoryEnabled: false`）；`memory_search`/`memory_write` 未暴露给模型。
-- MCP 桥：主进程注入 search/browser/computer 三个内置 MCP（`mcp-bridge.ts`，stdio 经 StdioMcpHttpProxy）；设置无 MCP 用户面。
+- MCP 桥：主进程注入 search/browser/computer 三个内置 MCP + 用户自配 MCP 服务器（`mcp-bridge.ts`，stdio 经 StdioMcpHttpProxy、http 描述符直通）；用户面在设置 → MCP 服务器（§1 边界表）。
 - 死会话容错：401/欠费后 set-model 等只落库，下次发送 lazy-create。
 
 ### 4.2 UI（Cindy 风格）
@@ -302,11 +303,11 @@ pnpm -r --if-present run test
 
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
-**上次同步点：944b1c261（fix(feishu): stop mirroring thread replies，2026-09-03；窗口 a971f9e..944b1c261 共 126 提交已处理完毕）**。
+**上次同步点：50025e3c3（fix(pi): 修正 Windows 分组路径测试的子进程预算，2026-09-10；窗口 944b1c261..50025e3c3 共 639 提交已处理完毕：移植 #3832+#4182，其余裁决见下）**。
 
 **2026-09-10 核查（944b1c261..95c773105，637 提交，大头 mobile/bots/remote-desktop/skillhub 属红线）**：候选①`c2bb4487c` #3832 未知自定义 openai-completions 端点默认 `supportsDeveloperRole:false`（pi 的 detectCompat 对陌生端点默认 true → system 发成 role=developer，火山类网关整个模型不可用；**本仓 pi-host.ts buildPiNativeProviders 同病**，~10 行）；②`240e70256` #4180 message_end 即落盘正文——**本仓持久化是 message_end 直插 DB（register.ts persistEvent），无 Cindy「内存流式 block 等边界 flush」中间态，缺口结构上不存在**，不移植；其 docs/research/pi-successful-reply-delivery-3696.md 是 #3696 权威取证（可复现缺口=内存校准覆盖，非已证实事故根因）。观察项：`7e275443b` #4182 executor exit 早于后代管道关闭（transport 层，长任务后卡死类，本仓 rpc-client 单文件需映射）；`c7c64e99e` #4062 浏览器放行内网导航（Cindy 外围新功能，与 SSRF fail-closed 立场冲突，产品决策）；history 12 连修复是 Cindy 投影重构补丁雨，本仓渲染层不同构不跟。**vendor lock 仍 b972feb3 未变**。
 
-**2026-09-10 补查（同窗口，机器核查覆盖上一条未列项， tip 50025e3c3）**：不适用/划掉——`eee3d8e8e` #3946 与 `50a6e913b` #3895（网关 catalog-to-descriptors/服务端目录平面，本仓无此层）；`9d6ee6ddb` #4178 与 `e2a0ff695` #4181（pi 原生命令管理/内核自更新，产品特性非修复，本仓 pi 走 tools/pi pin）；30165a942 `#4093`（Claude Code 预设，harness）；7bf942a9b 等 models 族 25 连（V4 媒体模型注册/服务端目录）。待对照再定：auto-review 三连（`3758e73f5` 保留真实授权/准确回传拒绝原因、`a95fc0d0d` 重连后追加指令恢复历史授权——均在 Cindy desktop auto-permission-reviewer 管线，与本病本仓 agent-core auto-review 不同构，移植前需先映射审批流；`73bb4c931` 分享导入 N/A 本仓无分享）；`afa8a51b2` #4126 全局约定继承到隔离运行目录（对照本仓 subagent 隔离）；`149d0d7b2` 停用技能入口优先解析（本仓无 skill-activation.ts，对照 customization-scanner 行为）。数据面：pi-model-catalog.json 智谱值与 0.2.11 已同步值逐项一致，无新数据；上游 pi 版本未动 0.84.4；挂账项网络守卫竞态、MCP 懒加载仍未落地。
+**2026-09-10 补查（同窗口，机器核查覆盖上一条未列项， tip 50025e3c3）**：**#3832 与 #4182 已于同日移植**（commit 2a1f980/33d0719：compat 透传进 PiNativeModelSpec + pi-host 注入；rpc-client 改 exit 权威收口 + 250ms 尾帧排水 + 销毁自端管道；exit-lifecycle/provider-routing 新增用例，pi 二进制就位后集成套件已真机跑过）。不适用/划掉——`eee3d8e8e` #3946 与 `50a6e913b` #3895（网关 catalog-to-descriptors/服务端目录平面，本仓无此层）；`9d6ee6ddb` #4178 与 `e2a0ff695` #4181（pi 原生命令管理/内核自更新，产品特性非修复，本仓 pi 走 tools/pi pin）；30165a942 `#4093`（Claude Code 预设，harness）；7bf942a9b 等 models 族 25 连（V4 媒体模型注册/服务端目录）。待对照再定：auto-review 三连（`3758e73f5` 保留真实授权/准确回传拒绝原因、`a95fc0d0d` 重连后追加指令恢复历史授权——均在 Cindy desktop auto-permission-reviewer 管线，与本病本仓 agent-core auto-review 不同构，移植前需先映射审批流；`73bb4c931` 分享导入 N/A 本仓无分享）；`afa8a51b2` #4126 全局约定继承到隔离运行目录（对照本仓 subagent 隔离）；`149d0d7b2` 停用技能入口优先解析（本仓无 skill-activation.ts，对照 customization-scanner 行为）。数据面：pi-model-catalog.json 智谱值与 0.2.11 已同步值逐项一致，无新数据；上游 pi 版本未动 0.84.4；挂账项网络守卫竞态、MCP 懒加载仍未落地。
 
 **2026-09-03 窗口移植记录**（上游 hash 均见当日 commit message）：
 - 已移植 4 项：#3751 登录态浏览器（生命周期队列 + running/pid 双信号判停 + status/stop 钉显式 profile + Windows App-Bound 加密检测拒绝拷贝）；#3742 pi RPC 帧级定界诊断（帧直方图，agent-core rpc-client）；#3706 完全放行对齐原生 Pi（移除 /proc environ 与凭证读两处 bypassPermissions 硬拦，Ask/自动档审批不变）；#3738 智谱目录数据（thinkingLevelMap 显式 off/minimal/xhigh 键 + glm-4.6v；网关 efforts 路由半边不适用）。
