@@ -188,6 +188,9 @@ Fundet/
 - 分块：段落聚合 800 字，超长段按句切窗 overlap 120（`knowledge/chunk.ts`）。
 - 导入：PDF/DOCX/TXT/MD → `extractKnowledgeDocumentText`（doc-text.ts，抛错制）→ 分块事务入库（kb_chunks + kb_fts，rowid 对齐）。
 - 会话绑定存 settings（`kb.session.<sessionId>`，主进程可读）；绑定后**新消息**注入内置 knowledge MCP（`knowledge_search` 工具，返回【n】来源片段并带「不得编造」提示语）；composer 知识库 chip（KnowledgeChip）+ 设置→知识库（CRUD/导入/召回测试）。
+- 批A（2026-09-10）：目录导入（递归收集、跳隐藏/node_modules）；KB 级参数 topK/chunkSize/chunkOverlap（knowledge_bases 列，幂等补列；MCP 默认 limit 与导入分块都读它，**改块参数需重新导入才生效**）；导入结果逐文件展示 + 失败项保留路径一键重试。
+- 批B（2026-09-10）：会话绑定升级 `{ids, auto}`（兼容旧纯数组）；`auto` = 发送前自动检索注入——session:send 按用户原话检索 top4 拼进发给模型的消息上下文（**DB messages 仍存用户原话**，注入只影响模型所见）；回答里的【n】经 rehypeKnowledgeCite 渲染成可点角标，点开溯源面板（来源/块序/原文），数据 = 本轮 knowledge_search 工具 resultText 解析（`lib/knowledgeCite.ts`）。
+- 批C（2026-09-10）：笔记（knowledge_docs.kind='note' + content 存原文，可再编辑重建索引）；URL 快照（html-to-text 提正文；**SSRF 前置 assertPublicHttpUrl**：仅公网 http(s)、DNS 全地址逐个拦内网/链路本地/元数据，3MB/20s 上限）。
 
 ---
 
