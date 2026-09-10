@@ -250,6 +250,7 @@ Fundet/
 - 真 Key 全链路冒烟。
 - Mac 公证（需 Apple 开发者证书 + CI notarize）。
 - Cindy 上游可跟进项：browser-runtime 网络守卫竞态修复、MCP 懒加载（**截至 2026-09-03 上游均未落地**，vendor lock 仍 b972feb3 与本仓一致）。「yield cells」（= 上游 #3767 yield marker 收紧）经核查为纯 Codex 作用域（`agents/codex/yielded-exec-cell.ts`），本仓无 Codex harness，**已划掉**。
+- **本地知识库（已规划待开工，2026-09-10 用户拍板：纯 FTS5 关键词检索，不做 embedding/不做向量化）**：SQLite FTS5 + Intl.Segmenter 前分词（零依赖，中文友好）、BM25 排序、snippet/highlight 白送；文档管线复用 unpdf/mammoth（TXT/MD/PDF/DOCX），段落+句窗分块；Agent 接入走内置 `knowledge` MCP（会话绑定 → knowledge_search 工具，返回带来源片段）；UI = 设置新 tab（CRUD/导入/召回测试）+ 对话输入框旁知识库 chip + 引用角标片段卡。M1 约 1.5~2 天；Excel/CSV/URL 抓取后置。取舍：纯关键词对语义换说法召回弱（用户知情接受）。
 - Cindy 功能级借鉴候选（2026-09-03 盘点，均在 Cindy「跳过登录」模式可用、不碰云）：会话搜索（`localDb/chatHistorySearch` FTS5+向量 RRF，可经 MCP `session_search` 给模型）、checkpoint/回滚（`main/git-snapshot` + RewindPreviewDialog）、错误分类重试补强（本仓已有基础重发，上游按限流/过载/断流/配额分类+倒计时）、effort/思考开关（`EffortSlider`/`ThinkingToggle`）、@ 文件引用+本轮产出文件卡（`AtMentionPanel`/`GeneratedFilesCard`）、计划/待办/提问交互卡（`PlanReviewBubble`/`TodoListCard`/`AskUserQuestionBubble`）、Goal 目标托管（`main/goal-host`，≠定时任务）、Ollama 本地模型托管（`main/local-model-runtime`）、消息排队（`PendingQueuePanel`）。会话导入/cross-agent-convert 数据源涉禁搬的 CC/Codex 生态，移植前需产品裁决。
 - 超长会话列表虚拟化（组件已 memo）。
 - 文件夹拖入 composer；Canvas 未覆盖类型仍「用系统打开」。
