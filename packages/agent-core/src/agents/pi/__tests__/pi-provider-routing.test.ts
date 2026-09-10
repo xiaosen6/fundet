@@ -142,6 +142,51 @@ describe('Pi provider-aware model routing', () => {
     await nativeHandle.close();
   });
 
+  it('passes native model compat through to models.json (#3832)', async () => {
+    const deps: AgentDeps = {
+      auth: {
+        getState: async () => ({ authenticated: true, identity: 'test', authSource: 'api-key' as const }),
+        triggerLogin: async () => ({ authenticated: true }),
+        logout: async () => {},
+        getAuthEnv: async () => ({}),
+      },
+      runtimeConfig: { endpoint: 'http://127.0.0.1:9' },
+      binaryPath: path.join(agentHome, 'pi'),
+      logger: noopLogger,
+      capabilityAdditions: { availableModels: [] },
+      resolvePiAgentHome: () => agentHome,
+      resolvePiNativeProviders: async () => ({
+        providers: [
+          {
+            id: 'volc-custom',
+            name: 'Volc Custom',
+            baseUrl: 'http://v.test',
+            api: 'openai-completions',
+            models: [
+              { id: 'unknown-model', compat: { supportsDeveloperRole: false } },
+              { id: 'plain-model' },
+            ],
+          },
+        ],
+        env: {},
+      }),
+    };
+    const agent = new PiAgent(deps);
+    const handle = await agent.startSession({
+      sessionId: 'compat-passthrough',
+      workingDir: cwd,
+      model: 'unknown-model',
+      providerId: 'volc-custom',
+    });
+    const models = JSON.parse(
+      readFileSync(path.join(captured.env.PI_CODING_AGENT_DIR as string, 'models.json'), 'utf8'),
+    ) as { providers: Record<string, { models: Array<{ id: string; compat?: Record<string, unknown> }> }> };
+    const entries = models.providers['volc-custom']?.models ?? [];
+    expect(entries.find((m) => m.id === 'unknown-model')?.compat).toEqual({ supportsDeveloperRole: false });
+    expect(entries.find((m) => m.id === 'plain-model')?.compat).toBeUndefined();
+    await handle.close();
+  });
+
   it('keeps built-in gateway reasoning when a same-id non-reasoning BYOM empties the flat effort intersection', async () => {
     const resolver = vi.fn((modelId: string) => {
       if (modelId !== 'shared-model') return null;

@@ -140,6 +140,11 @@ export interface PiNativeModelSpec {
   contextWindow?: number;
   maxTokens?: number;
   input?: Array<'text' | 'image'>;
+  /**
+   * pi models.json 的 compat 覆写（原样透传）。host 侧用途：未知自定义
+   * openai-completions 端点收敛 supportsDeveloperRole=false（上游 #3832）。
+   */
+  compat?: Record<string, unknown>;
 }
 
 /**

@@ -102,6 +102,14 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
             : known.input && known.input.includes('image')
               ? { input: known.input }
               : {}),
+          // 未知自定义 Chat Completions 端点保守回落（上游 #3832）：pi 的
+          // detectCompat 对陌生端点默认 supportsDeveloperRole=true，火山引擎等
+          // OpenAI 兼容网关只收 system/assistant/user/tool，role=developer 直接
+          // InvalidParameter，模型整体不可用。system role 在所有 OpenAI 兼容端点
+          // 均可用，故无已知目录元数据时默认收敛；已知模型维持 pi 原生判定。
+          ...(p.api === 'openai-completions' && Object.keys(known).length === 0
+            ? { compat: { supportsDeveloperRole: false } }
+            : {}),
         };
       });
     if (models.length === 0) {
