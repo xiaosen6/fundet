@@ -19,7 +19,8 @@
  * 生命周期：每次 startSession 重建（stdio 子进程随会话拉起），disposeSessionCtx
  * 在会话 close 时由 PiAgent 调用（幂等），关闭 http 代理 + 杀子进程。
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from 'node:child_process';
+import crossSpawn from 'cross-spawn';
 import { createInterface } from 'node:readline';
 import { createServer, type Server } from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -72,7 +73,8 @@ class StdioMcpHttpProxy {
   /** spawn 子进程 + 起 http 监听 + initialize 预热；返回分配给 bridge 的 URL */
   async start(): Promise<string> {
     const command = this.config.command!;
-    this.child = spawn(command, this.config.args, {
+    // cross-spawn：Windows 下 npx/uvx 等是 .cmd shim，node 原生 spawn 直接 ENOENT
+    this.child = crossSpawn(command, this.config.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: this.spawnOpts?.env ?? process.env,
       ...(this.spawnOpts?.cwd ? { cwd: this.spawnOpts.cwd } : {}),
