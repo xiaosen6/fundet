@@ -232,7 +232,7 @@ Fundet/
 
 1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交（确认 logo 等资产已在 tag 里）。
 2. `git tag vX.Y.Z && git push origin main vX.Y.Z`（源码 + tag 同步 GitLab）。
-3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`，**出包后把安装包拷一份到 `D:\Fundet-Setup\`**（2026-09-10 起的固定存放处）。pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。**本地出包同样撞 §5 的 Defender EBUSY 坑（cua-driver/pi/rg 被 signtool 拷贝时锁住）**：先对三个 bin 目录做 Get-FileHash 预热，EBUSY 就整体重跑 `pnpm dist:win`——实测预热后第 3 次过，别只修单个文件。
+3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`，**出包后把安装包直接拷一份到 `D:\` 根目录**（2026-09-10 起的固定存放处，不建子文件夹）。pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。**本地出包同样撞 §5 的 Defender EBUSY 坑（cua-driver/pi/rg 被 signtool 拷贝时锁住）**：先对三个 bin 目录做 Get-FileHash 预热，EBUSY 就整体重跑 `pnpm dist:win`——实测预热后第 3 次过，别只修单个文件。
 4. 静默安装冒烟：`Fundet-Setup-<version>-x64.exe /S /D=<临时目录>` → 启动 → 杀进程 → 清理临时目录。
 5. 安装包（连同 `latest.yml`、`.blockmap`）挂 GitLab Release。已验证的 API 模式（2026-09-07，本 GitLab 版本资产链接用 `filepath` 属性，`direct_asset_path` 会报 invalid format）：①`PUT /api/v4/projects/272/packages/generic/fundet/<版本>/<文件名>`（curl --upload-file，PRIVATE-TOKEN 头）；②`POST /api/v4/projects/272/releases`，`assets.links[].url` 指向包文件。Token 用项目/个人 access token（scope=api），由发版人自持，**不进仓**。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
