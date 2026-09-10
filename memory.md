@@ -41,7 +41,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 | 账号 | 无。纯本地 + BYOK |
 | 预装技能 | **无**（`brand.bundledSkills=false`；`resources/bundled-skills/` 已从本仓删除，`ensureBundledSkills` 对缺目录静默跳过） |
 | 窗口 | Windows `frame: false` + 自绘 `WindowControls`；mac hidden titleBar |
-| 设置 Tab | 通用 / 模型供应商 / 自动操作 / 用量历史 / 搜索 / IM 机器人 / MCP 服务器 / 技能 |
+| 设置 Tab | 通用 / 模型供应商 / 自动操作 / 用量历史 / 搜索 / IM 机器人 / 知识库 / MCP 服务器 / 技能 |
 | MCP 用户面 | 设置 → MCP 服务器：stdio 命令（cross-spawn 解 Windows .cmd shim）/ streamable-http（非 loopback 强制 https），开关默认开、可停用；新会话注入（`mcp__<名称>__<工具>`），审批跟会话权限档 |
 | 复制 | 必须走 Electron `clipboard` IPC（权限处理器拒绝 `navigator.clipboard`） |
 | 分享 | 截当前回合卡片为图片进剪贴板 |
@@ -50,6 +50,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 | 浏览器自动化 | 内置能力开关（默认关）；托管 Chrome 持久 profile「Fundet」 |
 | 视觉发图 | 预设标注 + 编辑对话框「视觉」勾选，只信库值，无推断 |
 | 电脑操作 | 内置能力开关（默认关）；cua-driver 外部二进制，遥测已关 |
+| 知识库 | 纯 FTS5 关键词检索（**用户决策：无 embedding/无向量**）；导入 PDF/DOCX/TXT/MD，会话绑定后注入内置 knowledge MCP |
 | 约束 | 保持 `@fundet/*` 与 `window.fundet`；Windows 用 PowerShell 跑 Electron |
 
 ---
@@ -180,6 +181,16 @@ Fundet/
 
 ---
 
+### 4.9 本地知识库
+
+- **纯 FTS5 关键词检索**（用户决策：不做 embedding/不做向量化）。表走 raw SQL 幂等创建（`main/knowledge/store.ts`），FTS5 虚表**不进 drizzle 迁移**；`getSqlite()`（db/client.ts）取原生句柄。
+- **分词：CJK bigram + 拉丁整词小写**（`knowledge/tokenize.ts`），索引/查询两侧同一函数；**别换 Intl.Segmenter**（ICU 词典深浅不一，本机把「退货」切成单字）。查询 = 各 token 引号 OR + 拉丁前缀 `*`；排序 bm25()。
+- 分块：段落聚合 800 字，超长段按句切窗 overlap 120（`knowledge/chunk.ts`）。
+- 导入：PDF/DOCX/TXT/MD → `extractKnowledgeDocumentText`（doc-text.ts，抛错制）→ 分块事务入库（kb_chunks + kb_fts，rowid 对齐）。
+- 会话绑定存 settings（`kb.session.<sessionId>`，主进程可读）；绑定后**新消息**注入内置 knowledge MCP（`knowledge_search` 工具，返回【n】来源片段并带「不得编造」提示语）；composer 知识库 chip（KnowledgeChip）+ 设置→知识库（CRUD/导入/召回测试）。
+
+---
+
 ## 5. 环境与坑（重点背熟）
 
 **发版链路**（每个坑都真踩过）：
@@ -275,7 +286,7 @@ pnpm --filter @fundet/browser-runtime compile
 pnpm -r --if-present run test
 ```
 
-桌面测试覆盖：file-kind / file-name / preview-url / fs-local stage / collectArtifacts / search providers / search MCP 协议 / doc-text / IM dedup / IM turn-collector。
+桌面测试覆盖：file-kind / file-name / preview-url / fs-local stage / collectArtifacts / search providers / search MCP 协议 / doc-text / IM dedup / IM turn-collector / 知识库分词分块 / 知识库 MCP 协议 / 真实画像登录态 / RPC 帧诊断 / BYOM compat 透传。
 
 ---
 

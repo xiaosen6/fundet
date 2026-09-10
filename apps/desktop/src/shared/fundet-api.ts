@@ -190,6 +190,20 @@ export interface McpStatusResult {
   error?: string;
 }
 
+/** 本地知识库（纯 FTS5 关键词检索） */
+import type {
+  KnowledgeBaseView,
+  KnowledgeDocView,
+  KnowledgeSearchResult,
+  KnowledgeImportResult,
+} from './knowledge.js';
+export type {
+  KnowledgeBaseView,
+  KnowledgeDocView,
+  KnowledgeSearchResult,
+  KnowledgeImportResult,
+} from './knowledge.js';
+
 export interface SkillView {
   name: string;
   description: string;
@@ -248,6 +262,17 @@ export interface FundetApi {
   setProviderKey(providerId: string, key: string): Promise<void>;
   hasProviderKey(providerId: string): Promise<boolean>;
   fetchProviderModels(input: FetchModelsInput): Promise<FetchModelsResult>;
+
+  listKnowledgeBases(): Promise<KnowledgeBaseView[]>;
+  createKnowledgeBase(name: string): Promise<KnowledgeBaseView>;
+  deleteKnowledgeBase(id: string): Promise<void>;
+  listKnowledgeDocs(kbId: string): Promise<KnowledgeDocView[]>;
+  removeKnowledgeDoc(docId: string): Promise<void>;
+  importKnowledgeFiles(kbId: string, paths: string[]): Promise<KnowledgeImportResult[]>;
+  searchKnowledge(kbIds: string[], query: string, limit?: number): Promise<KnowledgeSearchResult[]>;
+  pickKnowledgeFiles(): Promise<string[]>;
+  getSessionKnowledgeKbs(sessionId: string): Promise<string[]>;
+  setSessionKnowledgeKbs(sessionId: string, ids: string[]): Promise<void>;
 
   listMcpServers(): Promise<McpServerView[]>;
   createMcpServer(input: McpServerInput): Promise<McpServerView>;

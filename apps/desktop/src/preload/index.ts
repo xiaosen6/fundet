@@ -84,6 +84,19 @@ const api: FundetApi = {
   deleteMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_DELETE, id),
   checkMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
+  listKnowledgeBases: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_LIST),
+  createKnowledgeBase: (name) => ipcRenderer.invoke(FUNDET_INVOKE.KB_CREATE, name),
+  deleteKnowledgeBase: (id) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DELETE, id),
+  listKnowledgeDocs: (kbId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOCS, kbId),
+  removeKnowledgeDoc: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOC_REMOVE, docId),
+  importKnowledgeFiles: (kbId, paths) => ipcRenderer.invoke(FUNDET_INVOKE.KB_IMPORT, kbId, paths),
+  searchKnowledge: (kbIds, query, limit) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_SEARCH, kbIds, query, limit),
+  pickKnowledgeFiles: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_PICK),
+  getSessionKnowledgeKbs: (sessionId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_GET, sessionId),
+  setSessionKnowledgeKbs: (sessionId, ids) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_SET, sessionId, ids),
+
   listSkills: (workDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_LIST, workDir),
   pickSkillFile: () => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_PICK),
   importSkill: (filePath, scope, workDir) =>

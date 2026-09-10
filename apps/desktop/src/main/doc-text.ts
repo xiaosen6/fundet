@@ -64,3 +64,25 @@ export async function extractDocumentText(filePath: string): Promise<string> {
     return `附件「${name}」正文提取失败：${err instanceof Error ? err.message : String(err)}。文件已在工作目录内，可用其它方式处理。`;
   }
 }
+
+/** 知识库导入用：返回纯正文（抛错制，无「附件提示语」包装）。txt/md 直读。 */
+export async function extractKnowledgeDocumentText(filePath: string): Promise<string> {
+  const ext = path.extname(filePath).toLowerCase();
+  const name = path.basename(filePath);
+  if (ext !== '.pdf' && ext !== '.docx' && ext !== '.txt' && ext !== '.md') {
+    throw new Error('支持的格式：PDF / DOCX / TXT / MD');
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size > MAX_BYTES) {
+    throw new Error(`文件过大（${Math.round(stat.size / 1024 / 1024)}MB），上限 30MB`);
+  }
+  if (ext === '.txt' || ext === '.md') {
+    return fs.readFileSync(filePath, 'utf-8');
+  }
+  const raw = ext === '.pdf' ? await extractPdf(filePath) : await extractDocx(filePath);
+  const text = raw.replace(/[ \t]+\n/g, '\n').trim();
+  if (!text) {
+    throw new Error('没有可提取的文字层（可能是扫描件/图片型文档）');
+  }
+  return text.length > MAX_CHARS ? `${text.slice(0, MAX_CHARS)}\n\n（正文过长，已截断）` : text;
+}

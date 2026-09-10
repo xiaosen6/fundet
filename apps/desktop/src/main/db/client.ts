@@ -17,6 +17,7 @@ import * as schema from './schema.js';
 export type FundetDb = BetterSQLite3Database<typeof schema>;
 
 let db: FundetDb | null = null;
+let sqlite: Database.Database | null = null;
 
 /**
  * migrations 目录：dev 下 out/main → ../../drizzle = apps/desktop/drizzle；
@@ -34,16 +35,17 @@ export function initDatabase(): FundetDb {
   const file = path.join(app.getPath('userData'), 'fundet.db');
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
-  const sqlite = new Database(file);
+  const native = new Database(file);
   // 外键默认关闭，messages 的 cascade 删除依赖它
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
+  native.pragma('journal_mode = WAL');
+  native.pragma('foreign_keys = ON');
+  sqlite = native;
 
   // 启动自查：确认原生模块在当前 Electron ABI 下可用
   const row = sqlite.prepare('select sqlite_version() as v').get() as { v: string };
   console.log(`[fundet:db] better-sqlite3 OK, sqlite ${row.v}, file=${file}`);
 
-  db = drizzle(sqlite, { schema });
+  db = drizzle(native, { schema });
   migrate(db, { migrationsFolder: resolveMigrationsFolder() });
   console.log('[fundet:db] migrations applied');
   return db;
@@ -52,4 +54,10 @@ export function initDatabase(): FundetDb {
 export function getDb(): FundetDb {
   if (!db) throw new Error('database not initialised: call initDatabase() first');
   return db;
+}
+
+/** 原生 better-sqlite3 句柄：FTS5 虚表等 raw SQL 场景用 */
+export function getSqlite(): Database.Database {
+  if (!sqlite) throw new Error('database not initialised: call initDatabase() first');
+  return sqlite;
 }

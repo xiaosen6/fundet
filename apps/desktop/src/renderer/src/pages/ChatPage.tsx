@@ -49,6 +49,7 @@ import { ModelSelector, PermissionSelector } from '../components/SelectorChips';
 import { UsageDashboard } from '../components/UsageDashboard';
 import { brand } from '../../../shared/brand.js';
 import { FolderPickerChip } from '../components/FolderPickerChip';
+import { KnowledgeChip } from '../components/KnowledgeChip';
 import { Sidebar } from '../components/Sidebar';
 import { BrandMark } from '../components/BrandMark';
 import { addRecentFolder } from '../lib/recentFolders';
@@ -719,6 +720,7 @@ export function ChatPage(): React.JSX.Element {
                             cwd={activeMeta?.workDir || workDir}
                             onSelect={applyWorkDir}
                           />
+                          <KnowledgeChip sessionId={activeId} />
                           <PermissionSelector
                             current={permissionMode}
                             onSelect={(m) => void selectPermission(m)}

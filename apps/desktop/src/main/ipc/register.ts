@@ -74,6 +74,18 @@ import { disableCuaDriverTelemetry, resolveCuaDriverCommand } from '../computer/
 import { getBoolSetting, setBoolSetting } from '../db/settings.js';
 import { importSkillFile, listSkills, setSkillEnabled, uninstallSkill } from '../host/skills.js';
 import { probeMcpServer } from '../host/mcp-bridge.js';
+import {
+  createKnowledgeBase,
+  deleteKnowledgeBase,
+  getSessionKnowledgeKbs,
+  importDocumentChunks,
+  listKnowledgeBases,
+  listKnowledgeDocs,
+  removeKnowledgeDoc,
+  searchKnowledgeChunks,
+  setSessionKnowledgeKbs,
+} from '../knowledge/store.js';
+import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
@@ -579,6 +591,61 @@ export function registerIpcHandlers(): void {
     const config = listMcpServers().find((s) => s.id === id);
     if (!config) return { ok: false, error: 'MCP server 不存在' };
     return probeMcpServer(config);
+  });
+
+  // ---------- 知识库（纯 FTS5 关键词检索） ----------
+  ipcMain.handle(FUNDET_INVOKE.KB_LIST, async () => listKnowledgeBases());
+
+  ipcMain.handle(FUNDET_INVOKE.KB_CREATE, async (_e, name: string) => createKnowledgeBase(String(name ?? '')));
+
+  ipcMain.handle(FUNDET_INVOKE.KB_DELETE, async (_e, id: string) => {
+    deleteKnowledgeBase(id);
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.KB_DOCS, async (_e, kbId: string) => listKnowledgeDocs(kbId));
+
+  ipcMain.handle(FUNDET_INVOKE.KB_DOC_REMOVE, async (_e, docId: string) => {
+    removeKnowledgeDoc(docId);
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.KB_IMPORT, async (_e, kbId: string, paths: string[]) => {
+    const results: Array<{ name: string; ok: boolean; chunks?: number; error?: string }> = [];
+    for (const p of paths) {
+      const name = path.basename(p);
+      try {
+        const text = await extractKnowledgeDocumentText(p);
+        const { chunks } = importDocumentChunks(kbId, name, text);
+        results.push({ name, ok: true, chunks });
+      } catch (err) {
+        results.push({ name, ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return results;
+  });
+
+  ipcMain.handle(
+    FUNDET_INVOKE.KB_SEARCH,
+    async (_e, kbIds: string[], query: string, limit?: number) =>
+      searchKnowledgeChunks(kbIds, query, limit),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_PICK, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const opts = {
+      title: '导入知识库文档',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [{ name: '文档', extensions: ['pdf', 'docx', 'txt', 'md'] }],
+    };
+    const result = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    return result.canceled ? [] : result.filePaths;
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.KB_SESSION_GET, async (_e, sessionId: string) =>
+    getSessionKnowledgeKbs(sessionId),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_SESSION_SET, async (_e, sessionId: string, ids: string[]) => {
+    setSessionKnowledgeKbs(sessionId, Array.isArray(ids) ? ids : []);
   });
 
   ipcMain.handle(FUNDET_INVOKE.FS_HOME, async () => os.homedir());

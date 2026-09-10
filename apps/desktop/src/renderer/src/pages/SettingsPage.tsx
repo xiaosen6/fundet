@@ -29,6 +29,7 @@ import { SkillsPanel } from './settings/SkillsPanel';
 import { SearchPanel } from './settings/SearchPanel';
 import { ImBotPanel } from './settings/ImBotPanel';
 import { McpPanel } from './settings/McpPanel';
+import { KnowledgePanel } from './settings/KnowledgePanel';
 import { UpdateCard } from '../components/settings/UpdateCard';
 import { BrowserSection } from '../components/settings/BrowserSection';
 import { UsageHistoryPanel } from './settings/UsageHistoryPanel';
@@ -52,6 +53,7 @@ type SettingsTab =
   | 'usage'
   | 'search'
   | 'im'
+  | 'knowledge'
   | 'mcp'
   | 'skills';
 
@@ -62,6 +64,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   usage: '用量历史',
   search: '搜索',
   im: 'IM 机器人',
+  knowledge: '知识库',
   mcp: 'MCP 服务器',
   skills: '技能',
 };
@@ -286,6 +289,8 @@ export function SettingsPage(): React.JSX.Element {
             {tab === 'search' && <SearchPanel />}
 
             {tab === 'im' && <ImBotPanel />}
+
+            {tab === 'knowledge' && <KnowledgePanel />}
 
             {tab === 'mcp' && <McpPanel />}
 

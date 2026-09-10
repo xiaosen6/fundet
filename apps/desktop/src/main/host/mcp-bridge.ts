@@ -31,6 +31,7 @@ import type {
   PiExtraSpawnConfigContext,
   PiMcpServerRef,
 } from '@fundet/agent-core';
+import { KNOWLEDGE_MCP_SERVER_NAME } from '../../shared/knowledge.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { BROWSER_ENABLED_SETTING, BROWSER_MCP_SERVER_NAME } from '../../shared/browser-settings.ts';
 import { COMPUTER_ENABLED_SETTING, COMPUTER_MCP_SERVER_NAME } from '../../shared/computer-settings.ts';
@@ -39,6 +40,9 @@ import { listMcpServers, type McpServerView } from '../db/mcp-servers.js';
 import { getBoolSetting } from '../db/settings.js';
 import { startSearchMcpServer } from '../search/mcp-server.ts';
 import { handleWebSearch } from '../search/tool.ts';
+import { getSessionKnowledgeKbs } from '../knowledge/store.js';
+import { startKnowledgeMcpServer } from '../knowledge/mcp-server.js';
+import { handleKnowledgeSearch } from '../knowledge/tool.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
 import { startBrowserMcpServer } from '../browser/mcp-http.js';
 
@@ -322,7 +326,7 @@ export async function probeMcpServer(
 export function createPreparePiExtraSpawnConfig(logger: Logger) {
   return async (
     _providers: McpProvider[],
-    _ctx?: PiExtraSpawnConfigContext,
+    ctx?: PiExtraSpawnConfigContext,
   ): Promise<PiExtraSpawnConfig | null> => {
     const configs = listMcpServers().filter((s) => s.enabled);
     const token = randomBytes(32).toString('base64url');
@@ -399,6 +403,24 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
       }
     } catch (err) {
       logger.error('电脑操作 MCP 启动失败（跳过，其余 server 照常）', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 知识库（会话绑定了才注入）：knowledge_search 返回带来源编号的原文片段，
+    // 审批不进白名单——跟会话权限三档走。
+    try {
+      const kbIds = ctx?.sessionId ? getSessionKnowledgeKbs(ctx.sessionId) : [];
+      if (kbIds.length > 0) {
+        const kbIdsSnapshot = [...kbIds];
+        const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), async (args) =>
+          handleKnowledgeSearch(kbIdsSnapshot, args),
+        );
+        disposers.push(knowledge.dispose);
+        servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });
+      }
+    } catch (err) {
+      logger.error('知识库 MCP 启动失败（跳过，其余 server 照常）', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
