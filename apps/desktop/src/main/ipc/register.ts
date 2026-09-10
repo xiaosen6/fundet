@@ -72,7 +72,8 @@ import { BROWSER_ENABLED_SETTING } from '../../shared/browser-settings.ts';
 import { COMPUTER_ENABLED_SETTING } from '../../shared/computer-settings.ts';
 import { disableCuaDriverTelemetry, resolveCuaDriverCommand } from '../computer/driver.ts';
 import { getBoolSetting, setBoolSetting } from '../db/settings.js';
-import { importSkillFile, listSkills, uninstallSkill } from '../host/skills.js';
+import { importSkillFile, listSkills, setSkillEnabled, uninstallSkill } from '../host/skills.js';
+import { probeMcpServer } from '../host/mcp-bridge.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
@@ -573,6 +574,13 @@ export function registerIpcHandlers(): void {
     deleteMcpServer(id);
   });
 
+  // 连通性探测：对 server 跑一次 initialize 握手（stdio 冷启动等待在此，10s 兜底）
+  ipcMain.handle(FUNDET_INVOKE.MCP_STATUS, async (_e, id: string) => {
+    const config = listMcpServers().find((s) => s.id === id);
+    if (!config) return { ok: false, error: 'MCP server 不存在' };
+    return probeMcpServer(config);
+  });
+
   ipcMain.handle(FUNDET_INVOKE.FS_HOME, async () => os.homedir());
   ipcMain.handle(FUNDET_INVOKE.FS_PICK_DIR, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
@@ -806,6 +814,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(FUNDET_INVOKE.SKILLS_UNINSTALL, async (_e, skillDir: string) => {
     uninstallSkill(skillDir);
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.SKILLS_SET_ENABLED, async (_e, skillDir: string, enabled: boolean) => {
+    setSkillEnabled(skillDir, Boolean(enabled));
   });
 
   ipcMain.on(FUNDET_INVOKE.WINDOW_MINIMIZE, (event) => {

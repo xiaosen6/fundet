@@ -43,6 +43,7 @@
   --color-error: var(--error-fg);
   --color-error-bg: var(--error-bg);
   --color-error-border: var(--error-border);
+  --color-success: var(--success-fg);
   --color-warning: var(--warning);
   --color-focus: var(--focus-ring);
   --color-perm-auto: var(--perm-auto);
@@ -110,6 +111,7 @@
   --error-fg: #dc2626;
   --error-bg: #fef2f2;
   --error-border: rgba(220, 38, 38, 0.4);
+  --success-fg: #16a34a;
   --warning: #ea6b17;
   --focus-ring: #417cdd;
   --focus-ring-soft: rgba(65, 124, 221, 0.5);
@@ -161,6 +163,7 @@
   --error-fg: #f87171;
   --error-bg: #3a2222;
   --error-border: #7f1d1d;
+  --success-fg: #4ade80;
   --warning: #ea6b17;
   --focus-ring: #417cdd;
   --focus-ring-soft: rgba(65, 124, 221, 0.5);

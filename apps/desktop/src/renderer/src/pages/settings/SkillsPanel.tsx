@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import * as Switch from '@radix-ui/react-switch';
 import { Plus, Trash2 } from 'lucide-react';
 import type { SkillView } from '../../../../shared/fundet-api.js';
 import { getDefaultWorkDir } from '../../lib/defaults';
@@ -50,6 +51,17 @@ export function SkillsPanel(): React.JSX.Element {
     }
   };
 
+  const toggle = (skill: SkillView, enabled: boolean): void => {
+    setError('');
+    void window.fundet
+      .setSkillEnabled(skill.path, enabled)
+      .then(refresh)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+        void refresh();
+      });
+  };
+
   return (
     <div className="flex flex-col gap-[14px]">
       <div className="flex items-start justify-between gap-3">
@@ -57,7 +69,7 @@ export function SkillsPanel(): React.JSX.Element {
           <SectionTitle>技能</SectionTitle>
           <p className="mt-1 text-13 text-secondary">
             安装自带 Video、social、geo、web-search。也可再导入 SKILL.md 或 zip。
-            输入框输入 / 可点名，发送时写成 /skill:名字。
+            输入框输入 / 可点名，发送时写成 /skill:名字。开关停用后新会话不再加载。
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -87,33 +99,47 @@ export function SkillsPanel(): React.JSX.Element {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {skills.map((s) => (
-            <div
-              key={s.path}
-              className="flex items-start gap-3 rounded-xl border border-board bg-card-ivory px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-14 font-medium text-primary">{s.name}</span>
-                  <span className="rounded-full bg-chip px-2 py-0.5 text-11 text-muted">
-                    {s.bundled ? '内置' : s.scope === 'user' ? '全局' : '项目'}
-                  </span>
+          {skills.map((s) => {
+            const enabled = s.enabled !== false;
+            return (
+              <div
+                key={s.path}
+                className={`flex items-start gap-3 rounded-xl border border-board bg-card-ivory px-4 py-3 ${enabled ? '' : 'opacity-60'}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`truncate text-14 font-medium ${enabled ? 'text-primary' : 'text-muted'}`}>
+                      {s.name}
+                    </span>
+                    <span className="rounded-full bg-chip px-2 py-0.5 text-11 text-muted">
+                      {s.bundled ? '内置' : s.scope === 'user' ? '全局' : '项目'}
+                    </span>
+                    {!enabled && <span className="rounded-full bg-chip px-2 py-0.5 text-11 text-muted">已停用</span>}
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-12 text-secondary">{s.description}</p>
+                  <p className="mt-1 truncate font-mono text-11 text-muted">{s.path}</p>
                 </div>
-                <p className="mt-0.5 line-clamp-2 text-12 text-secondary">{s.description}</p>
-                <p className="mt-1 truncate font-mono text-11 text-muted">{s.path}</p>
-              </div>
-              {!s.bundled && (
-                <button
-                  type="button"
-                  title="卸载"
-                  onClick={() => void remove(s)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted hover:text-error"
+                {!s.bundled && (
+                  <button
+                    type="button"
+                    title="卸载"
+                    onClick={() => void remove(s)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-muted hover:text-error"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+                <Switch.Root
+                  checked={enabled}
+                  onCheckedChange={(v) => toggle(s, v)}
+                  title={enabled ? '停用（新会话不再加载）' : '启用'}
+                  className="mt-1 h-[20px] w-[36px] shrink-0 cursor-pointer rounded-full bg-chip data-[state=checked]:bg-accent"
                 >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          ))}
+                  <Switch.Thumb className="block h-[16px] w-[16px] translate-x-[2px] rounded-full bg-card transition-transform data-[state=checked]:translate-x-[18px]" />
+                </Switch.Root>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

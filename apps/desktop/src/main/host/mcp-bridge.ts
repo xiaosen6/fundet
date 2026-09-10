@@ -240,6 +240,82 @@ function headerEnvVarName(serverName: string, headerName: string): string {
 }
 
 /**
+ * 连通性探测：对 server 跑一次 initialize 握手（stdio 冷启动的等待发生在这里），
+ * 完了收尾。与正式注入链互不影响——探测自起自杀，不占会话。
+ */
+export async function probeMcpServer(
+  config: McpServerView,
+  timeoutMs = 10_000,
+): Promise<{ ok: boolean; error?: string }> {
+  const initMsg = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'fundet-mcp-probe', version: '1.0.0' },
+    },
+  };
+  if (config.type === 'http') {
+    try {
+      const res = await fetch(config.url!, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...config.headers },
+        body: JSON.stringify(initMsg),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      const body = await res.text();
+      const line = body.split('\n').find((l) => l.startsWith('{')) ?? body;
+      const msg = JSON.parse(line) as { error?: { message?: string } };
+      if (msg.error) return { ok: false, error: msg.error.message ?? 'initialize failed' };
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  // stdio：spawn → initialize → 等同 id 响应 → 杀进程
+  const child = crossSpawn(config.command!, config.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  return await new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: { ok: boolean; error?: string }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      rl.close();
+      try { child.kill(); } catch { /* already gone */ }
+      resolve(r);
+    };
+    const timer = setTimeout(
+      () => finish({ ok: false, error: `连接超时（${Math.round(timeoutMs / 1000)}s）` }),
+      timeoutMs,
+    );
+    let stderrTail = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrTail = (stderrTail + chunk.toString('utf8')).slice(-400);
+    });
+    child.on('error', (err) => finish({ ok: false, error: err.message }));
+    child.on('exit', (code) => {
+      if (!settled) finish({ ok: false, error: `进程提前退出（code=${code}）${stderrTail.trim() ? `：${stderrTail.trim()}` : ''}` });
+    });
+    const rl = createInterface({ input: child.stdout! });
+    rl.on('line', (line) => {
+      let msg: { id?: unknown; error?: { message?: string }; result?: unknown };
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (msg.id !== 1) return;
+      if (msg.error) finish({ ok: false, error: msg.error.message ?? 'initialize failed' });
+      else finish({ ok: true });
+    });
+    child.stdin!.write(JSON.stringify(initMsg) + '\n');
+  });
+}
+
+/**
  * AgentDeps.preparePiExtraSpawnConfig 的 Fundet 实现。
  * 始终注入内置搜索 MCP（设置里的 Tavily/Brave/博查/智谱）；再叠加用户表里的外部 server。
  */

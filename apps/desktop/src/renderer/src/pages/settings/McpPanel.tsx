@@ -7,8 +7,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import type { McpServerInput, McpServerType, McpServerView } from '../../../../shared/fundet-api.js';
+import { Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
+import type { McpServerInput, McpServerType, McpServerView, McpStatusResult } from '../../../../shared/fundet-api.js';
+
+type ProbeState = { state: 'checking' | 'ok' | 'fail'; error?: string };
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <h2 className="text-16 leading-[1.2] font-medium text-primary">{children}</h2>;
@@ -71,14 +73,38 @@ export function McpPanel(): React.JSX.Element {
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [probes, setProbes] = useState<Record<string, ProbeState>>({});
 
   const refresh = useCallback(async (): Promise<void> => {
     setServers(await window.fundet.listMcpServers());
   }, []);
 
+  const probeOne = useCallback(async (s: McpServerView): Promise<void> => {
+    setProbes((m) => ({ ...m, [s.id]: { state: 'checking' } }));
+    let result: McpStatusResult;
+    try {
+      result = await window.fundet.checkMcpServer(s.id);
+    } catch (err) {
+      result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    setProbes((m) => ({ ...m, [s.id]: result.ok ? { state: 'ok' } : { state: 'fail', error: result.error } }));
+  }, []);
+
+  const probeAll = useCallback(
+    async (list: McpServerView[]): Promise<void> => {
+      await Promise.all(list.filter((s) => s.enabled).map((s) => probeOne(s)));
+    },
+    [probeOne],
+  );
+
   useEffect(() => {
-    void refresh();
+    void refresh().then(() => undefined);
   }, [refresh]);
+
+  // 列表变化后自动探测启用中的 server（跳过正在编辑的暂存项）
+  useEffect(() => {
+    if (servers.length > 0) void probeAll(servers);
+  }, [servers, probeAll]);
 
   const save = async (): Promise<void> => {
     if (!draft) return;
@@ -147,17 +173,28 @@ export function McpPanel(): React.JSX.Element {
             工具名形如 mcp__名称__工具，审批跟会话权限档走。stdio 命令在本机以你的身份执行，只添加你信任的来源。
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setError('');
-            setDraft({ ...EMPTY_DRAFT });
-          }}
-          className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg"
-        >
-          <Plus size={13} />
-          添加服务器
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            title="重新检测连通性"
+            disabled={servers.length === 0}
+            onClick={() => void probeAll(servers)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-board text-secondary hover:text-primary disabled:opacity-40"
+          >
+            <RotateCw size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setDraft({ ...EMPTY_DRAFT });
+            }}
+            className="flex h-8 items-center gap-1 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg"
+          >
+            <Plus size={13} />
+            添加服务器
+          </button>
+        </div>
       </div>
       {error && <p className="text-12 text-error">{error}</p>}
 
@@ -262,7 +299,10 @@ export function McpPanel(): React.JSX.Element {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-14 font-medium text-primary">{s.name}</span>
+                  <StatusDot state={probes[s.id]} enabled={s.enabled} />
+                  <span className={`truncate text-14 font-medium ${s.enabled ? 'text-primary' : 'text-muted'}`}>
+                    {s.name}
+                  </span>
                   <span className="rounded-full bg-chip px-2 py-0.5 text-11 text-muted">
                     {s.type === 'stdio' ? '本机命令' : '远程端点'}
                   </span>
@@ -270,6 +310,11 @@ export function McpPanel(): React.JSX.Element {
                 <p className="mt-0.5 truncate font-mono text-11 text-muted">
                   {s.type === 'stdio' ? [s.command, ...s.args].join(' ') : s.url}
                 </p>
+                {s.enabled && probes[s.id]?.state === 'fail' && (
+                  <p className="mt-0.5 truncate text-11 text-error" title={probes[s.id]?.error}>
+                    连接失败：{probes[s.id]?.error}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -303,4 +348,18 @@ export function McpPanel(): React.JSX.Element {
       )}
     </div>
   );
+}
+
+/** 连接状态点：绿=握手成功 / 红=失败 / 灰=检测中或已停用 */
+function StatusDot({ state, enabled }: { state?: ProbeState; enabled: boolean }): React.JSX.Element {
+  const cls =
+    !enabled
+      ? 'bg-chip'
+      : state?.state === 'ok'
+        ? 'bg-success'
+        : state?.state === 'fail'
+          ? 'bg-error'
+          : 'bg-chip animate-pulse';
+  const title = !enabled ? '已停用' : state?.state === 'ok' ? '已连接' : state?.state === 'fail' ? (state.error ?? '连接失败') : '检测中…';
+  return <span className={`h-2 w-2 shrink-0 rounded-full ${cls}`} title={title} />;
 }

@@ -184,10 +184,18 @@ export interface McpServerInput {
   enabled?: boolean;
 }
 
+/** MCP server 连通性探测结果（initialize 握手一次） */
+export interface McpStatusResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface SkillView {
   name: string;
   description: string;
   scope: 'user' | 'repo';
+  /** false = 已停用（目录在 skills.disabled/ 下，新会话不加载） */
+  enabled?: boolean;
   path: string;
   workDir?: string;
   bundled?: boolean;
@@ -245,11 +253,15 @@ export interface FundetApi {
   createMcpServer(input: McpServerInput): Promise<McpServerView>;
   updateMcpServer(id: string, patch: Partial<McpServerInput>): Promise<McpServerView>;
   deleteMcpServer(id: string): Promise<void>;
+  /** 对 server 跑一次 initialize 握手，返回连通性（stdio 冷启动最长等 10s） */
+  checkMcpServer(id: string): Promise<McpStatusResult>;
 
   listSkills(workDir?: string): Promise<SkillView[]>;
   pickSkillFile(): Promise<string | null>;
   importSkill(filePath: string, scope: 'user' | 'project', workDir?: string): Promise<SkillView>;
   uninstallSkill(skillDir: string): Promise<void>;
+  /** 停用/启用：把技能目录在 skills/ 与 skills.disabled/ 之间移动（pi 只扫 skills/） */
+  setSkillEnabled(skillDir: string, enabled: boolean): Promise<void>;
 
   searchStatus(): Promise<SearchStatus>;
   setSearchEngineKey(id: SearchEngineId, key: string): Promise<void>;

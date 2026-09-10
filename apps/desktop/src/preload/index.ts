@@ -82,12 +82,15 @@ const api: FundetApi = {
   createMcpServer: (input) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_CREATE, input),
   updateMcpServer: (id, patch) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_UPDATE, id, patch),
   deleteMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_DELETE, id),
+  checkMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
   listSkills: (workDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_LIST, workDir),
   pickSkillFile: () => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_PICK),
   importSkill: (filePath, scope, workDir) =>
     ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_IMPORT, filePath, scope, workDir),
   uninstallSkill: (skillDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_UNINSTALL, skillDir),
+  setSkillEnabled: (skillDir, enabled) =>
+    ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_SET_ENABLED, skillDir, enabled),
 
   searchStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_STATUS),
   setSearchEngineKey: (id, key) => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
