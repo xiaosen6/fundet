@@ -46,6 +46,8 @@ export interface PiRpcSpawnOptions {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 3_000;
+/** exit 确认后等尾帧的排水窗(上游 #4182 同值)。 */
+const EXIT_DRAIN_MS = 250;
 
 /**
  * 帧诊断日志的标签白名单:pi 协议的事件类型 / role / stopReason / 块类型都是短
@@ -72,6 +74,11 @@ export class PiRpcProcess {
   private disposeProcessRegistration: (() => void) | undefined;
   /** #3696 帧诊断:本轮按事件类型计数,agent_settled 落直方图(只记元数据)。 */
   private readonly eventFrameCounts = new Map<string, number>();
+  /** #4182 exit 已确认但尾帧未排完:close 事件可能被握管道的后代无限期拖住。 */
+  private exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+  private exitDrainTimer: NodeJS.Timeout | undefined;
+  private exitNotified = false;
+  private exitWaiters: Array<() => void> = [];
 
   constructor(private readonly opts: PiRpcSpawnOptions) {
     this.logger = opts.logger;
@@ -102,12 +109,41 @@ export class PiRpcProcess {
       this.logger.error('pi process error', { message: err.message });
       this.failAllPending(new Error(`pi process error: ${err.message}`));
     });
-    this.child.on('close', (code, signal) => {
-      this.disposeRegistration();
-      this.closed = true;
-      this.failAllPending(new Error(`pi process exited (code=${code}, signal=${signal})`));
-      opts.onExit({ code, signal });
+    this.child.on('exit', (code, signal) => {
+      // shell/build 后代可能继承管道:pi 自己退出后 Node 的 close 事件要等后代
+      // 释放,可能无限期不触发 → 会话悬挂。exit 是执行器死亡的权威证据——等
+      // 250ms 让已写入的 RPC 尾帧排走,再销毁自端管道并上报(不做进程树击杀)。
+      if (this.exitNotified) return;
+      const info = { code, signal };
+      this.exitInfo = info;
+      this.exitDrainTimer = setTimeout(() => {
+        this.exitDrainTimer = undefined;
+        this.finishExit(info);
+      }, EXIT_DRAIN_MS);
+      this.exitDrainTimer.unref?.();
     });
+    this.child.on('close', (code, signal) => {
+      if (this.exitDrainTimer) {
+        clearTimeout(this.exitDrainTimer);
+        this.exitDrainTimer = undefined;
+      }
+      this.finishExit({ code, signal });
+    });
+  }
+
+  /** exit/close 收口:幂等。销毁自端管道后通知,后代握着的另一端从此与我们无关。 */
+  private finishExit(info: { code: number | null; signal: NodeJS.Signals | null }): void {
+    if (this.exitNotified) return;
+    this.exitNotified = true;
+    this.exitInfo = info;
+    this.disposeRegistration();
+    this.closed = true;
+    try { this.child.stdout.destroy(); } catch { /* already gone */ }
+    try { this.child.stderr.destroy(); } catch { /* already gone */ }
+    try { this.child.stdin.destroy(); } catch { /* already gone */ }
+    this.failAllPending(new Error(`pi process exited (code=${info.code}, signal=${info.signal})`));
+    this.opts.onExit({ code: info.code, signal: info.signal });
+    for (const waiter of this.exitWaiters.splice(0)) waiter();
   }
 
   private disposeRegistration(): void {
@@ -158,23 +194,24 @@ export class PiRpcProcess {
     this.child.stdin.write(JSON.stringify(frame) + '\n');
   }
 
-  /** 优雅关闭:SIGTERM → 宽限期 → SIGKILL。幂等。 */
+  /** 优雅关闭:SIGTERM → 宽限期 → SIGKILL。幂等。以 exit 确认为收口(见 finishExit)。 */
   async close(): Promise<void> {
-    if (this.closed) return;
+    if (this.exitNotified) return;
     const child = this.child;
     await new Promise<void>((resolve) => {
-      const done = () => {
-        clearTimeout(killTimer);
-        resolve();
-      };
-      const killTimer = setTimeout(() => {
+      this.exitWaiters.push(resolve);
+      let killTimer: NodeJS.Timeout | undefined;
+      const escalate = () => {
+        if (killTimer) { clearTimeout(killTimer); killTimer = undefined; }
+        // exit 已确认(正在排水尾帧)时不再击杀,finishExit 会唤醒等待方
+        if (this.exitInfo) return;
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
-      }, KILL_GRACE_MS);
-      child.once('close', done);
+      };
+      killTimer = setTimeout(escalate, KILL_GRACE_MS);
       try {
         child.kill('SIGTERM');
       } catch {
-        done();
+        escalate();
       }
     });
   }
