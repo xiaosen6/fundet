@@ -163,12 +163,13 @@ function updateItem(sessionId: string, id: string, patch: Partial<DisplayItem>):
 }
 
 // ---------------------------------------------------------------------------
-// 事件节流：text / thinking delta 走 100ms 批量通知，其余立即
+// 事件节流：text / thinking delta 走 32ms 帧级批量通知（对齐 Cindy
+// TEXT_DELTA_BATCH_INTERVAL_MS），其余立即。状态写入始终同步，节流只压通知频率。
 // ---------------------------------------------------------------------------
 
 const pendingFlush = new Set<string>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const FLUSH_MS = 100;
+const FLUSH_MS = 32;
 
 function scheduleFlush(sessionId: string): void {
   pendingFlush.add(sessionId);

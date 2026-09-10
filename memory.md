@@ -148,6 +148,7 @@ Fundet/
 - 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）。
 - 用量：首页折叠仪表盘（20 周热力图 + 30 天堆叠柱）+ 设置「用量历史」页（概览 5 格/热力图/按模型表含缓存命中率）。
 - 本地图片预览 `fundet-file://` 协议；复制走 clipboard IPC；分享=回合卡片截图。
+- **流式渲染纵深（2026-09-10 对齐 Cindy 五层，治「长回答越流越卡/长会话发沉/上滑被拽回」）**：①sessionStore delta 通知 32ms 帧级合帧（状态同步写，只压通知）；②消息条目 `content-visibility:auto`（`.msg-stream-items > *`，屏外零布局成本）；③贴底跟随 = 意图判据（wheel/touch/PageUp 上滚 1px 立即解除）+ ResizeObserver 跟底 + 恢复双信号（向下滚 + 贴底 ≤8px）；④流式 markdown 先 repair（补未闭合围栏/摘半截链接，`lib/streamingMarkdown.ts`）再按顶层块分块 memo，**只有尾块重 parse/重高亮**；逐词淡入只挂尾块（按块位号独立账本，稳定块冻结）；⑤列表窗口化（首帧末尾 15 条 → 空闲扩 80 → 触顶 +80，锚点量位移补偿视口）；⑥`[perf] stream first-paint` debug 日志 = 丝滑度回归基线。thinking/工具卡折叠即卸载（Collapse 移植自带，收起不占 DOM）。
 
 ### 4.3 附件与文档
 - 拖/贴/回形针多选；工作目录外文件拷到 `{workDir}/.fundet-uploads/`；粘贴图片魔数嗅探 mime（QQ「原图」=PNG 套 .jpeg 的坑）。
