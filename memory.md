@@ -193,6 +193,7 @@ Fundet/
 - 批C（2026-09-10）：笔记（knowledge_docs.kind='note' + content 存原文，可再编辑重建索引）；URL 快照（html-to-text 提正文；**SSRF 前置 assertPublicHttpUrl**：仅公网 http(s)、DNS 全地址逐个拦内网/链路本地/元数据，3MB/20s 上限）。
 - 二轮反馈（2026-09-10）：**「点不动、过一会自愈」根因对策**——主窗 `backgroundThrottling: false`（Windows 遮挡检测误判 → 渲染冻结，Cindy 同款处理）；全局 `cursor: pointer`（button/[role=button]/summary/select/a，Chromium 按钮默认 default 体感像不可点）；知识库面板「高级参数」整个移除（用户明确不要，store 的参数列保留、工具默认 limit 仍生效）。
 - 三轮反馈（2026-09-10）：知识库 chip 弹层去掉「发送前自动检索注入」开关与 knowledge_search 术语说明（用户看不懂）；弹层只留知识库勾选列表。绑定结构的 auto 字段保留（默认 false，注入能力后端不删、UI 不暴露）。
+- 四轮反馈（2026-09-10）：chip 弹层列表隐藏滚动条（globals 新增 `.scrollbar-none` 工具类，滚轮仍可滚）——MorphPopover「真溢出才开滚」的取整 1px 假溢出在短列表也会挂出滑块，短列表直接不显示。
 - 反馈修正（2026-09-10）：设置→知识库简化为「新建 → 添加文件夹/文件」主流程，参数与召回测试收进「高级」折叠（普通用户不折腾）；**app icon/favicon 换成抠出的透明球体**（白卡整图被用户否了；logo-raw 仍是原始图，再生管线见 §品牌）；updater IPC 处理器改为无条件注册（dev 态渲染层查 update:status 不再刷 No handler registered）。
 
 ---

@@ -69,7 +69,7 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       wrapperClassName="shrink-0"
       trigger={trigger}
     >
-      <div className="flex flex-col">
+      <div className="scrollbar-none flex flex-col">
         {kbs.length === 0 ? (
           <div className="px-3 py-2 text-12 leading-relaxed text-muted">
             还没有知识库。可先在
