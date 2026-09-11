@@ -122,6 +122,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.14 | 09-10 | 侧栏置顶 IM/技能/MCP 快捷入口 + **本地知识库**（FTS5 检索/文件与文件夹导入/笔记/URL 快照/引用溯源/召回测试）+ 聊天渲染顺滑化 + 新 logo + 「点不动」根因对策（关 backgroundThrottling）与全局小手 |
 | 0.2.13 | 09-10 | **聊天流式渲染顺滑化**（32ms 帧级合帧、流式 markdown 分块 memo 尾块重 parse、结构修复防版式抖动、意图贴底+RO 跟底、content-visibility、列表窗口化、first-paint 基线日志）；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.12 | 09-10 | 同步 Cindy 上游 #3832（未知端点收敛 system role）/ #4182（exit 权威收口）+ **设置新增「MCP 服务器」用户面**（连通状态点/增删改/启停）+ 技能启停开关 + 全套新 logo（白卡 tile app icon + 透明球 UI 标）；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6）；**安装包已发 GitLab Release**（fundet 包 0.2.11，静默装冒烟过） |
