@@ -9,6 +9,18 @@
  */
 export type BrandId = 'longma' | 'fundet';
 
+/** 内网 GitLab generic 更新源（electron-updater generic provider） */
+export interface UpdaterFeed {
+  /** GitLab API 基址（http://…/api/v4） */
+  apiBase: string;
+  /** 项目数字 id */
+  projectId: string;
+  /** 手动下载的 Release 页（macOS / 兜底） */
+  releasePage: string;
+  /** 私有项目须配置个人访问令牌（scope=api）才能检查更新 */
+  requiresToken: boolean;
+}
+
 export interface BrandConfig {
   id: BrandId;
   /** 产品名（窗口标题、托盘、报错弹窗、自我介绍） */
@@ -17,6 +29,8 @@ export interface BrandConfig {
   assistantRole: string;
   /** 应用内更新源（GitHub owner/repo；fundet 独立 Releases） */
   updater: { owner: string; repo: string };
+  /** GitLab generic 更新源；设置后覆盖 updater 的 GitHub 语义（longma 不设） */
+  updaterFeed?: UpdaterFeed;
   /** 是否预装内置技能（Fundet 不预装） */
   bundledSkills: boolean;
 }
@@ -36,6 +50,14 @@ const BRANDS: Record<BrandId, BrandConfig> = {
     name: 'Fundet',
     assistantRole: '一个运行在本地的 AI 助手',
     updater: { owner: 'xiaosen6', repo: 'fundet' },
+    updaterFeed: {
+      // 两跳解析：先 GET releases?per_page=1 拿最新 tag，再指
+      // /releases/<tag>/downloads/ 做 generic feed（latest.yml/安装包按 filepath 挂链）
+      apiBase: 'http://172.16.56.11/api/v4',
+      projectId: '272',
+      releasePage: 'http://172.16.56.11/fundet-harness/fundet-buddy/-/releases',
+      requiresToken: true,
+    },
     bundledSkills: false,
   },
 };

@@ -158,6 +158,8 @@ const api: FundetApi = {
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
+  updateFeedHasToken: () => invoke(FUNDET_INVOKE.UPDATE_GET_TOKEN),
+  setUpdateFeedToken: (token) => invoke(FUNDET_INVOKE.UPDATE_SET_TOKEN, token),
 
   userHome: () => invoke(FUNDET_INVOKE.FS_HOME),
   pickDirectory: () => invoke(FUNDET_INVOKE.FS_PICK_DIR),

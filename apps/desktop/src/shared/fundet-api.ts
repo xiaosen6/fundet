@@ -340,6 +340,10 @@ export interface FundetApi {
   checkUpdate(): Promise<void>;
   /** Windows：重启并安装已下载的更新；macOS：打开 Release 下载页 */
   installUpdate(): Promise<void>;
+  /** 私有 GitLab 更新源是否已配置令牌 */
+  updateFeedHasToken(): Promise<boolean>;
+  /** 配置/清除更新令牌（scope=api 的个人访问令牌；空串=清除） */
+  setUpdateFeedToken(token: string): Promise<void>;
 
   userHome(): Promise<string>;
   pickDirectory(): Promise<string | null>;

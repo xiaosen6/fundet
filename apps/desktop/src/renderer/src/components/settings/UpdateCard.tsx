@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, Rocket } from 'lucide-react';
 import type { UpdateState } from '../../../../shared/fundet-api.js';
+import { brand } from '../../../../shared/brand.js';
 
 function statusText(s: UpdateState): string {
   switch (s.status) {
@@ -28,11 +29,29 @@ function statusText(s: UpdateState): string {
 
 export function UpdateCard(): React.JSX.Element {
   const [state, setState] = useState<UpdateState | null>(null);
+  const [hasToken, setHasToken] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [tokenSaved, setTokenSaved] = useState(false);
 
   useEffect(() => {
     void window.fundet.updateStatus().then(setState);
+    void window.fundet.updateFeedHasToken().then(setHasToken);
     return window.fundet.onUpdateStatusChanged(setState);
   }, []);
+
+  const saveToken = async (): Promise<void> => {
+    const t = tokenDraft.trim();
+    if (!t) return;
+    await window.fundet.setUpdateFeedToken(t);
+    setHasToken(true);
+    setTokenDraft('');
+    setTokenSaved(true);
+  };
+  const clearToken = async (): Promise<void> => {
+    await window.fundet.setUpdateFeedToken('');
+    setHasToken(false);
+    setTokenSaved(false);
+  };
 
   if (!state) return <p className="text-13 text-muted">读取版本信息…</p>;
 
@@ -86,6 +105,49 @@ export function UpdateCard(): React.JSX.Element {
           </button>
         )}
       </div>
+      {brand.updaterFeed?.requiresToken && (
+        <div className="mt-3 border-t border-board pt-3">
+          <p className="text-12 text-muted">
+            更新源为内网 GitLab 私有项目，检查更新需要个人访问令牌（GitLab → 设置 →
+            访问令牌，勾选 api 权限）。令牌只保存在本机。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              className="h-8 min-w-0 flex-1 rounded-lg border border-board bg-card px-3 text-12 text-primary placeholder:text-muted focus:border-accent focus:outline-none"
+              value={tokenDraft}
+              placeholder="glpat-…"
+              onChange={(e) => setTokenDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void saveToken();
+              }}
+            />
+            <button
+              type="button"
+              disabled={!tokenDraft.trim()}
+              className="h-8 shrink-0 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg disabled:opacity-40"
+              onClick={() => void saveToken()}
+            >
+              保存令牌
+            </button>
+            {hasToken && (
+              <button
+                type="button"
+                className="h-8 shrink-0 rounded-full border border-board px-3 text-12 text-secondary hover:bg-hover"
+                onClick={() => void clearToken()}
+              >
+                清除
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-11 text-muted">
+            {hasToken
+              ? tokenSaved
+                ? '令牌已保存，正在用新令牌检查更新…'
+                : '已配置令牌'
+              : '未配置令牌：将无法检查更新'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

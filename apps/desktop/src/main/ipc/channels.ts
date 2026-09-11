@@ -92,6 +92,8 @@ export const FUNDET_INVOKE = {
   UPDATE_STATUS: 'update:status',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_TOKEN: 'update:get-token',
+  UPDATE_SET_TOKEN: 'update:set-token',
 } as const;
 
 /** push 族（main → renderer，webContents.send 广播） */
