@@ -262,6 +262,8 @@ Fundet/
 > **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
+> **在途事项（2026-09-10 交接快照）**：v0.2.14 发布在途——安装包已出（`D:\Fundet-Setup-0.2.14-x64.exe`，冒烟过），tag `v0.2.14` 在本地未推，Release 未建（GitLab 502 故障中，恢复后按本节流程上传三资产 + 建 Release + 补版本行「已发」即可）。发布用 access token 由发版人自持，不进仓——接手者需自行获取（scope=api）。
+
 ---
 
 ## 7. 待办 / 已知债
