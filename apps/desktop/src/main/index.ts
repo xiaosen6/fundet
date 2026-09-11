@@ -152,6 +152,10 @@ function createWindow(): void {
       // preload 只用 contextBridge/ipcRenderer/webUtils（沙箱均可用）；
       // 渲染层零 Node 面。
       sandbox: true,
+      // Windows 遮挡检测有误判（窗口明明在前台却被当隐藏 → 渲染冻结，
+      // 体感就是「点不动、过一会自己好」）。关掉节流保交互常活；
+      // 流式输出也不允许被节流。副作用（隐藏时动画照跑）单窗口可接受。
+      backgroundThrottling: false,
     },
   });
   win.setMenuBarVisibility(false);

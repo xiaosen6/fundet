@@ -8,11 +8,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FilePlus2, FolderPlus, Globe, NotebookPen, Pencil, RotateCw, Trash2 } from 'lucide-react';
 import type {
-  KnowledgeBaseParams,
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeImportResult,
-  KnowledgeSearchResult,
 } from '../../../../shared/fundet-api.js';
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -28,9 +26,6 @@ export function KnowledgePanel(): React.JSX.Element {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [docs, setDocs] = useState<KnowledgeDocView[]>([]);
   const [importResults, setImportResults] = useState<KnowledgeImportResult[] | null>(null);
-  const [paramsDraft, setParamsDraft] = useState<KnowledgeBaseParams>({ topK: 6, chunkSize: 800, chunkOverlap: 120 });
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<KnowledgeSearchResult[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [noteDraft, setNoteDraft] = useState<{ id: string | null; title: string; content: string } | null>(null);
@@ -62,7 +57,6 @@ export function KnowledgePanel(): React.JSX.Element {
       setExpandedId(kb.id);
       setDocs([]);
       setImportResults(null);
-      if (kb.params) setParamsDraft(kb.params);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -84,10 +78,7 @@ export function KnowledgePanel(): React.JSX.Element {
       return;
     }
     setExpandedId(kb.id);
-    setResults(null);
-    setQuery('');
     setImportResults(null);
-    if (kb.params) setParamsDraft(kb.params);
     await loadDocs(kb.id);
   };
 
@@ -107,16 +98,6 @@ export function KnowledgePanel(): React.JSX.Element {
   };
 
   const failedPaths = (importResults ?? []).filter((r) => !r.ok && r.path).map((r) => r.path!);
-
-  const saveParams = async (kbId: string): Promise<void> => {
-    setError('');
-    try {
-      await window.fundet.updateKnowledgeBaseParams(kbId, paramsDraft);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   const removeDoc = async (doc: KnowledgeDocView): Promise<void> => {
     setError('');
@@ -164,19 +145,6 @@ export function KnowledgePanel(): React.JSX.Element {
       setSnapshotUrl('');
       await loadDocs(kb.id);
       await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runRecall = async (kb: KnowledgeBaseView): Promise<void> => {
-    setError('');
-    if (!query.trim()) return;
-    setBusy(true);
-    try {
-      setResults(await window.fundet.searchKnowledge([kb.id], query.trim(), paramsDraft.topK));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -397,83 +365,6 @@ export function KnowledgePanel(): React.JSX.Element {
                     </div>
                   )}
 
-                  {/* 高级（默认收起）：参数与召回测试 */}
-                  <details className="flex flex-col gap-2">
-                    <summary className="cursor-pointer select-none text-12 text-muted hover:text-secondary">
-                      高级：检索参数与召回测试
-                    </summary>
-                    <span className="text-12 text-secondary">
-                      检索与分块参数
-                      <span className="ml-1 text-muted">（改分块参数后需重新导入文档才生效）</span>
-                    </span>
-                    <div className="flex flex-wrap items-center gap-3">
-                      {(
-                        [
-                          { key: 'topK', label: '检索条数', min: 1, max: 20 },
-                          { key: 'chunkSize', label: '块长度', min: 200, max: 4000 },
-                          { key: 'chunkOverlap', label: '块重叠', min: 0, max: 1000 },
-                        ] as const
-                      ).map(({ key, label, min, max }) => (
-                        <label key={key} className="flex items-center gap-1.5 text-12 text-secondary">
-                          {label}
-                          <input
-                            type="number"
-                            min={min}
-                            max={max}
-                            value={paramsDraft[key]}
-                            onChange={(e) =>
-                              setParamsDraft({ ...paramsDraft, [key]: Number(e.target.value) })
-                            }
-                            className="h-7 w-20 rounded-md border border-board bg-card px-2 text-12 text-primary focus:border-accent focus:outline-none"
-                          />
-                        </label>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => void saveParams(kb.id)}
-                        className="h-7 rounded-full border border-board px-3 text-12 text-secondary hover:text-primary"
-                      >
-                        保存参数
-                      </button>
-                    </div>
-
-                    <span className="text-12 text-secondary">召回测试：输入一个用户可能会问的问题</span>
-                    <div className="flex gap-2">
-                      <input
-                        className={inputCls}
-                        value={query}
-                        placeholder="如：退货流程是什么"
-                        onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void runRecall(kb);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void runRecall(kb)}
-                        className="h-9 shrink-0 rounded-lg border border-board px-4 text-13 text-secondary hover:text-primary disabled:opacity-50"
-                      >
-                        测试
-                      </button>
-                    </div>
-                    {results !== null && (
-                      <div className="flex flex-col gap-1.5">
-                        {results.length === 0 ? (
-                          <p className="text-12 text-muted">没有命中。换个和文档原文接近的词试试。</p>
-                        ) : (
-                          results.map((r, i) => (
-                            <div key={i} className="rounded-lg bg-chip px-3 py-2">
-                              <p className="text-11 text-muted">
-                                【{i + 1}】{r.docName}（第 {r.ord} 块）
-                              </p>
-                              <p className="mt-0.5 text-12 leading-[1.6] text-primary select-text">{r.snippet}</p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </details>
                 </div>
               )}
             </div>

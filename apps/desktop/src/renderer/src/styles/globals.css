@@ -531,3 +531,13 @@ textarea:focus-visible {
   content-visibility: auto;
   contain-intrinsic-size: auto 240px;
 }
+
+/* 可点元素一律小手（Chromium 对 button 默认 cursor:default，体感像不可点）。
+   输入类（text/number/textarea）保持文本光标，不在此列。 */
+button:not(:disabled),
+[role='button']:not(:disabled),
+summary,
+select,
+a {
+  cursor: pointer;
+}
