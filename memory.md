@@ -122,7 +122,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
-| 0.2.16 | 09-11 | **应用内更新源切内网 GitLab**（generic feed 两跳解析：API 查最新 tag → packages 直连；私有项目需用户在 设置→通用 配访问令牌，safeStorage 落盘；真机 E2E 验证过 0.2.14-beta.1 → 检测/下载/暂存 0.2.15 全链） |
+| 0.2.16 | 09-11 | **应用内更新源切内网 GitLab**（generic feed 两跳解析：API 查最新 tag → packages 直连；私有项目需用户在 设置→通用 配访问令牌，safeStorage 落盘；真机 E2E 验证过 0.2.14-beta.1 → 检测/下载/暂存 0.2.15 全链）；**已发 GitLab Release**（静默装冒烟过，查窗口标题无 Error 弹框） |
 | 0.2.15 | 09-11 | 稳定性/体验批：IPC 错误统一剥壳（UI 只显业务原文）、错误卡重发带 create（重启后可复活）、fork 缺供应商明确报错、auto-RAG 条数对齐 KB topK、搜索测试默认词清 LongMa 遗留、知识库导入进度条、超长会话列表窗口化；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.14 | 09-10 | 侧栏置顶 IM/技能/MCP 快捷入口 + **本地知识库**（FTS5 检索/文件与文件夹导入/笔记/URL 快照/引用溯源/召回测试）+ 聊天渲染顺滑化 + 新 logo + 「点不动」根因对策（关 backgroundThrottling）与全局小手；**已发 GitLab Release**（2026-09-11，静默装冒烟过） |
 | 0.2.13 | 09-10 | **聊天流式渲染顺滑化**（32ms 帧级合帧、流式 markdown 分块 memo 尾块重 parse、结构修复防版式抖动、意图贴底+RO 跟底、content-visibility、列表窗口化、first-paint 基线日志）；**已发 GitLab Release**（静默装冒烟过） |
@@ -216,6 +216,10 @@ Fundet/
 | 删远端 tag 重推 → published Release 转 draft，资产对外不可见 | 重推后必查 `gh api repos/xiaosen6/fundet/releases --jq '.[]|.tag_name,.draft'`，draft 则 `gh release edit <tag> --draft=false` |
 | EBUSY：electron-builder 拷 fresh 解包的 cua-driver 被 Defender 锁 | win job 有 3 次重试 + hash 预热步；tag 必须含该修复 commit（重跑复用旧 tag 不带修复） |
 | Bash 管道接 tail 会吃掉退出码 | 判构建成败看日志尾部内容，不看 exit code |
+| electron-updater 构造器严格校验 semver（四段版本号如 0.2.14.1 → 模块加载即抛，主进程弹原生「A JavaScript error」框假死） | 测试用旧版本号必须合法 semver（如 `0.2.14-beta.1`） |
+| electron-updater 6.8.9 `setFeedURL` 不消费 `options.requestHeaders`（仅构造函数读）→ 私有 feed 拉 latest.yml 404（GitLab 把未授权伪装成 404） | 鉴权头直接赋公共字段 `autoUpdater.requestHeaders`（updater.ts applyFeed 有注释） |
+| 打包版 `remote-debugging-port` 不监听（Chromium M136 起须显式 `--user-data-dir` 才激活远程调试；重定向 stdout 也常为空） | 打包版主进程诊断用文件插桩最稳（用完删净） |
+| 冒烟判据「进程 alive」会被 Error 弹框骗（主进程未捕获异常弹原生框，进程同样活着） | 冒烟必须查 `MainWindowTitle` ≠ "Error"（0.2.16 起冒烟模板） |
 
 **架构级**：
 
@@ -263,7 +267,7 @@ Fundet/
 5. 安装包（连同 `latest.yml`、`.blockmap`）挂 GitLab Release。已验证的 API 模式（2026-09-07，本 GitLab 版本资产链接用 `filepath` 属性，`direct_asset_path` 会报 invalid format）：①`PUT /api/v4/projects/272/packages/generic/fundet/<版本>/<文件名>`（curl --upload-file，PRIVATE-TOKEN 头）；②`POST /api/v4/projects/272/releases`，`assets.links[].url` 指向包文件。Token 用项目/个人 access token（scope=api），由发版人自持，**不进仓**。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
 
-> **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
+> **应用内更新已切 GitLab（0.2.16 起，产品决策 2026-09-11）**：updater.ts generic feed 两跳解析——GET `releases?per_page=1` 拿最新 tag → setFeedURL 指 `packages/generic/fundet/<版本>/` 直连（不走 downloads API：它 302 到包文件，重定向上自定义头不受控）。项目 272 私有——**用户须在 设置→通用「版本与更新」配 GitLab 访问令牌（scope=api；safeStorage 落盘 `keys/gitlab-updater.bin`；`FUNDET_UPDATER_TOKEN` 环境变量可覆盖，部署/测试用）**，未配时中文指引。**存量过渡**：0.2.15 及以前的安装仍指 GitHub、永远收不到新版本——须手动装一次 0.2.16（Release 页或 `D:\Fundet-Setup-0.2.16-x64.exe`），此后自动更新走 GitLab。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
 > **在途事项（2026-09-11）**：无——v0.2.14、v0.2.15 均已发 GitLab Release（安装包静默装冒烟过，资产抽验可下载）。注意 v0.2.15 曾有一次 tag 重指（首打 tag 含 BOM 坏 package.json，提交 `fix: package.json 去 BOM` 后删远端 tag 重推；当时 Release 未建故无 draft 风险）。**改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)**。
