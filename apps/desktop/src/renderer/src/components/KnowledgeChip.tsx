@@ -1,16 +1,13 @@
 /**
  * KnowledgeChip — composer 工具行的会话知识库绑定 chip。
  *
- * 两种用法（可并存）：
- * - 勾选库：新消息注入 knowledge MCP，助手按需调 knowledge_search；
- * - 「发送前自动检索」开关：每条消息发送前按原话检索 top4 直接拼进上下文，
- *   不依赖模型调工具（④ 自动 RAG）。
- * 绑定按会话存 SQLite。
+ * 勾选库后新消息注入 knowledge MCP，助手按需调 knowledge_search 检索。
+ * 绑定按会话存 SQLite。自动注入开关已按用户反馈移除（绑定结构保留 auto
+ * 字段，默认 false，后端能力不删）。
  */
 import { useEffect, useState } from 'react';
 import { ChevronDown, Library, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import * as Switch from '@radix-ui/react-switch';
 import { cn } from '../lib/cn';
 import { MorphPopover } from './ui/MorphPopover';
 import type { KnowledgeBaseView, KnowledgeSessionBinding } from '../../../shared/fundet-api.ts';
@@ -58,7 +55,6 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
     >
       <Library size={14} className="shrink-0" />
       <span>知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : ''}</span>
-      {binding.auto && <span className="text-11 text-accent">自动</span>}
       <ChevronDown size={14} className="shrink-0 text-muted" />
     </button>
   );
@@ -114,35 +110,6 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
                 </button>
               );
             })}
-            <div className="mx-2 my-1 h-px bg-board" />
-            <div className="flex items-center gap-3 px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-13 text-primary">发送前自动检索注入</p>
-                <p className="mt-0.5 text-11 leading-snug text-muted">
-                  每条消息发送前按原话检索片段直接拼进上下文（不依赖模型调工具）
-                </p>
-              </div>
-              <Switch.Root
-                checked={binding.auto}
-                onCheckedChange={(v) => persist({ ...binding, auto: v === true })}
-                className="h-[20px] w-[36px] shrink-0 cursor-pointer rounded-full bg-chip data-[state=checked]:bg-accent"
-              >
-                <Switch.Thumb className="block h-[16px] w-[16px] translate-x-[2px] rounded-full bg-card transition-transform data-[state=checked]:translate-x-[18px]" />
-              </Switch.Root>
-            </div>
-            <div className="mx-2 my-1 h-px bg-board" />
-            <div className="px-3 pb-1 text-11 leading-snug text-muted">
-              绑定后助手可在新消息里检索这些文档（knowledge_search，带来源标注）。
-              <Link
-                to="/settings"
-                state={{ tab: 'knowledge' }}
-                className="ml-1 inline-flex items-center gap-0.5 text-accent hover:underline"
-                onClick={() => setOpen(false)}
-              >
-                <Settings2 size={11} />
-                管理
-              </Link>
-            </div>
           </>
         )}
       </div>
