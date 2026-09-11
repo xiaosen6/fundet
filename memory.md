@@ -122,7 +122,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
-| 0.2.15 | 09-11 | 稳定性/体验批：IPC 错误统一剥壳（UI 只显业务原文）、错误卡重发带 create（重启后可复活）、fork 缺供应商明确报错、auto-RAG 条数对齐 KB topK、搜索测试默认词清 LongMa 遗留、知识库导入进度条、超长会话列表窗口化 |
+| 0.2.15 | 09-11 | 稳定性/体验批：IPC 错误统一剥壳（UI 只显业务原文）、错误卡重发带 create（重启后可复活）、fork 缺供应商明确报错、auto-RAG 条数对齐 KB topK、搜索测试默认词清 LongMa 遗留、知识库导入进度条、超长会话列表窗口化；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.14 | 09-10 | 侧栏置顶 IM/技能/MCP 快捷入口 + **本地知识库**（FTS5 检索/文件与文件夹导入/笔记/URL 快照/引用溯源/召回测试）+ 聊天渲染顺滑化 + 新 logo + 「点不动」根因对策（关 backgroundThrottling）与全局小手；**已发 GitLab Release**（2026-09-11，静默装冒烟过） |
 | 0.2.13 | 09-10 | **聊天流式渲染顺滑化**（32ms 帧级合帧、流式 markdown 分块 memo 尾块重 parse、结构修复防版式抖动、意图贴底+RO 跟底、content-visibility、列表窗口化、first-paint 基线日志）；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.12 | 09-10 | 同步 Cindy 上游 #3832（未知端点收敛 system role）/ #4182（exit 权威收口）+ **设置新增「MCP 服务器」用户面**（连通状态点/增删改/启停）+ 技能启停开关 + 全套新 logo（白卡 tile app icon + 透明球 UI 标）；**已发 GitLab Release**（静默装冒烟过） |
@@ -265,7 +265,7 @@ Fundet/
 > **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
-> **在途事项（2026-09-11）**：v0.2.14 **已发 GitLab Release**（main 13 提交 + tag 推送，三资产经 generic package 上传、链接走 filepath 模式，抽验 exe 全量下载/sha512 无误；安装包静默装冒烟过）。2026-09-11 优化批次（IPC 错误剥壳、重发带 create、fork 明确报错、搜索默认词清 LongMa 遗留、知识库导入进度推送、auto-RAG topK 对齐、会话列表窗口化等，9 代码文件 + memory.md）**已在工作树待提交**，随下一版本发。
+> **在途事项（2026-09-11）**：无——v0.2.14、v0.2.15 均已发 GitLab Release（安装包静默装冒烟过，资产抽验可下载）。注意 v0.2.15 曾有一次 tag 重指（首打 tag 含 BOM 坏 package.json，提交 `fix: package.json 去 BOM` 后删远端 tag 重推；当时 Release 未建故无 draft 风险）。**改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)**。
 
 ---
 
