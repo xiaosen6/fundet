@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { friendlyError, friendlyProviderError } from './friendly-error.ts';
+import { friendlyError, friendlyProviderError, stripIpcErrorPrefix } from './friendly-error.ts';
 
 test('friendly provider error', async (t) => {
   await t.test('智谱 1210 content.type 只支持 text → 图片输入引导', () => {
@@ -38,5 +38,25 @@ test('pi 进程退出码映射', async (t) => {
   });
   await t.test('未知退出码保留原文并引导反馈', () => {
     assert.match(friendlyError('pi process exited (code=1, signal=null)'), /退出码 1/);
+  });
+});
+
+test('IPC 错误前缀剥壳', async (t) => {
+  await t.test('剥掉信道前缀只留原文（channel 含冒号不误切）', () => {
+    const out = stripIpcErrorPrefix(
+      'session:send',
+      'Error invoking remote method session:send: 会话不存在且未提供创建参数: abc',
+    );
+    assert.equal(out, '会话不存在且未提供创建参数: abc');
+  });
+  await t.test('无前缀 / 其它信道的错误原样返回', () => {
+    assert.equal(stripIpcErrorPrefix('kb:list', '随便一个错误'), '随便一个错误');
+    assert.equal(
+      stripIpcErrorPrefix(
+        'kb:list',
+        'Error invoking remote method session:send: 别的信道的错',
+      ),
+      'Error invoking remote method session:send: 别的信道的错',
+    );
   });
 });

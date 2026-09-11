@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FilePlus2, FolderPlus, Globe, NotebookPen, Pencil, RotateCw, Trash2 } from 'lucide-react';
 import type {
+  KbImportProgress,
   KnowledgeBaseView,
   KnowledgeDocView,
   KnowledgeImportResult,
@@ -30,6 +31,7 @@ export function KnowledgePanel(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [noteDraft, setNoteDraft] = useState<{ id: string | null; title: string; content: string } | null>(null);
   const [snapshotUrl, setSnapshotUrl] = useState('');
+  const [importProgress, setImportProgress] = useState<KbImportProgress | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setKbs(await window.fundet.listKnowledgeBases());
@@ -38,6 +40,9 @@ export function KnowledgePanel(): React.JSX.Element {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // 大目录导入时主进程逐文件推送进度；runImport 结束统一清空
+  useEffect(() => window.fundet.onKbImportProgress(setImportProgress), []);
 
   const loadDocs = useCallback(async (kbId: string): Promise<void> => {
     setDocs(await window.fundet.listKnowledgeDocs(kbId));
@@ -85,6 +90,7 @@ export function KnowledgePanel(): React.JSX.Element {
   const runImport = async (kbId: string, run: () => Promise<KnowledgeImportResult[]>): Promise<void> => {
     setBusy(true);
     setError('');
+    setImportProgress(null);
     try {
       const imported = await run();
       setImportResults(imported);
@@ -94,6 +100,7 @@ export function KnowledgePanel(): React.JSX.Element {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+      setImportProgress(null);
     }
   };
 
@@ -231,6 +238,21 @@ export function KnowledgePanel(): React.JSX.Element {
                     </button>
                     <span className="text-11 text-muted">支持 PDF / DOCX / TXT / MD</span>
                   </div>
+
+                  {/* 导入进度（多文件/目录导入时主进程逐文件推送） */}
+                  {busy && importProgress && importProgress.kbId === kb.id && importProgress.total > 1 && (
+                    <div className="flex flex-col gap-1">
+                      <div className="h-1 overflow-hidden rounded-full bg-chip">
+                        <div
+                          className="h-full bg-accent transition-[width] duration-150"
+                          style={{ width: `${Math.round((importProgress.completed / importProgress.total) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="truncate text-11 text-muted">
+                        导入中 {Math.min(importProgress.completed + 1, importProgress.total)}/{importProgress.total}：{importProgress.current}
+                      </span>
+                    </div>
+                  )}
 
                   {/* 笔记：新建/编辑 */}
                   {noteDraft ? (

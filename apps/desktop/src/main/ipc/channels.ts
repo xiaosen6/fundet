@@ -106,6 +106,8 @@ export const FUNDET_PUSH = {
   INTERACTION_DISMISSED: 'interaction:dismissed',
   SESSION_LIST_CHANGED: 'session:list-changed',
   IM_STATUS_CHANGED: 'im:status-changed',
+  /** 知识库导入进度：payload { kbId, completed, total, current } */
+  KB_IMPORT_PROGRESS: 'kb:import-progress',
   /** 更新状态变化：payload = UpdateState */
   UPDATE_STATUS_CHANGED: 'update:status-changed',
 } as const;

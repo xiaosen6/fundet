@@ -55,3 +55,13 @@ export function friendlyError(raw: string): string {
 
 /** 兼容旧名（供应商错误映射） */
 export const friendlyProviderError = friendlyError;
+
+/**
+ * 剥掉 ipcMain.handle 拒绝在 renderer 侧被包上的信道前缀：
+ * `Error invoking remote method <channel>: <原文>` → `<原文>`。
+ * 按 channel 全名精确匹配剥离（channel 自身含 `:`，不能盲切）。
+ */
+export function stripIpcErrorPrefix(channel: string, message: string): string {
+  const prefix = `Error invoking remote method ${channel}: `;
+  return message.startsWith(prefix) ? message.slice(prefix.length) : message;
+}

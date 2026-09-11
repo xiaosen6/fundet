@@ -311,6 +311,31 @@ export function ChatPage(): React.JSX.Element {
     [mergeAttachments, sessionWorkDir, stagePaths],
   );
 
+  // lazy-create 参数：草稿带精确 providerId，历史会话按 model 在 providers 反查。
+  // send 与错误卡「重新发送」共用——重发不带 create 的话，会话被终态错误回收
+  // 或应用重启后 main 侧会拒收（ensureSession 无 create 即抛错）。
+  const buildCreateParam = useCallback((): Parameters<typeof sendMessage>[2] => {
+    if (!activeId || !activeMeta) return undefined;
+    const draftProviderId = getDraftProviderId(activeId);
+    const provider = draftProviderId
+      ? providers.find((p) => p.id === draftProviderId)
+      : providers.find((p) => p.models.some((m) => m.id === activeMeta.model));
+    if (!provider) return undefined;
+    return {
+      sessionId: activeId,
+      workDir: activeMeta.workDir,
+      providerId: provider.id,
+      model: activeMeta.model,
+      title: activeMeta.title,
+      // 草稿上选的权限档位随首条消息一起落库（历史会话该值本就已在 DB）
+      ...(activeMeta.permissionMode
+        ? { permissionMode: activeMeta.permissionMode as PermissionMode }
+        : {}),
+      // effort 同理：死会话落库的档位要在 lazy-create 时带上
+      ...(activeMeta.effort ? { effort: activeMeta.effort as Effort } : {}),
+    };
+  }, [activeId, activeMeta, providers]);
+
   // 终态错误卡的「重新发送」：重发本轮最后一条用户消息（含附件路径引用）
   const resendLast = useCallback((): void => {
     if (!activeId) return;
@@ -318,18 +343,20 @@ export function ChatPage(): React.JSX.Element {
     if (!lastUser || lastUser.kind !== 'user') return;
     void (async () => {
       try {
+        const create = buildCreateParam();
         await window.fundet.sendMessage({
           sessionId: activeId,
           text: lastUser.text,
           ...(lastUser.attachments && lastUser.attachments.length > 0
             ? { attachments: lastUser.attachments }
             : {}),
+          ...(create ? { create } : {}),
         });
       } catch (err) {
         setNotice(`重新发送失败：${err instanceof Error ? err.message : String(err)}`);
       }
     })();
-  }, [activeId, slice.items]);
+  }, [activeId, buildCreateParam, slice.items]);
 
   const pickFiles = useCallback(async (): Promise<void> => {
     const picked = await window.fundet.pickFiles();
@@ -344,31 +371,9 @@ export function ChatPage(): React.JSX.Element {
     setAttachments([]);
     setNotice('');
     // 重启后旧会话 / 本地草稿都不在 main 内存：带 create 让 main lazy-create。
-    // 草稿有精确的 providerId；历史会话按 model 在 providers 里反查。
-    let create: Parameters<typeof sendMessage>[2];
-    if (activeMeta) {
-      const draftProviderId = getDraftProviderId(activeId);
-      const provider = draftProviderId
-        ? providers.find((p) => p.id === draftProviderId)
-        : providers.find((p) => p.models.some((m) => m.id === activeMeta.model));
-      if (provider) {
-        create = {
-          sessionId: activeId,
-          workDir: activeMeta.workDir,
-          providerId: provider.id,
-          model: activeMeta.model,
-          title: activeMeta.title,
-          // 草稿上选的权限档位随首条消息一起落库（历史会话该值本就已在 DB）
-          ...(activeMeta.permissionMode
-            ? { permissionMode: activeMeta.permissionMode as PermissionMode }
-            : {}),
-          // effort 同理：死会话落库的档位要在 lazy-create 时带上
-          ...(activeMeta.effort ? { effort: activeMeta.effort as Effort } : {}),
-        };
-      }
-    }
+    const create = buildCreateParam();
     await sendMessage(activeId, text, create, pending.length > 0 ? pending : undefined);
-  }, [activeId, activeMeta, attachments, input, providers]);
+  }, [activeId, attachments, buildCreateParam, input]);
 
   const abort = useCallback(async (): Promise<void> => {
     if (activeId) await abortSession(activeId);

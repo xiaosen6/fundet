@@ -83,6 +83,7 @@ import {
   listKnowledgeDocs,
   removeKnowledgeDoc,
   searchKnowledgeChunks,
+  resolveDefaultTopK,
   getSessionKnowledgeBinding,
   setSessionKnowledgeBinding,
   saveKnowledgeNote,
@@ -427,7 +428,8 @@ export function registerIpcHandlers(): void {
       const binding = getSessionKnowledgeBinding(session.id);
       let sendText = input.text;
       if (binding.auto && binding.ids.length > 0 && input.text.trim()) {
-        const hits = searchKnowledgeChunks(binding.ids, input.text, 4);
+        // 检索条数与 knowledge MCP 工具同源：读各绑定 KB 的 topK（多库取最大）
+        const hits = searchKnowledgeChunks(binding.ids, input.text, resolveDefaultTopK(binding.ids));
         if (hits.length > 0) {
           sendText = `${formatKnowledgeContextBlock(hits)}
 
@@ -455,8 +457,11 @@ ${input.text}`;
     const row = getDb().select().from(sessions).where(eq(sessions.id, sessionId)).get();
     if (!row) throw new Error('会话不存在');
     const providers = listProviders();
-    const provider = providers.find((p) => p.models.some((m) => m.id === row.model)) ?? providers[0];
-    if (!provider) throw new Error('没有可用的 Provider，无法分叉');
+    const provider = providers.find((p) => p.models.some((m) => m.id === row.model));
+    if (!provider) {
+      // 静默回落 providers[0] 会把分叉挂到错误供应商的 key 上，报错更诚实
+      throw new Error(`找不到模型 ${row.model} 所属的供应商，请先在 设置 → 模型供应商 配置后再分叉。`);
+    }
     const { maker } = getHost();
     const forked = await maker.createSession({
       agentKind: 'pi',
@@ -642,8 +647,10 @@ ${input.text}`;
     };
     walk(String(dirPath ?? ''));
     const results: Array<{ name: string; path?: string; ok: boolean; chunks?: number; error?: string }> = [];
-    for (const p of files) {
+    for (let i = 0; i < files.length; i++) {
+      const p = files[i];
       const name = path.basename(p);
+      broadcast(FUNDET_PUSH.KB_IMPORT_PROGRESS, { kbId, completed: i, total: files.length, current: name });
       try {
         const text = await extractKnowledgeDocumentText(p);
         const { chunks } = importDocumentChunks(kbId, name, text);
@@ -688,8 +695,10 @@ ${input.text}`;
 
   ipcMain.handle(FUNDET_INVOKE.KB_IMPORT, async (_e, kbId: string, paths: string[]) => {
     const results: Array<{ name: string; path?: string; ok: boolean; chunks?: number; error?: string }> = [];
-    for (const p of paths) {
+    for (let i = 0; i < paths.length; i++) {
+      const p = paths[i];
       const name = path.basename(p);
+      broadcast(FUNDET_PUSH.KB_IMPORT_PROGRESS, { kbId, completed: i, total: paths.length, current: name });
       try {
         const text = await extractKnowledgeDocumentText(p);
         const { chunks } = importDocumentChunks(kbId, name, text);
@@ -858,7 +867,7 @@ ${input.text}`;
       }
       const key = readSearchKey(resolved);
       if (!key) return { ok: false, error: `${resolved} 未配置 key` };
-      const out = await searchWithEngine(resolved, key, String(query || 'LongMa'), 3);
+      const out = await searchWithEngine(resolved, key, String(query || brand.name), 3);
       if (!out.ok) return { ok: false, error: out.error };
       return { ok: true, engine: out.engine, results: out.results };
     },

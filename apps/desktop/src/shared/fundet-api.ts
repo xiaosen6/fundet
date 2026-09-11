@@ -160,6 +160,15 @@ export interface SendResult {
   reason?: string;
 }
 
+/** 知识库导入进度（kb:import-progress push） */
+export interface KbImportProgress {
+  kbId: string;
+  /** 已完成的文件数（current 正在处理第 completed+1 个） */
+  completed: number;
+  total: number;
+  current: string;
+}
+
 export type McpServerType = 'stdio' | 'http';
 
 export interface McpServerView {
@@ -357,5 +366,6 @@ export interface FundetApi {
   onInteractionDismissed(cb: (payload: InteractionDismissedPayload) => void): () => void;
   onSessionListChanged(cb: () => void): () => void;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
+  onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
   onUpdateStatusChanged(cb: (payload: UpdateState) => void): () => void;
 }

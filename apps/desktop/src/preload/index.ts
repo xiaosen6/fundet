@@ -6,17 +6,31 @@
  */
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { FUNDET_INVOKE, FUNDET_PUSH } from '../main/ipc/channels.js';
+import { stripIpcErrorPrefix } from '../shared/friendly-error.js';
 import type {
   AgentEventPayload,
   FundetApi,
   InteractionDismissedPayload,
   InteractionRequestPayload,
+  KbImportProgress,
   StatusChangedPayload,
 } from '../shared/fundet-api.js';
 
 type Listener = (payload: never) => void;
 
 type BoundHandler = (event: Electron.IpcRendererEvent, payload: unknown) => void;
+
+/**
+ * ipcMain.handle 的拒绝在 renderer 侧被 Electron 包上
+ * `Error invoking remote method <channel>: ` 前缀；剥掉只留业务原文，
+ * 否则 UI 会裸露 IPC 实现细节。channel 名精确匹配（channel 自身含 `:`）。
+ */
+function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, ...args).catch((err: unknown) => {
+    const raw = err instanceof Error ? err.message : String(err);
+    throw new Error(stripIpcErrorPrefix(channel, raw));
+  });
+}
 
 /** channel → 订阅者集合；首个订阅者才绑 ipcRenderer.on */
 const subscriptions = new Map<string, { listeners: Set<Listener>; bound: BoundHandler }>();
@@ -47,111 +61,111 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api: FundetApi = {
-  createSession: (input) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_CREATE, input),
-  listSessions: () => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_LIST),
-  getSession: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_GET, id),
-  deleteSession: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_DELETE, id),
-  sendMessage: (input) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_SEND, input),
-  abortSession: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_ABORT, id),
-  closeSession: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
+  createSession: (input) => invoke(FUNDET_INVOKE.SESSION_CREATE, input),
+  listSessions: () => invoke(FUNDET_INVOKE.SESSION_LIST),
+  getSession: (id) => invoke(FUNDET_INVOKE.SESSION_GET, id),
+  deleteSession: (id) => invoke(FUNDET_INVOKE.SESSION_DELETE, id),
+  sendMessage: (input) => invoke(FUNDET_INVOKE.SESSION_SEND, input),
+  abortSession: (id) => invoke(FUNDET_INVOKE.SESSION_ABORT, id),
+  closeSession: (id) => invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
   deleteTurn: (sessionId, afterCreatedAt, untilCreatedAt) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SESSION_DELETE_TURN, sessionId, afterCreatedAt, untilCreatedAt),
+    invoke(FUNDET_INVOKE.SESSION_DELETE_TURN, sessionId, afterCreatedAt, untilCreatedAt),
   forkSession: (sessionId, upToCreatedAt) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SESSION_FORK, sessionId, upToCreatedAt),
+    invoke(FUNDET_INVOKE.SESSION_FORK, sessionId, upToCreatedAt),
   setSessionModel: (id, model, providerId) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SESSION_SET_MODEL, id, model, providerId),
-  setSessionEffort: (id, effort) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_SET_EFFORT, id, effort),
+    invoke(FUNDET_INVOKE.SESSION_SET_MODEL, id, model, providerId),
+  setSessionEffort: (id, effort) => invoke(FUNDET_INVOKE.SESSION_SET_EFFORT, id, effort),
   setSessionPermissionMode: (id, mode) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SESSION_SET_PERMISSION_MODE, id, mode),
-  renameSession: (id, title) => ipcRenderer.invoke(FUNDET_INVOKE.SESSION_SET_TITLE, id, title),
+    invoke(FUNDET_INVOKE.SESSION_SET_PERMISSION_MODE, id, mode),
+  renameSession: (id, title) => invoke(FUNDET_INVOKE.SESSION_SET_TITLE, id, title),
 
   resolveInteraction: (requestId, decision) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.INTERACTION_RESOLVE, requestId, decision),
-  getPendingInteractions: () => ipcRenderer.invoke(FUNDET_INVOKE.INTERACTION_GET_PENDING),
+    invoke(FUNDET_INVOKE.INTERACTION_RESOLVE, requestId, decision),
+  getPendingInteractions: () => invoke(FUNDET_INVOKE.INTERACTION_GET_PENDING),
 
-  listProviders: () => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_LIST),
-  createProvider: (input) => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_CREATE, input),
-  updateProvider: (id, patch) => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_UPDATE, id, patch),
-  deleteProvider: (id) => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_DELETE, id),
+  listProviders: () => invoke(FUNDET_INVOKE.PROVIDERS_LIST),
+  createProvider: (input) => invoke(FUNDET_INVOKE.PROVIDERS_CREATE, input),
+  updateProvider: (id, patch) => invoke(FUNDET_INVOKE.PROVIDERS_UPDATE, id, patch),
+  deleteProvider: (id) => invoke(FUNDET_INVOKE.PROVIDERS_DELETE, id),
   setProviderKey: (providerId, key) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_SET_KEY, providerId, key),
-  hasProviderKey: (providerId) => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_HAS_KEY, providerId),
-  fetchProviderModels: (input) => ipcRenderer.invoke(FUNDET_INVOKE.PROVIDERS_FETCH_MODELS, input),
+    invoke(FUNDET_INVOKE.PROVIDERS_SET_KEY, providerId, key),
+  hasProviderKey: (providerId) => invoke(FUNDET_INVOKE.PROVIDERS_HAS_KEY, providerId),
+  fetchProviderModels: (input) => invoke(FUNDET_INVOKE.PROVIDERS_FETCH_MODELS, input),
 
-  listMcpServers: () => ipcRenderer.invoke(FUNDET_INVOKE.MCP_LIST),
-  createMcpServer: (input) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_CREATE, input),
-  updateMcpServer: (id, patch) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_UPDATE, id, patch),
-  deleteMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_DELETE, id),
-  checkMcpServer: (id) => ipcRenderer.invoke(FUNDET_INVOKE.MCP_STATUS, id),
+  listMcpServers: () => invoke(FUNDET_INVOKE.MCP_LIST),
+  createMcpServer: (input) => invoke(FUNDET_INVOKE.MCP_CREATE, input),
+  updateMcpServer: (id, patch) => invoke(FUNDET_INVOKE.MCP_UPDATE, id, patch),
+  deleteMcpServer: (id) => invoke(FUNDET_INVOKE.MCP_DELETE, id),
+  checkMcpServer: (id) => invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
-  listKnowledgeBases: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_LIST),
-  createKnowledgeBase: (name, params) => ipcRenderer.invoke(FUNDET_INVOKE.KB_CREATE, name, params),
+  listKnowledgeBases: () => invoke(FUNDET_INVOKE.KB_LIST),
+  createKnowledgeBase: (name, params) => invoke(FUNDET_INVOKE.KB_CREATE, name, params),
   updateKnowledgeBaseParams: (id, params) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_UPDATE_PARAMS, id, params),
-  importKnowledgeDir: (kbId, dirPath) => ipcRenderer.invoke(FUNDET_INVOKE.KB_IMPORT_DIR, kbId, dirPath),
-  deleteKnowledgeBase: (id) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DELETE, id),
-  listKnowledgeDocs: (kbId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOCS, kbId),
-  removeKnowledgeDoc: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_DOC_REMOVE, docId),
+    invoke(FUNDET_INVOKE.KB_UPDATE_PARAMS, id, params),
+  importKnowledgeDir: (kbId, dirPath) => invoke(FUNDET_INVOKE.KB_IMPORT_DIR, kbId, dirPath),
+  deleteKnowledgeBase: (id) => invoke(FUNDET_INVOKE.KB_DELETE, id),
+  listKnowledgeDocs: (kbId) => invoke(FUNDET_INVOKE.KB_DOCS, kbId),
+  removeKnowledgeDoc: (docId) => invoke(FUNDET_INVOKE.KB_DOC_REMOVE, docId),
   saveKnowledgeNote: (kbId, noteId, title, content) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_NOTE_SAVE, kbId, noteId, title, content),
-  getKnowledgeNoteContent: (docId) => ipcRenderer.invoke(FUNDET_INVOKE.KB_NOTE_CONTENT, docId),
-  snapshotKnowledgeUrl: (kbId, url) => ipcRenderer.invoke(FUNDET_INVOKE.KB_SNAPSHOT_URL, kbId, url),
-  importKnowledgeFiles: (kbId, paths) => ipcRenderer.invoke(FUNDET_INVOKE.KB_IMPORT, kbId, paths),
+    invoke(FUNDET_INVOKE.KB_NOTE_SAVE, kbId, noteId, title, content),
+  getKnowledgeNoteContent: (docId) => invoke(FUNDET_INVOKE.KB_NOTE_CONTENT, docId),
+  snapshotKnowledgeUrl: (kbId, url) => invoke(FUNDET_INVOKE.KB_SNAPSHOT_URL, kbId, url),
+  importKnowledgeFiles: (kbId, paths) => invoke(FUNDET_INVOKE.KB_IMPORT, kbId, paths),
   searchKnowledge: (kbIds, query, limit) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_SEARCH, kbIds, query, limit),
-  pickKnowledgeFiles: () => ipcRenderer.invoke(FUNDET_INVOKE.KB_PICK),
+    invoke(FUNDET_INVOKE.KB_SEARCH, kbIds, query, limit),
+  pickKnowledgeFiles: () => invoke(FUNDET_INVOKE.KB_PICK),
   getSessionKnowledgeBinding: (sessionId) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_GET, sessionId),
+    invoke(FUNDET_INVOKE.KB_SESSION_GET, sessionId),
   setSessionKnowledgeBinding: (sessionId, binding) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.KB_SESSION_SET, sessionId, binding),
+    invoke(FUNDET_INVOKE.KB_SESSION_SET, sessionId, binding),
 
-  listSkills: (workDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_LIST, workDir),
-  pickSkillFile: () => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_PICK),
+  listSkills: (workDir) => invoke(FUNDET_INVOKE.SKILLS_LIST, workDir),
+  pickSkillFile: () => invoke(FUNDET_INVOKE.SKILLS_PICK),
   importSkill: (filePath, scope, workDir) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_IMPORT, filePath, scope, workDir),
-  uninstallSkill: (skillDir) => ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_UNINSTALL, skillDir),
+    invoke(FUNDET_INVOKE.SKILLS_IMPORT, filePath, scope, workDir),
+  uninstallSkill: (skillDir) => invoke(FUNDET_INVOKE.SKILLS_UNINSTALL, skillDir),
   setSkillEnabled: (skillDir, enabled) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.SKILLS_SET_ENABLED, skillDir, enabled),
+    invoke(FUNDET_INVOKE.SKILLS_SET_ENABLED, skillDir, enabled),
 
-  searchStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_STATUS),
-  setSearchEngineKey: (id, key) => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
-  clearSearchEngineKey: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_CLEAR_KEY, id),
-  setDefaultSearchEngine: (id) => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_SET_DEFAULT, id),
-  testSearch: (query, engine) => ipcRenderer.invoke(FUNDET_INVOKE.SEARCH_TEST, query, engine),
+  searchStatus: () => invoke(FUNDET_INVOKE.SEARCH_STATUS),
+  setSearchEngineKey: (id, key) => invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
+  clearSearchEngineKey: (id) => invoke(FUNDET_INVOKE.SEARCH_CLEAR_KEY, id),
+  setDefaultSearchEngine: (id) => invoke(FUNDET_INVOKE.SEARCH_SET_DEFAULT, id),
+  testSearch: (query, engine) => invoke(FUNDET_INVOKE.SEARCH_TEST, query, engine),
 
-  usageHistory: (days) => ipcRenderer.invoke(FUNDET_INVOKE.USAGE_HISTORY, days),
+  usageHistory: (days) => invoke(FUNDET_INVOKE.USAGE_HISTORY, days),
 
-  browserStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.BROWSER_STATUS),
-  setBrowserEnabled: (enabled) => ipcRenderer.invoke(FUNDET_INVOKE.BROWSER_SET_ENABLED, enabled),
-  openBrowserForLogin: () => ipcRenderer.invoke(FUNDET_INVOKE.BROWSER_OPEN),
-  realLoginsStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.BROWSER_REAL_LOGINS),
-  setRealLogins: (enabled) => ipcRenderer.invoke(FUNDET_INVOKE.BROWSER_SET_REAL_LOGINS, enabled),
+  browserStatus: () => invoke(FUNDET_INVOKE.BROWSER_STATUS),
+  setBrowserEnabled: (enabled) => invoke(FUNDET_INVOKE.BROWSER_SET_ENABLED, enabled),
+  openBrowserForLogin: () => invoke(FUNDET_INVOKE.BROWSER_OPEN),
+  realLoginsStatus: () => invoke(FUNDET_INVOKE.BROWSER_REAL_LOGINS),
+  setRealLogins: (enabled) => invoke(FUNDET_INVOKE.BROWSER_SET_REAL_LOGINS, enabled),
 
-  computerStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.COMPUTER_STATUS),
-  setComputerEnabled: (enabled) => ipcRenderer.invoke(FUNDET_INVOKE.COMPUTER_SET_ENABLED, enabled),
+  computerStatus: () => invoke(FUNDET_INVOKE.COMPUTER_STATUS),
+  setComputerEnabled: (enabled) => invoke(FUNDET_INVOKE.COMPUTER_SET_ENABLED, enabled),
 
-  openExternal: (url) => ipcRenderer.invoke(FUNDET_INVOKE.OPEN_EXTERNAL, url),
+  openExternal: (url) => invoke(FUNDET_INVOKE.OPEN_EXTERNAL, url),
 
-  imStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.IM_STATUS),
-  imSave: (input) => ipcRenderer.invoke(FUNDET_INVOKE.IM_SAVE, input),
-  imClear: (id) => ipcRenderer.invoke(FUNDET_INVOKE.IM_CLEAR, id),
-  imConnect: (id) => ipcRenderer.invoke(FUNDET_INVOKE.IM_CONNECT, id),
-  imDisconnect: (id) => ipcRenderer.invoke(FUNDET_INVOKE.IM_DISCONNECT, id),
-  imWechatQrStart: () => ipcRenderer.invoke(FUNDET_INVOKE.IM_WECHAT_QR_START),
-  imWechatQrCancel: () => ipcRenderer.invoke(FUNDET_INVOKE.IM_WECHAT_QR_CANCEL),
-  imSetDefaults: (patch) => ipcRenderer.invoke(FUNDET_INVOKE.IM_SET_DEFAULTS, patch),
+  imStatus: () => invoke(FUNDET_INVOKE.IM_STATUS),
+  imSave: (input) => invoke(FUNDET_INVOKE.IM_SAVE, input),
+  imClear: (id) => invoke(FUNDET_INVOKE.IM_CLEAR, id),
+  imConnect: (id) => invoke(FUNDET_INVOKE.IM_CONNECT, id),
+  imDisconnect: (id) => invoke(FUNDET_INVOKE.IM_DISCONNECT, id),
+  imWechatQrStart: () => invoke(FUNDET_INVOKE.IM_WECHAT_QR_START),
+  imWechatQrCancel: () => invoke(FUNDET_INVOKE.IM_WECHAT_QR_CANCEL),
+  imSetDefaults: (patch) => invoke(FUNDET_INVOKE.IM_SET_DEFAULTS, patch),
 
-  updateStatus: () => ipcRenderer.invoke(FUNDET_INVOKE.UPDATE_STATUS),
-  checkUpdate: () => ipcRenderer.invoke(FUNDET_INVOKE.UPDATE_CHECK),
-  installUpdate: () => ipcRenderer.invoke(FUNDET_INVOKE.UPDATE_INSTALL),
+  updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
+  checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
+  installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
 
-  userHome: () => ipcRenderer.invoke(FUNDET_INVOKE.FS_HOME),
-  pickDirectory: () => ipcRenderer.invoke(FUNDET_INVOKE.FS_PICK_DIR),
-  pickFiles: () => ipcRenderer.invoke(FUNDET_INVOKE.FS_PICK_FILES),
-  pickImageDataUrl: () => ipcRenderer.invoke(FUNDET_INVOKE.FS_PICK_IMAGE),
-  stageFiles: (workDir, paths) => ipcRenderer.invoke(FUNDET_INVOKE.FS_STAGE_FILES, workDir, paths),
+  userHome: () => invoke(FUNDET_INVOKE.FS_HOME),
+  pickDirectory: () => invoke(FUNDET_INVOKE.FS_PICK_DIR),
+  pickFiles: () => invoke(FUNDET_INVOKE.FS_PICK_FILES),
+  pickImageDataUrl: () => invoke(FUNDET_INVOKE.FS_PICK_IMAGE),
+  stageFiles: (workDir, paths) => invoke(FUNDET_INVOKE.FS_STAGE_FILES, workDir, paths),
   stageBytes: (workDir, name, data) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.FS_STAGE_BYTES, workDir, name, data),
+    invoke(FUNDET_INVOKE.FS_STAGE_BYTES, workDir, name, data),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file as File) || '';
@@ -160,16 +174,16 @@ const api: FundetApi = {
     }
   },
   readTextFile: (filePath, workDir) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.FS_READ_TEXT, filePath, workDir),
+    invoke(FUNDET_INVOKE.FS_READ_TEXT, filePath, workDir),
   readFileDataUrl: (filePath, workDir) =>
-    ipcRenderer.invoke(FUNDET_INVOKE.FS_READ_DATA_URL, filePath, workDir),
-  openPath: (filePath) => ipcRenderer.invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath),
+    invoke(FUNDET_INVOKE.FS_READ_DATA_URL, filePath, workDir),
+  openPath: (filePath) => invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath),
   platform: process.platform,
   windowMinimize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MINIMIZE),
   windowMaximize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MAXIMIZE),
   windowClose: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_CLOSE),
-  copyText: (text) => ipcRenderer.invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, text),
-  copyImageRect: (rect) => ipcRenderer.invoke(FUNDET_INVOKE.CLIPBOARD_CAPTURE_RECT, rect),
+  copyText: (text) => invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, text),
+  copyImageRect: (rect) => invoke(FUNDET_INVOKE.CLIPBOARD_CAPTURE_RECT, rect),
 
   onAgentEvent: (cb) => subscribe<AgentEventPayload>(FUNDET_PUSH.AGENT_EVENT, cb),
   onStatusChanged: (cb) => subscribe<StatusChangedPayload>(FUNDET_PUSH.AGENT_STATUS_CHANGED, cb),
@@ -180,6 +194,7 @@ const api: FundetApi = {
   onSessionListChanged: (cb) => subscribe(FUNDET_PUSH.SESSION_LIST_CHANGED, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
+  onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
 };
 
 contextBridge.exposeInMainWorld('fundet', api);

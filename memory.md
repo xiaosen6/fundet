@@ -122,7 +122,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
-| 0.2.14 | 09-10 | 侧栏置顶 IM/技能/MCP 快捷入口 + **本地知识库**（FTS5 检索/文件与文件夹导入/笔记/URL 快照/引用溯源/召回测试）+ 聊天渲染顺滑化 + 新 logo + 「点不动」根因对策（关 backgroundThrottling）与全局小手 |
+| 0.2.14 | 09-10 | 侧栏置顶 IM/技能/MCP 快捷入口 + **本地知识库**（FTS5 检索/文件与文件夹导入/笔记/URL 快照/引用溯源/召回测试）+ 聊天渲染顺滑化 + 新 logo + 「点不动」根因对策（关 backgroundThrottling）与全局小手；**已发 GitLab Release**（2026-09-11，静默装冒烟过） |
 | 0.2.13 | 09-10 | **聊天流式渲染顺滑化**（32ms 帧级合帧、流式 markdown 分块 memo 尾块重 parse、结构修复防版式抖动、意图贴底+RO 跟底、content-visibility、列表窗口化、first-paint 基线日志）；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.12 | 09-10 | 同步 Cindy 上游 #3832（未知端点收敛 system role）/ #4182（exit 权威收口）+ **设置新增「MCP 服务器」用户面**（连通状态点/增删改/启停）+ 技能启停开关 + 全套新 logo（白卡 tile app icon + 透明球 UI 标）；**已发 GitLab Release**（静默装冒烟过） |
 | 0.2.11 | 09-07 | **同步 Cindy 上游**（#3751 登录态浏览器竞态+AppBound 检测、#3742 RPC 帧诊断、#3706 完全放行对齐原生、#3738 智谱目录数据）+ 发版流程切 GitLab 单线（§6）；**安装包已发 GitLab Release**（fundet 包 0.2.11，静默装冒烟过） |
@@ -149,7 +149,7 @@ Fundet/
 - 上下文用量环在输入卡下方右侧 + 会话短 id（前 8 位）。
 - 侧栏「新对话」上方置顶三个能力入口：IM 机器人 / 技能 / MCP 服务器（点击带 `state.tab` 直达设置对应分区，SettingsPage 从 location.state 初始化 tab）。
 - Canvas 开关钉窗口右上（fixed）；贴附件不强制打开 Canvas。
-- 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）。
+- 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）、**超长会话列表增量窗口化**（2026-09-11：首窗最近 60 行，触底 sentinel 再扩 80，activeId 越界自动扩到覆盖——Sidebar.tsx）。
 - 用量：首页折叠仪表盘（20 周热力图 + 30 天堆叠柱）+ 设置「用量历史」页（概览 5 格/热力图/按模型表含缓存命中率）。
 - 本地图片预览 `fundet-file://` 协议；复制走 clipboard IPC；分享=回合卡片截图。
 - **流式渲染纵深（2026-09-10 对齐 Cindy 五层，治「长回答越流越卡/长会话发沉/上滑被拽回」）**：①sessionStore delta 通知 32ms 帧级合帧（状态同步写，只压通知）；②消息条目 `content-visibility:auto`（`.msg-stream-items > *`，屏外零布局成本）；③贴底跟随 = 意图判据（wheel/touch/PageUp 上滚 1px 立即解除）+ ResizeObserver 跟底 + 恢复双信号（向下滚 + 贴底 ≤8px）；④流式 markdown 先 repair（补未闭合围栏/摘半截链接，`lib/streamingMarkdown.ts`）再按顶层块分块 memo，**只有尾块重 parse/重高亮**；逐词淡入只挂尾块（按块位号独立账本，稳定块冻结）；⑤列表窗口化（首帧末尾 15 条 → 空闲扩 80 → 触顶 +80，锚点量位移补偿视口）；⑥`[perf] stream first-paint` debug 日志 = 丝滑度回归基线。thinking/工具卡折叠即卸载（Collapse 移植自带，收起不占 DOM）。
@@ -190,11 +190,13 @@ Fundet/
 - 导入：PDF/DOCX/TXT/MD → `extractKnowledgeDocumentText`（doc-text.ts，抛错制）→ 分块事务入库（kb_chunks + kb_fts，rowid 对齐）。
 - 会话绑定存 settings（`kb.session.<sessionId>`，主进程可读）；绑定后**新消息**注入内置 knowledge MCP（`knowledge_search` 工具，返回【n】来源片段并带「不得编造」提示语）；composer 知识库 chip（KnowledgeChip）+ 设置→知识库（CRUD/导入/召回测试）。
 - 批A（2026-09-10）：目录导入（递归收集、跳隐藏/node_modules）；KB 级参数 topK/chunkSize/chunkOverlap（knowledge_bases 列，幂等补列；MCP 默认 limit 与导入分块都读它，**改块参数需重新导入才生效**）；导入结果逐文件展示 + 失败项保留路径一键重试。
-- 批B（2026-09-10）：会话绑定升级 `{ids, auto}`（兼容旧纯数组）；`auto` = 发送前自动检索注入——session:send 按用户原话检索 top4 拼进发给模型的消息上下文（**DB messages 仍存用户原话**，注入只影响模型所见）；回答里的【n】经 rehypeKnowledgeCite 渲染成可点角标，点开溯源面板（来源/块序/原文），数据 = 本轮 knowledge_search 工具 resultText 解析（`lib/knowledgeCite.ts`）。
+- 批B（2026-09-10）：会话绑定升级 `{ids, auto}`（兼容旧纯数组）；`auto` = 发送前自动检索注入——session:send 按用户原话检索（**条数与 knowledge MCP 工具同源：各绑定 KB 的 topK 取最大，2026-09-11 起对齐，原为硬编码 top4**）拼进发给模型的消息上下文（**DB messages 仍存用户原话**，注入只影响模型所见）；回答里的【n】经 rehypeKnowledgeCite 渲染成可点角标，点开溯源面板（来源/块序/原文），数据 = 本轮 knowledge_search 工具 resultText 解析（`lib/knowledgeCite.ts`）。
 - 批C（2026-09-10）：笔记（knowledge_docs.kind='note' + content 存原文，可再编辑重建索引）；URL 快照（html-to-text 提正文；**SSRF 前置 assertPublicHttpUrl**：仅公网 http(s)、DNS 全地址逐个拦内网/链路本地/元数据，3MB/20s 上限）。
 - 二轮反馈（2026-09-10）：**「点不动、过一会自愈」根因对策**——主窗 `backgroundThrottling: false`（Windows 遮挡检测误判 → 渲染冻结，Cindy 同款处理）；全局 `cursor: pointer`（button/[role=button]/summary/select/a，Chromium 按钮默认 default 体感像不可点）；知识库面板「高级参数」整个移除（用户明确不要，store 的参数列保留、工具默认 limit 仍生效）。
 - 三轮反馈（2026-09-10）：知识库 chip 弹层去掉「发送前自动检索注入」开关与 knowledge_search 术语说明（用户看不懂）；弹层只留知识库勾选列表。绑定结构的 auto 字段保留（默认 false，注入能力后端不删、UI 不暴露）。
 - 四轮反馈（2026-09-10）：chip 弹层列表隐藏滚动条（globals 新增 `.scrollbar-none` 工具类，滚轮仍可滚）——MorphPopover「真溢出才开滚」的取整 1px 假溢出在短列表也会挂出滑块，短列表直接不显示。
+- 导入进度（2026-09-11）：文件/目录导入逐文件推 `kb:import-progress`（push 通道，payload `{kbId, completed, total, current}`），设置面板进度条 + 当前文件名；单文件不显示。
+- markdown 渲染链安全基线（2026-09-11 审计，无缺口）：react-markdown 默认转义 raw HTML（无 rehype-raw）、mermaid `securityLevel:'strict'` 后才 dangerouslySetInnerHTML、KaTeX 默认 trust=false、链接/图片走受控组件 + 默认 urlTransform。改渲染链时不得破坏这四道防线。
 - 反馈修正（2026-09-10）：设置→知识库简化为「新建 → 添加文件夹/文件」主流程，参数与召回测试收进「高级」折叠（普通用户不折腾）；**app icon/favicon 换成抠出的透明球体**（白卡整图被用户否了；logo-raw 仍是原始图，再生管线见 §品牌）；updater IPC 处理器改为无条件注册（dev 态渲染层查 update:status 不再刷 No handler registered）。
 
 ---
@@ -262,7 +264,7 @@ Fundet/
 > **应用内更新待决**：electron-updater 仍读 GitHub xiaosen6/fundet 的 latest.yml——GitLab 单线后新版本不会出现在 GitHub，旧装用户发现不了更新。要让更新走 GitLab 需改 `shared/brand.ts` 的 updater 段为 gitlab provider（electron-updater 原生支持）并真机验证，属产品决策。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
-> **在途事项（2026-09-10 交接快照）**：v0.2.14 发布在途——安装包已出（`D:\Fundet-Setup-0.2.14-x64.exe`，冒烟过），tag `v0.2.14` 在本地未推，Release 未建（GitLab 502 故障中，恢复后按本节流程上传三资产 + 建 Release + 补版本行「已发」即可）。发布用 access token 由发版人自持，不进仓——接手者需自行获取（scope=api）。
+> **在途事项（2026-09-11）**：v0.2.14 **已发 GitLab Release**（main 13 提交 + tag 推送，三资产经 generic package 上传、链接走 filepath 模式，抽验 exe 全量下载/sha512 无误；安装包静默装冒烟过）。2026-09-11 优化批次（IPC 错误剥壳、重发带 create、fork 明确报错、搜索默认词清 LongMa 遗留、知识库导入进度推送、auto-RAG topK 对齐、会话列表窗口化等，9 代码文件 + memory.md）**已在工作树待提交**，随下一版本发。
 
 ---
 
@@ -273,9 +275,8 @@ Fundet/
 - Cindy 上游可跟进项：browser-runtime 网络守卫竞态修复、MCP 懒加载（**截至 2026-09-03 上游均未落地**，vendor lock 仍 b972feb3 与本仓一致）。「yield cells」（= 上游 #3767 yield marker 收紧）经核查为纯 Codex 作用域（`agents/codex/yielded-exec-cell.ts`），本仓无 Codex harness，**已划掉**。
 - **本地知识库（已规划待开工，2026-09-10 用户拍板：纯 FTS5 关键词检索，不做 embedding/不做向量化）**：SQLite FTS5 + Intl.Segmenter 前分词（零依赖，中文友好）、BM25 排序、snippet/highlight 白送；文档管线复用 unpdf/mammoth（TXT/MD/PDF/DOCX），段落+句窗分块；Agent 接入走内置 `knowledge` MCP（会话绑定 → knowledge_search 工具，返回带来源片段）；UI = 设置新 tab（CRUD/导入/召回测试）+ 对话输入框旁知识库 chip + 引用角标片段卡。M1 约 1.5~2 天；Excel/CSV/URL 抓取后置。取舍：纯关键词对语义换说法召回弱（用户知情接受）。
 - Cindy 功能级借鉴候选（2026-09-03 盘点，均在 Cindy「跳过登录」模式可用、不碰云）：会话搜索（`localDb/chatHistorySearch` FTS5+向量 RRF，可经 MCP `session_search` 给模型）、checkpoint/回滚（`main/git-snapshot` + RewindPreviewDialog）、错误分类重试补强（本仓已有基础重发，上游按限流/过载/断流/配额分类+倒计时）、effort/思考开关（`EffortSlider`/`ThinkingToggle`）、@ 文件引用+本轮产出文件卡（`AtMentionPanel`/`GeneratedFilesCard`）、计划/待办/提问交互卡（`PlanReviewBubble`/`TodoListCard`/`AskUserQuestionBubble`）、Goal 目标托管（`main/goal-host`，≠定时任务）、Ollama 本地模型托管（`main/local-model-runtime`）、消息排队（`PendingQueuePanel`）。会话导入/cross-agent-convert 数据源涉禁搬的 CC/Codex 生态，移植前需产品裁决。
-- 超长会话列表虚拟化（组件已 memo）。
+- IPC 错误已统一剥壳（2026-09-11）：preload `invoke()` helper 按 channel 精确剥 `Error invoking remote method <channel>: ` 前缀（`shared/friendly-error.ts` 的 `stripIpcErrorPrefix`，有单测），UI 只显业务原文。
 - 文件夹拖入 composer；Canvas 未覆盖类型仍「用系统打开」。
-- IPC 错误展示会裸露 `Error invoking remote method ...` 前缀（可统一剥壳只显中文）。
 
 ---
 

@@ -12,7 +12,7 @@
  * - 底部：设置入口做成「用户胶囊」同款（icon 圆 + 文字的 pill 卡，对齐 Cindy
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Bot, CirclePlus, MessageSquare, Pencil, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem } from '../../../shared/fundet-api.js';
@@ -53,6 +53,11 @@ const NAV_ROW_CLASS =
 
 const ACTION_BTN =
   'flex h-6 w-6 items-center justify-center rounded-full transition-opacity duration-120';
+
+/** 超长会话列表的增量窗口（对齐 MessageStream 列表窗口化思路）：
+ * 首窗渲染最近 60 条（侧栏一屏约 20 行），触底 sentinel 再扩 80 条。 */
+const LIST_INITIAL = 60;
+const LIST_EXTEND = 80;
 
 function SessionRow({
   session,
@@ -205,6 +210,31 @@ export function Sidebar({
   onResizeStart,
 }: SidebarProps): React.JSX.Element {
   const profile = useSyncExternalStore(subscribeProfile, getProfile, getProfile);
+
+  // 会话列表窗口化：limit 随滚动单调增长；activeId 落到窗口外时扩到覆盖
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [limit, setLimit] = useState(LIST_INITIAL);
+  const activeIndex = activeId ? sessions.findIndex((s) => s.id === activeId) : -1;
+  useEffect(() => {
+    if (activeIndex >= limit) setLimit(activeIndex + 1);
+  }, [activeIndex, limit]);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setLimit((v) => (v < sessions.length ? v + LIST_EXTEND : v));
+        }
+      },
+      { root: listRef.current, rootMargin: '200px' },
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [sessions.length]);
+  const visible = sessions.slice(0, Math.min(limit, sessions.length));
+
   return (
     <aside
       className="relative z-20 flex h-full shrink-0 flex-col border-r border-board bg-surface"
@@ -279,11 +309,11 @@ export function Sidebar({
       <div className="px-6 pt-1 pb-1 text-13 text-muted select-none">会话</div>
 
       {/* 会话列表 */}
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
+      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
         {sessions.length === 0 && (
           <div className="px-3 pt-1 text-13 text-muted select-none">还没有会话</div>
         )}
-        {sessions.map((s) => (
+        {visible.map((s) => (
           <SessionRow
             key={s.id}
             session={s}
@@ -294,6 +324,7 @@ export function Sidebar({
             onRename={onRename}
           />
         ))}
+        {visible.length < sessions.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
       </div>
 
       {/* 底部：设置入口（对齐 Cindy 用户胶囊位：icon 圆 + 文字的 pill 卡） */}
