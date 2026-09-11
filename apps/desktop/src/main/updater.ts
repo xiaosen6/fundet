@@ -58,6 +58,25 @@ async function checkWin(): Promise<void> {
 }
 
 export function initUpdater(): void {
+  // IPC 处理器无条件注册：渲染层更新卡在 dev 也会查询，不注册会刷
+  // 「No handler registered for 'update:status'」；检查/安装本身 dev 下空转。
+  ipcMain.handle(FUNDET_INVOKE.UPDATE_STATUS, () => ({ ...state }));
+  ipcMain.handle(FUNDET_INVOKE.UPDATE_CHECK, async () => {
+    if (!app.isPackaged) {
+      setState({ status: 'idle' });
+      return;
+    }
+    if (process.platform === 'darwin') await checkMac();
+    else await checkWin();
+  });
+  ipcMain.handle(FUNDET_INVOKE.UPDATE_INSTALL, async () => {
+    if (process.platform === 'darwin' && app.isPackaged) {
+      await shell.openExternal(state.releaseUrl);
+      return;
+    }
+    if (app.isPackaged && state.status === 'ready') autoUpdater.quitAndInstall();
+  });
+
   if (!app.isPackaged) return;
   if (process.platform !== 'win32' && process.platform !== 'darwin') return;
 
@@ -78,19 +97,6 @@ export function initUpdater(): void {
       setState({ status: 'error', error: err.message });
     });
   }
-
-  ipcMain.handle(FUNDET_INVOKE.UPDATE_STATUS, () => ({ ...state }));
-  ipcMain.handle(FUNDET_INVOKE.UPDATE_CHECK, async () => {
-    if (process.platform === 'darwin') await checkMac();
-    else await checkWin();
-  });
-  ipcMain.handle(FUNDET_INVOKE.UPDATE_INSTALL, async () => {
-    if (process.platform === 'darwin') {
-      await shell.openExternal(state.releaseUrl);
-      return;
-    }
-    if (state.status === 'ready') autoUpdater.quitAndInstall();
-  });
 
   // 启动 5s 后首查，之后每 4 小时静默查一次
   const check = process.platform === 'darwin' ? checkMac : checkWin;

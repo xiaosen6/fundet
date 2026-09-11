@@ -189,8 +189,8 @@ export function KnowledgePanel(): React.JSX.Element {
       <div>
         <SectionTitle>知识库</SectionTitle>
         <p className="mt-1 text-13 text-secondary">
-          导入自己的文档（PDF / DOCX / TXT / MD，可整文件夹导入），在对话页把知识库绑定到会话，
-          助手即可检索原文片段并标注来源。检索在本机全文匹配，不上传任何内容。
+          新建知识库，添加一个文件夹或几个文档即可。之后在对话页点「知识库」绑定，
+          助手回答时就会查这些资料并标明出处。全程在本机完成，不上传任何内容。
         </p>
       </div>
       <div className="flex gap-2">
@@ -261,7 +261,7 @@ export function KnowledgePanel(): React.JSX.Element {
                       <FolderPlus size={13} />
                       导入文件夹
                     </button>
-                    <span className="text-11 text-muted">递归收集 PDF / DOCX / TXT / MD，跳过隐藏目录</span>
+                    <span className="text-11 text-muted">支持 PDF / DOCX / TXT / MD</span>
                   </div>
 
                   {/* 笔记：新建/编辑 */}
@@ -397,8 +397,11 @@ export function KnowledgePanel(): React.JSX.Element {
                     </div>
                   )}
 
-                  {/* KB 级参数 */}
-                  <div className="flex flex-col gap-2">
+                  {/* 高级（默认收起）：参数与召回测试 */}
+                  <details className="flex flex-col gap-2">
+                    <summary className="cursor-pointer select-none text-12 text-muted hover:text-secondary">
+                      高级：检索参数与召回测试
+                    </summary>
                     <span className="text-12 text-secondary">
                       检索与分块参数
                       <span className="ml-1 text-muted">（改分块参数后需重新导入文档才生效）</span>
@@ -433,10 +436,7 @@ export function KnowledgePanel(): React.JSX.Element {
                         保存参数
                       </button>
                     </div>
-                  </div>
 
-                  {/* 召回测试 */}
-                  <div className="flex flex-col gap-2">
                     <span className="text-12 text-secondary">召回测试：输入一个用户可能会问的问题</span>
                     <div className="flex gap-2">
                       <input
@@ -473,7 +473,7 @@ export function KnowledgePanel(): React.JSX.Element {
                         )}
                       </div>
                     )}
-                  </div>
+                  </details>
                 </div>
               )}
             </div>
