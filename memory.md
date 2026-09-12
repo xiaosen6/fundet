@@ -14,7 +14,9 @@
 
 ```powershell
 # 必须在 Windows PowerShell，不要用 WSL 弹 Electron 窗口
-cd D:\AI\Fundet
+# 2026-09-11 起活跃工作副本：D:\Go\fundet-buddy（初始开发机副本 D:\AI\Fundet 退役，
+# 其 cindy/ 只读克隆仍是对照实现的首选参考）
+cd D:\Go\fundet-buddy
 pnpm install
 pnpm dev:win
 ```
@@ -289,7 +291,7 @@ Fundet/
 ## 8. 命令速查
 
 ```powershell
-cd D:\AI\Fundet
+cd D:\Go\fundet-buddy
 pnpm install
 pnpm dev:win                                  # 开发
 pnpm dist:win                                 # Fundet-Setup exe（约 170MB）
