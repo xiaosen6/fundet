@@ -13,6 +13,8 @@ import type {
   KnowledgeDocView,
   KnowledgeImportResult,
 } from '../../../../shared/fundet-api.js';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { toast } from '../../components/ui/toast';
 
 function SectionTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <h2 className="text-16 leading-[1.2] font-medium text-primary">{children}</h2>;
@@ -70,10 +72,21 @@ export function KnowledgePanel(): React.JSX.Element {
   };
 
   const remove = (kb: KnowledgeBaseView): void => {
-    if (!window.confirm(`删除知识库「${kb.name}」？其中 ${kb.docCount} 份文档的索引将一并删除。`)) return;
-    void window.fundet.deleteKnowledgeBase(kb.id).then(refresh).catch((err) => {
-      setError(err instanceof Error ? err.message : String(err));
-    });
+    void (async (): Promise<void> => {
+      const ok = await confirmDialog({
+        title: `删除知识库「${kb.name}」？`,
+        description: `其中 ${kb.docCount} 份文档的索引将一并删除，此操作不可撤销。`,
+        confirmText: '删除',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await window.fundet.deleteKnowledgeBase(kb.id);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
   };
 
   const expand = async (kb: KnowledgeBaseView): Promise<void> => {
@@ -94,6 +107,11 @@ export function KnowledgePanel(): React.JSX.Element {
     try {
       const imported = await run();
       setImportResults(imported);
+      const okCount = imported.filter((r) => r.ok).length;
+      if (imported.length > 0) {
+        if (okCount === imported.length) toast.success(`已导入 ${okCount} 份文档`);
+        else toast.error(`${okCount}/${imported.length} 份导入成功，失败项可在下方重试`);
+      }
       await loadDocs(kbId);
       await refresh();
     } catch (err) {
@@ -106,15 +124,24 @@ export function KnowledgePanel(): React.JSX.Element {
 
   const failedPaths = (importResults ?? []).filter((r) => !r.ok && r.path).map((r) => r.path!);
 
-  const removeDoc = async (doc: KnowledgeDocView): Promise<void> => {
-    setError('');
-    try {
-      await window.fundet.removeKnowledgeDoc(doc.id);
-      await loadDocs(doc.kbId);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+  const removeDoc = (doc: KnowledgeDocView): void => {
+    void (async (): Promise<void> => {
+      const ok = await confirmDialog({
+        title: `移除文档「${doc.name}」？`,
+        description: '其索引片段将一并删除，需要时可重新导入。',
+        confirmText: '移除',
+        danger: true,
+      });
+      if (!ok) return;
+      setError('');
+      try {
+        await window.fundet.removeKnowledgeDoc(doc.id);
+        await loadDocs(doc.kbId);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
   };
 
   const saveNote = async (kb: KnowledgeBaseView): Promise<void> => {
@@ -124,6 +151,7 @@ export function KnowledgePanel(): React.JSX.Element {
     try {
       await window.fundet.saveKnowledgeNote(kb.id, noteDraft.id, noteDraft.title, noteDraft.content);
       setNoteDraft(null);
+      toast.success('笔记已保存');
       await loadDocs(kb.id);
       await refresh();
     } catch (err) {
@@ -148,8 +176,9 @@ export function KnowledgePanel(): React.JSX.Element {
     if (!snapshotUrl.trim()) return;
     setBusy(true);
     try {
-      await window.fundet.snapshotKnowledgeUrl(kb.id, snapshotUrl.trim());
+      const doc = await window.fundet.snapshotKnowledgeUrl(kb.id, snapshotUrl.trim());
       setSnapshotUrl('');
+      toast.success(doc ? `已入库：${doc.name}` : '网页已入库');
       await loadDocs(kb.id);
       await refresh();
     } catch (err) {

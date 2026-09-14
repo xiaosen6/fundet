@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
 import type { McpServerInput, McpServerType, McpServerView, McpStatusResult } from '../../../../shared/fundet-api.js';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
 
 type ProbeState = { state: 'checking' | 'ok' | 'fail'; error?: string };
 
@@ -157,10 +158,21 @@ export function McpPanel(): React.JSX.Element {
   };
 
   const remove = (s: McpServerView): void => {
-    if (!window.confirm(`删除 MCP 服务器「${s.name}」？进行中的会话不受影响，新会话不再注入。`)) return;
-    void window.fundet.deleteMcpServer(s.id).then(refresh).catch((err) => {
-      setError(err instanceof Error ? err.message : String(err));
-    });
+    void (async (): Promise<void> => {
+      const ok = await confirmDialog({
+        title: `删除 MCP 服务器「${s.name}」？`,
+        description: '进行中的会话不受影响，新会话不再注入。',
+        confirmText: '删除',
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await window.fundet.deleteMcpServer(s.id);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
   };
 
   return (

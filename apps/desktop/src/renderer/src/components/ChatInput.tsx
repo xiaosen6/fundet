@@ -16,6 +16,7 @@ import { SendButton } from './SendButton';
 import { SlashPalette, type SlashItem } from './SlashPalette';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
+import { Tooltip } from './ui/Tooltip';
 
 interface ChatInputProps {
   value: string;
@@ -219,15 +220,16 @@ export function ChatInput({
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex min-w-0 shrink items-center gap-2">
             {onPickFiles && (
-              <button
-                type="button"
-                title="添加文件"
-                disabled={disabled}
-                onClick={onPickFiles}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary disabled:opacity-40"
-              >
-                <Paperclip size={14} />
-              </button>
+              <Tooltip label="添加文件" side="top">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onPickFiles}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary disabled:opacity-40"
+                >
+                  <Paperclip size={14} />
+                </button>
+              </Tooltip>
             )}
             {leadingControls}
           </div>

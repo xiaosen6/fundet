@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { brand } from '../../../../shared/brand.ts';
+import { confirmDialog } from '../ui/ConfirmDialog';
 
 export function BrowserSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState(false);
@@ -82,24 +83,26 @@ export function BrowserSection(): React.JSX.Element {
           <Switch.Root
             checked={realLogins.enabled}
             onCheckedChange={(v) => {
-              const prev = realLogins.enabled;
-              setRealLogins((s) => ({ ...s, enabled: v }));
-              setRealError('');
-              const confirmMsg = v
-                ? `将把系统浏览器（Chrome/Edge/Brave）当前 profile 的 Cookie 和已存密码拷贝进${brand.name}专用浏览器，覆盖其中的登录状态。继续？`
-                : '将清除专用浏览器中的全部登录状态（包括你手动登录的网站）。继续？';
-              if (!window.confirm(confirmMsg)) {
-                setRealLogins((s) => ({ ...s, enabled: prev }));
-                return;
-              }
-              void window.fundet
-                .setRealLogins(v)
-                .then(() => window.fundet.realLoginsStatus())
-                .then(setRealLogins)
-                .catch((err) => {
+              void (async (): Promise<void> => {
+                const prev = realLogins.enabled;
+                setRealLogins((s) => ({ ...s, enabled: v }));
+                setRealError('');
+                const confirmMsg = v
+                  ? `将把系统浏览器（Chrome/Edge/Brave）当前 profile 的 Cookie 和已存密码拷贝进${brand.name}专用浏览器，覆盖其中的登录状态。继续？`
+                  : '将清除专用浏览器中的全部登录状态（包括你手动登录的网站）。继续？';
+                const ok = await confirmDialog({ title: confirmMsg, confirmText: '继续' });
+                if (!ok) {
+                  setRealLogins((s) => ({ ...s, enabled: prev }));
+                  return;
+                }
+                try {
+                  const status = await window.fundet.setRealLogins(v).then(() => window.fundet.realLoginsStatus());
+                  setRealLogins(status);
+                } catch (err) {
                   setRealLogins((s) => ({ ...s, enabled: prev }));
                   setRealError(err instanceof Error ? err.message : String(err));
-                });
+                }
+              })();
             }}
             className="mt-0.5 h-[18px] w-[32px] shrink-0 cursor-pointer rounded-full bg-chip data-[state=checked]:bg-accent"
           >

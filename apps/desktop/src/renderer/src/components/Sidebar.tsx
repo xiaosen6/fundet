@@ -21,6 +21,7 @@ import { brand } from '../../../shared/brand.js';
 import { getProfile, subscribeProfile } from '../lib/profile';
 import { BrandMark } from './BrandMark';
 import { SessionRenameInput } from './SessionRenameInput';
+import { Tooltip } from './ui/Tooltip';
 
 interface SidebarProps {
   sessions: SessionListItem[];
@@ -168,28 +169,30 @@ function SessionRow({
               'group-focus-within/slot:pointer-events-auto group-focus-within/slot:opacity-100',
             )}
           >
-            <button
-              type="button"
-              title="重命名"
-              className={cn(ACTION_BTN, isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-primary')}
-              onClick={(e) => {
-                e.stopPropagation();
-                startEdit();
-              }}
-            >
-              <Pencil size={13} />
-            </button>
-            <button
-              type="button"
-              title="删除会话"
-              className={cn(ACTION_BTN, isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-error')}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(session.id);
-              }}
-            >
-              <Trash2 size={13} />
-            </button>
+            <Tooltip label="重命名" side="bottom">
+              <button
+                type="button"
+                className={cn(ACTION_BTN, isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-primary')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEdit();
+                }}
+              >
+                <Pencil size={13} />
+              </button>
+            </Tooltip>
+            <Tooltip label="删除会话" side="bottom">
+              <button
+                type="button"
+                className={cn(ACTION_BTN, isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-error')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(session.id);
+                }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}

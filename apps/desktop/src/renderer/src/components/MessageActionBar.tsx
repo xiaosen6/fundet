@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Ellipsis, MessageSquarePlus, Share, Split, Trash2 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { Tooltip } from './ui/Tooltip';
 
 export interface TurnUsage {
   tokenUsage: number;
@@ -117,48 +118,53 @@ export function MessageActionBar({
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
-      <button
-        type="button"
-        className={ICON_BTN}
-        title={copyError ? '复制失败' : copied ? '已复制' : '复制'}
-        aria-label="复制"
-        onClick={() => void copy(copyText)}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </button>
-      {onShare ? (
-        <button type="button" className={ICON_BTN} title="分享为图片" aria-label="分享为图片" onClick={onShare}>
-          <Share size={14} />
-        </button>
-      ) : null}
-      {onFork ? (
+      <Tooltip label={copyError ? '复制失败' : copied ? '已复制' : '复制'} side="top">
         <button
           type="button"
           className={ICON_BTN}
-          title="分叉到新会话"
-          aria-label="分叉到新会话"
-          disabled={forking}
-          onClick={() => {
-            if (forking) return;
-            setForking(true);
-            void onFork().finally(() => setForking(false));
-          }}
+          aria-label="复制"
+          onClick={() => void copy(copyText)}
         >
-          <Split size={14} />
+          {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
+      </Tooltip>
+      {onShare ? (
+        <Tooltip label="分享为图片" side="top">
+          <button type="button" className={ICON_BTN} aria-label="分享为图片" onClick={onShare}>
+            <Share size={14} />
+          </button>
+        </Tooltip>
       ) : null}
-      {hasMore ? (
-        <div className="relative">
+      {onFork ? (
+        <Tooltip label="分叉到新会话" side="top">
           <button
             type="button"
             className={ICON_BTN}
-            title="更多"
-            aria-label="更多"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="分叉到新会话"
+            disabled={forking}
+            onClick={() => {
+              if (forking) return;
+              setForking(true);
+              void onFork().finally(() => setForking(false));
+            }}
           >
-            <Ellipsis size={14} />
+            <Split size={14} />
           </button>
+        </Tooltip>
+      ) : null}
+      {hasMore ? (
+        <div className="relative">
+          <Tooltip label="更多" side="top">
+            <button
+              type="button"
+              className={ICON_BTN}
+              aria-label="更多"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <Ellipsis size={14} />
+            </button>
+          </Tooltip>
           {menuOpen && (
             <div className="absolute bottom-full left-0 z-20 mb-1 w-[180px] rounded-xl border border-board bg-card p-1 shadow-[var(--shadow-menu)]">
               {onAddToChat ? (
@@ -192,14 +198,16 @@ export function MessageActionBar({
         </div>
       ) : null}
       {createdAt ? (
-        <span className="ml-1.5 text-12 text-muted" title={new Date(createdAt).toLocaleString('zh-CN')}>
-          {formatRelative(createdAt)}
-        </span>
+        <Tooltip label={new Date(createdAt).toLocaleString('zh-CN')} side="top">
+          <span className="ml-1.5 text-12 text-muted">{formatRelative(createdAt)}</span>
+        </Tooltip>
       ) : null}
       {tokens > 0 ? (
-        <span className="ml-1.5 cursor-default text-12 text-muted" title={tooltip}>
-          {formatCompactTokens(tokens)} tokens
-        </span>
+        <Tooltip label={tooltip} side="top">
+          <span className="ml-1.5 cursor-default text-12 text-muted">
+            {formatCompactTokens(tokens)} tokens
+          </span>
+        </Tooltip>
       ) : null}
     </div>
   );

@@ -11,6 +11,8 @@ import { ChatPage } from './pages/ChatPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DebugPage } from './pages/DebugPage';
 import { WindowControls } from './components/WindowControls';
+import { ToastContainer } from './components/ui/toast';
+import { ConfirmDialogHost } from './components/ui/ConfirmDialog';
 
 // 全局 agent:event 监听只装一次（模块级 store，与 React 树解耦，
 // 切页面/切会话不影响后台 turn 的事件分发）
@@ -32,6 +34,8 @@ createRoot(document.getElementById('root')!).render(
         <WindowControls />
       </div>
       <RouterProvider router={router} />
+      <ToastContainer />
+      <ConfirmDialogHost />
     </div>
   </React.StrictMode>,
 );

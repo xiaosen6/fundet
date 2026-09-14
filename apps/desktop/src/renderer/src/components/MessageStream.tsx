@@ -18,7 +18,7 @@
  *   不含「复制当前消息链接」。
  */
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, Info } from 'lucide-react';
+import { AlertCircle, ArrowDown, Info } from 'lucide-react';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageActionBar } from './MessageActionBar';
@@ -26,6 +26,7 @@ import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
 
@@ -214,6 +215,40 @@ const INITIAL_ITEMS = 80;
 /** 距顶多少 px 内触发扩窗 */
 const EXPAND_AT_TOP_PX = 120;
 
+/** 底部居中悬浮 pill（对齐 Cindy JumpToBottomChip / NewMessageIndicator 同款规格，
+ * 两者互斥共存：有未读时显示计数，否则显示跳底快捷钮） */
+function StreamBottomChip({
+  visible,
+  label,
+  onClick,
+}: {
+  visible: boolean;
+  label: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      aria-live="polite"
+      aria-atomic="true"
+      className={cn(
+        'absolute bottom-6 left-1/2 z-40 -translate-x-1/2 transition-all duration-150 ease-out',
+        visible
+          ? 'pointer-events-auto translate-y-0 opacity-100'
+          : 'pointer-events-none translate-y-2 opacity-0',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex h-8 items-center gap-1.5 rounded-full border border-board bg-card px-3 py-1.5 text-12 font-medium leading-none text-secondary shadow-[var(--shadow-menu)] transition-colors duration-150 hover:bg-hover active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+      >
+        <ArrowDown size={14} className="shrink-0" />
+        <span className="translate-y-[0.5px]">{label}</span>
+      </button>
+    </div>
+  );
+}
+
 export function MessageStream({
   slice,
   workDir,
@@ -249,8 +284,39 @@ export function MessageStream({
     return null;
   }, [grouped, slice.isRunning, hasStreaming]);
 
+  // 贴底态镜像到 state（chip 渲染用）+ 未读计数（脱离底部后新增的条目数）
+  const reducedMotion = useReducedMotion();
+  const [stuck, setStuckState] = useState(true);
+  const [showJump, setShowJump] = useState(false);
+  const [unseen, setUnseen] = useState(0);
+  const lastSeenLenRef = useRef(0);
+  const setStuck = (v: boolean): void => {
+    stickRef.current = v;
+    setStuckState(v);
+    if (v) {
+      lastSeenLenRef.current = grouped.length;
+      setUnseen(0);
+    }
+  };
+
+  useEffect(() => {
+    if (stuck) {
+      lastSeenLenRef.current = grouped.length;
+      setUnseen(0);
+    } else {
+      setUnseen(Math.max(0, grouped.length - lastSeenLenRef.current));
+    }
+  }, [grouped.length, stuck]);
+
   const unpin = (): void => {
-    stickRef.current = false;
+    setStuck(false);
+  };
+
+  const scrollToBottom = (): void => {
+    const el = containerRef.current;
+    if (!el) return;
+    setStuck(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' });
   };
 
   const handleScroll = (): void => {
@@ -260,7 +326,9 @@ export function MessageStream({
     const goingDown = el.scrollTop > lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
     // 恢复贴底：向下滚 + 贴死底部双信号（≤8px，Cindy REPIN_AT_BOTTOM_PX 口径）
-    if (!stickRef.current && goingDown && distance <= 8) stickRef.current = true;
+    if (!stickRef.current && goingDown && distance <= 8) setStuck(true);
+    // 悬浮跳底钮显隐：脱离贴底且离底足够远（近距不闪）
+    setShowJump(distance > 150 && !stickRef.current);
     // 触顶扩窗：上方还有窗口外条目时向上读历史逐段挂载。
     // 记录当前窗口首元素的视口位置，扩窗提交后按漂移补偿（不猜浏览器
     // anchoring 是否生效，直接量同节点位移，天然无双补偿）。
@@ -305,8 +373,9 @@ export function MessageStream({
   // 切换会话（items 引用整体替换）时重置贴底与窗口
   const historyLoadMark = useMemo(() => ({ at: performance.now() }), [slice.historyLoaded]);
   useEffect(() => {
-    stickRef.current = true;
+    setStuck(true);
     lastScrollTopRef.current = 0;
+    setShowJump(false);
     setWindowSize(FIRST_PAINT_ITEMS);
     const el = containerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -316,25 +385,26 @@ export function MessageStream({
   }, [slice.historyLoaded]);
 
   return (
-    <div
-      ref={containerRef}
-      onScroll={handleScroll}
-      onWheel={(e) => {
-        if (e.deltaY < 0) unpin();
-      }}
-      onTouchStart={(e) => {
-        touchStartYRef.current = e.touches[0]?.clientY ?? null;
-      }}
-      onTouchMove={(e) => {
-        const startY = touchStartYRef.current;
-        const y = e.touches[0]?.clientY;
-        if (startY !== null && y !== undefined && startY - y > 1) unpin();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'PageUp' || e.key === 'ArrowUp') unpin();
-      }}
-      className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
-    >
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        onWheel={(e) => {
+          if (e.deltaY < 0) unpin();
+        }}
+        onTouchStart={(e) => {
+          touchStartYRef.current = e.touches[0]?.clientY ?? null;
+        }}
+        onTouchMove={(e) => {
+          const startY = touchStartYRef.current;
+          const y = e.touches[0]?.clientY;
+          if (startY !== null && y !== undefined && startY - y > 1) unpin();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'PageUp' || e.key === 'ArrowUp') unpin();
+        }}
+        className="min-h-0 w-full flex-1 overflow-y-auto px-6 py-4"
+      >
       <div ref={contentRef} className="msg-stream-items mx-auto flex max-w-[820px] flex-col gap-3.5">
         {slice.items.length === 0 && !slice.streamingText && (
           <div className="pt-24 text-center text-13 text-muted select-none">
@@ -458,6 +528,18 @@ export function MessageStream({
       {sharePayload ? (
         <ShareTurnModal payload={sharePayload} onClose={() => setSharePayload(null)} />
       ) : null}
+      </div>
+      {/* 有未读时计数优先，无未读时显示跳底快捷钮（互斥，Cindy 同款） */}
+      <StreamBottomChip
+        visible={!stuck && unseen > 0}
+        label={`${unseen} 条新消息`}
+        onClick={scrollToBottom}
+      />
+      <StreamBottomChip
+        visible={!stuck && unseen === 0 && showJump}
+        label="跳到底部"
+        onClick={scrollToBottom}
+      />
     </div>
   );
 }

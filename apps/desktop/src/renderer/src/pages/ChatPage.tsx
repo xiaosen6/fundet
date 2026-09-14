@@ -59,6 +59,8 @@ import { dataTransferHasFiles, filesFromDataTransfer } from '../lib/file-drop';
 import { CanvasPane } from '../components/CanvasPane';
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { hasFramelessControls } from '../components/WindowControls';
+import { Tooltip } from '../components/ui/Tooltip';
+import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
 
@@ -240,6 +242,13 @@ export function ChatPage(): React.JSX.Element {
         if (activeId === id) setActiveId(null);
         return;
       }
+      const ok = await confirmDialog({
+        title: '删除这个会话？',
+        description: '会话记录将一并删除，此操作不可撤销。',
+        confirmText: '删除',
+        danger: true,
+      });
+      if (!ok) return;
       await window.fundet.deleteSession(id);
       if (activeId === id) setActiveId(null);
       await refreshSessionList();
@@ -453,18 +462,19 @@ export function ChatPage(): React.JSX.Element {
       {/* Canvas 开关钉在窗口右上（WindowControls 左侧），不随主列/Canvas 面板
           宽度变化漂移——对齐 Cindy「折叠 toggle 钉在窗口层，不跟面板跑」 */}
       {activeId && (
-        <button
-          type="button"
-          title="Canvas"
-          onClick={() => setCanvasOpen((v) => !v)}
-          className={cn(
-            'no-drag fixed top-0 z-40 flex h-[46px] w-10 items-center justify-center hover:bg-hover',
-            hasFramelessControls() ? 'right-[138px]' : 'right-0',
-            canvasOpen ? 'text-primary' : 'text-muted',
-          )}
-        >
-          <PanelRight size={14} />
-        </button>
+        <Tooltip label="Canvas 产物画布" side="bottom">
+          <button
+            type="button"
+            onClick={() => setCanvasOpen((v) => !v)}
+            className={cn(
+              'no-drag fixed top-0 z-40 flex h-[46px] w-10 items-center justify-center hover:bg-hover',
+              hasFramelessControls() ? 'right-[138px]' : 'right-0',
+              canvasOpen ? 'text-primary' : 'text-muted',
+            )}
+          >
+            <PanelRight size={14} />
+          </button>
+        </Tooltip>
       )}
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -611,30 +621,32 @@ export function ChatPage(): React.JSX.Element {
                   />
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="min-w-0 truncate text-left text-14 font-medium text-primary"
-                      title="双击重命名"
-                      onDoubleClick={() => {
-                        headerRenameCommitted.current = false;
-                        setHeaderTitleDraft(activeMeta?.title || '会话');
-                        setRenamingHeader(true);
-                      }}
-                    >
-                      {activeMeta?.title || '会话'}
-                    </button>
-                    <button
-                      type="button"
-                      title="重命名"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 hover:bg-hover hover:text-primary group-hover/title:opacity-100 focus-visible:opacity-100"
-                      onClick={() => {
-                        headerRenameCommitted.current = false;
-                        setHeaderTitleDraft(activeMeta?.title || '会话');
-                        setRenamingHeader(true);
-                      }}
-                    >
-                      <Pencil size={13} />
-                    </button>
+                    <Tooltip label="双击重命名">
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-14 font-medium text-primary"
+                        onDoubleClick={() => {
+                          headerRenameCommitted.current = false;
+                          setHeaderTitleDraft(activeMeta?.title || '会话');
+                          setRenamingHeader(true);
+                        }}
+                      >
+                        {activeMeta?.title || '会话'}
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="重命名">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 hover:bg-hover hover:text-primary group-hover/title:opacity-100 focus-visible:opacity-100"
+                        onClick={() => {
+                          headerRenameCommitted.current = false;
+                          setHeaderTitleDraft(activeMeta?.title || '会话');
+                          setRenamingHeader(true);
+                        }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </Tooltip>
                     {activeMeta?.workDir ? (
                       <span className="ml-1 min-w-0 truncate font-normal text-12 text-muted" title={activeMeta.workDir}>
                         {activeMeta.workDir.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/')}
@@ -675,7 +687,13 @@ export function ChatPage(): React.JSX.Element {
               }}
               onDelete={async (assistantId) => {
                 if (!activeId) return;
-                if (!window.confirm('删除这条回复及其工作过程？此操作不可撤销。')) return;
+                const ok = await confirmDialog({
+                  title: '删除这条回复？',
+                  description: '其工作过程（思考与工具调用）将一并删除，此操作不可撤销。',
+                  confirmText: '删除',
+                  danger: true,
+                });
+                if (!ok) return;
                 try {
                   await deleteAssistantTurn(activeId, assistantId);
                 } catch (err) {
