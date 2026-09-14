@@ -24,6 +24,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
+import { AgentTaskCard } from './AgentTaskCard';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -610,6 +611,8 @@ export function MessageStream({
                   <span className="text-12 text-muted">{item.text}</span>
                 </div>
               );
+            case 'task':
+              return <AgentTaskCard key={item.id} item={item} />;
             default:
               return null;
           }

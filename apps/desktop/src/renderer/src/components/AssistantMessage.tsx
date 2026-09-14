@@ -27,6 +27,7 @@ import { rehypeKnowledgeCite, type KnowledgeSource } from '../lib/knowledgeCite'
 import { cn } from '../lib/cn';
 import { LocalImagePreview, looksLikeFilePath } from './LocalImagePreview';
 import { isMermaidClassName, MarkdownMermaidBlock } from './chat/MarkdownMermaidBlock';
+import { showLightbox } from './ui/Lightbox';
 
 interface AssistantMessageProps {
   text: string;
@@ -283,7 +284,17 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
       if (src && workDir && !/^https?:\/\//i.test(src) && !src.startsWith('data:')) {
         return <LocalImagePreview path={src} workDir={workDir} onOpen={onOpenFile} alt={alt} />;
       }
-      return <img src={src} alt={alt} className="max-h-[360px] max-w-full rounded-inner object-contain" />;
+      // 远程/内联图片：点击全屏查看（本地路径走 LocalImagePreview 自己的大图）
+      return (
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-[360px] max-w-full cursor-zoom-in rounded-inner object-contain"
+          onClick={() => {
+            if (src) showLightbox({ kind: 'image', src, alt });
+          }}
+        />
+      );
     },
   };
 }

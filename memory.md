@@ -154,6 +154,8 @@ Fundet/
 - 侧栏「新对话」上方置顶三个能力入口：IM 机器人 / 技能 / MCP 服务器（点击带 `state.tab` 直达设置对应分区，SettingsPage 从 location.state 初始化 tab）。
 - Canvas 开关钉窗口右上（fixed）；贴附件不强制打开 Canvas。
 - 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）、**超长会话列表增量窗口化**（2026-09-11：首窗最近 60 行，触底 sentinel 再扩 80，activeId 越界自动扩到覆盖——Sidebar.tsx）。
+- **交互反馈基元（2026-09-11 对齐 Cindy）**：全局 `ui/Tooltip`（450ms 延迟悬停提示，替代原生 title，已覆盖消息操作栏/侧栏/头部/输入区）、`ui/toast`（模块级 store + `toast.success/error/info`，知识库导入/笔记/快照反馈）、`ui/ConfirmDialog`（`confirmDialog()` 服务替代 window.confirm，danger 态错误色；删会话/删回复/删 KB/MCP/登录态开关全量接入，**删会话从此有确认**）；MessageStream 底部居中悬浮 chip 双件套（有未读→「N 条新消息」计数，无未读且离底>150px→「跳到底部」，互斥，Cindy 同款规格），reduced-motion 下滚动不smooth。
+- **导航与媒体（2026-09-11 对齐 Cindy 批二）**：划选引用浮钮（消息文本划选→「引用」→onAddToChat 通道）；Ctrl+F 页内搜索（Electron 原生 `findInPage` 四件套 find:start/find:stop + find:result push，FindBar 计数/上下个/大小写）；右上角「跳到上一条提问」icon 圆钮（rAF 探测视口上方最近 user 消息，hover 预览）；`ui/Lightbox` 全屏查看统一三入口（本地图/远程 markdown 图/mermaid 图表点击放大，Esc/遮罩关闭）；**AgentTaskCard**（`agent_task_update` 事件接入 sessionStore applyEvent + DisplayItem task 变体——事件不落库，历史重建不回放）。
 - 用量：首页折叠仪表盘（20 周热力图 + 30 天堆叠柱）+ 设置「用量历史」页（概览 5 格/热力图/按模型表含缓存命中率）。
 - 本地图片预览 `fundet-file://` 协议；复制走 clipboard IPC；分享=回合卡片截图。
 - **流式渲染纵深（2026-09-10 对齐 Cindy 五层，治「长回答越流越卡/长会话发沉/上滑被拽回」）**：①sessionStore delta 通知 32ms 帧级合帧（状态同步写，只压通知）；②消息条目 `content-visibility:auto`（`.msg-stream-items > *`，屏外零布局成本）；③贴底跟随 = 意图判据（wheel/touch/PageUp 上滚 1px 立即解除）+ ResizeObserver 跟底 + 恢复双信号（向下滚 + 贴底 ≤8px）；④流式 markdown 先 repair（补未闭合围栏/摘半截链接，`lib/streamingMarkdown.ts`）再按顶层块分块 memo，**只有尾块重 parse/重高亮**；逐词淡入只挂尾块（按块位号独立账本，稳定块冻结）；⑤列表窗口化（首帧末尾 15 条 → 空闲扩 80 → 触顶 +80，锚点量位移补偿视口）；⑥`[perf] stream first-paint` debug 日志 = 丝滑度回归基线。thinking/工具卡折叠即卸载（Collapse 移植自带，收起不占 DOM）。

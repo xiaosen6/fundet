@@ -45,6 +45,17 @@ export type DisplayItem =
       done: boolean;
       createdAt?: number;
     }
+  | {
+      /** 子 agent 任务进度（agent_task_update 实时事件；不落库，历史重建无此卡） */
+      kind: 'task';
+      id: string;
+      taskId: string;
+      title: string;
+      description?: string;
+      summary?: string;
+      status: 'running' | 'completed' | 'failed' | 'stopped';
+      model?: string | null;
+    }
   | { kind: 'error'; id: string; message: string }
   | { kind: 'notice'; id: string; text: string };
 
@@ -274,6 +285,41 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         done: false,
         createdAt: Date.now(),
       });
+      return 'immediate';
+    }
+
+    case 'agent_task_update': {
+      const data = event.data as {
+        taskId?: string;
+        status?: 'running' | 'completed' | 'failed' | 'stopped';
+        title?: string;
+        description?: string;
+        summary?: string;
+        model?: string | null;
+      };
+      if (!data.taskId) return 'immediate';
+      const id = `task-${data.taskId}`;
+      const existing = s.items.find((it) => it.kind === 'task' && it.id === id);
+      if (existing && existing.kind === 'task') {
+        updateItem(sessionId, id, {
+          title: data.title ?? existing.title,
+          description: data.description ?? existing.description,
+          summary: data.summary ?? existing.summary,
+          status: data.status ?? existing.status,
+          model: data.model !== undefined ? data.model : existing.model,
+        });
+      } else {
+        appendItem(sessionId, {
+          kind: 'task',
+          id,
+          taskId: data.taskId,
+          title: data.title || '子任务',
+          description: data.description,
+          summary: data.summary,
+          status: data.status ?? 'running',
+          model: data.model,
+        });
+      }
       return 'immediate';
     }
 

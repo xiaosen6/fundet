@@ -8,6 +8,7 @@
  */
 import { memo, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { showLightbox } from '../ui/Lightbox';
 
 type MermaidModule = typeof import('mermaid')['default'];
 
@@ -105,7 +106,13 @@ function MarkdownMermaidBlockImpl({ raw }: { raw: string }): React.JSX.Element {
           源码
         </button>
       </div>
-      <div className="overflow-x-auto px-3 py-2" dangerouslySetInnerHTML={{ __html: svg }} />
+      {/* 点击图表全屏放大（对齐 Cindy MermaidLightbox） */}
+      <div
+        className="cursor-zoom-in overflow-x-auto px-3 py-2"
+        title="点击放大"
+        onClick={() => showLightbox({ kind: 'node', label: 'mermaid', node: <div dangerouslySetInnerHTML={{ __html: svg }} /> })}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
     </div>
   );
 }

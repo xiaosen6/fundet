@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { basename, isImagePath } from '../lib/artifacts';
 import { cn } from '../lib/cn';
 import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
+import { showLightbox } from './ui/Lightbox';
 
 export function looksLikeFilePath(text: string): boolean {
   const t = text.trim();
@@ -35,7 +35,6 @@ export function LocalImagePreview({
   const protocolUrl = buildFilePreviewUrl(workDir, path);
   const [url, setUrl] = useState<string | null>(protocolUrl);
   const [error, setError] = useState('');
-  const [zoom, setZoom] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
 
   useEffect(() => {
@@ -66,7 +65,7 @@ export function LocalImagePreview({
 
   const open = (): void => {
     onOpen?.(path);
-    if (url) setZoom(true);
+    if (url) showLightbox({ kind: 'image', src: url, alt: alt || basename(path) });
   };
 
   return (
@@ -89,23 +88,6 @@ export function LocalImagePreview({
           <span className="block px-2 py-6 text-12 text-muted">{error || '加载图片…'}</span>
         )}
       </button>
-      {zoom && url
-        ? createPortal(
-            <button
-              type="button"
-              className="fixed inset-0 z-[80] flex cursor-zoom-out items-center justify-center bg-black/70 p-6"
-              onClick={() => setZoom(false)}
-              title="点击关闭"
-            >
-              <img
-                src={url}
-                alt={alt || basename(path)}
-                className="max-h-[92vh] max-w-[92vw] object-contain"
-              />
-            </button>,
-            document.body,
-          )
-        : null}
     </span>
   );
 }
