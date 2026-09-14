@@ -753,6 +753,19 @@ export async function deleteAssistantTurn(sessionId: string, assistantId: string
   notifySlice(sessionId);
 }
 
+/** 编辑重发用：删除某条用户消息（含）之后的本地条目（无 createdAt 的临时项保留）。 */
+export function truncateItemsFrom(sessionId: string, fromCreatedAt: number): void {
+  const s = getSlice(sessionId);
+  patchSlice(sessionId, {
+    items: s.items.filter((it) => {
+      if (!('createdAt' in it)) return true;
+      const ts = (it as { createdAt?: number }).createdAt;
+      return ts === undefined || ts < fromCreatedAt;
+    }),
+  });
+  notifySlice(sessionId);
+}
+
 export async function forkSessionAt(sessionId: string, upToCreatedAt: number): Promise<string> {
   const id = await window.fundet.forkSession(sessionId, upToCreatedAt);
   await refreshSessionList();

@@ -28,6 +28,7 @@ import {
   renameSession,
   resolvePermission,
   sendMessage,
+  truncateItemsFrom,
   updateDraftSession,
   useRunningIds,
   useSessionList,
@@ -61,6 +62,7 @@ import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { hasFramelessControls } from '../components/WindowControls';
 import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
+import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
@@ -109,6 +111,8 @@ export function ChatPage(): React.JSX.Element {
 
   // Ctrl+F 页内搜索（仅会话页生效；FindBar 内部处理 Esc/清高亮）
   const [findOpen, setFindOpen] = useState(false);
+  // 编辑上一条用户消息：记录原消息时间戳，发送时截断其后重发（Cindy 同款 Pen）
+  const [editingFrom, setEditingFrom] = useState<number | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
@@ -124,6 +128,7 @@ export function ChatPage(): React.JSX.Element {
   useEffect(() => {
     setRenamingHeader(false);
     headerRenameCommitted.current = false;
+    setEditingFrom(null);
   }, [activeId]);
 
   const activeMeta = useMemo(
@@ -387,6 +392,23 @@ export function ChatPage(): React.JSX.Element {
     if (picked && picked.length > 0) await stagePaths(picked);
   }, [stagePaths]);
 
+  // 「编辑」：取最后一条用户消息进输入框（编辑态聚焦全选；Esc/横幅可取消）
+  const startEditLastMessage = useCallback((): void => {
+    if (!activeId) return;
+    if (slice.isRunning) {
+      toast.info('等本轮回复结束后再编辑');
+      return;
+    }
+    const lastUser = [...slice.items].reverse().find((it) => it.kind === 'user');
+    if (!lastUser || lastUser.kind !== 'user') {
+      toast.info('还没有可编辑的消息');
+      return;
+    }
+    setInput(lastUser.text);
+    setEditingFrom(lastUser.createdAt ?? Date.now());
+    setNotice('');
+  }, [activeId, slice.isRunning, slice.items]);
+
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
     if (!activeId || (!text && attachments.length === 0)) return;
@@ -394,10 +416,24 @@ export function ChatPage(): React.JSX.Element {
     setInput('');
     setAttachments([]);
     setNotice('');
+    // 编辑态：先删原消息及其后全部内容（DB + 本地），再按正常发送走
+    if (editingFrom !== null) {
+      const from = editingFrom;
+      setEditingFrom(null);
+      if (!isDraftSession(activeId)) {
+        try {
+          await window.fundet.deleteTurn(activeId, from - 1, Date.now() + 60_000);
+        } catch (err) {
+          setNotice(`编辑发送失败：${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+      }
+      truncateItemsFrom(activeId, from);
+    }
     // 重启后旧会话 / 本地草稿都不在 main 内存：带 create 让 main lazy-create。
     const create = buildCreateParam();
     await sendMessage(activeId, text, create, pending.length > 0 ? pending : undefined);
-  }, [activeId, attachments, buildCreateParam, input]);
+  }, [activeId, attachments, buildCreateParam, editingFrom, input]);
 
   const abort = useCallback(async (): Promise<void> => {
     if (activeId) await abortSession(activeId);
@@ -753,6 +789,13 @@ export function ChatPage(): React.JSX.Element {
                       onAddFiles={(files) => void addDroppedFiles(files)}
                       onPickFiles={() => void pickFiles()}
                       dragOver={dragOver}
+                      onEditLastMessage={
+                        activeId && slice.items.some((it) => it.kind === 'user') && !slice.isRunning
+                          ? startEditLastMessage
+                          : undefined
+                      }
+                      editing={editingFrom !== null}
+                      onCancelEditing={() => setEditingFrom(null)}
                       leadingControls={
                         <>
                           <FolderPickerChip

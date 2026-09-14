@@ -8,8 +8,8 @@
  * Enter 发送 / Shift+Enter 换行 / IME 组词期间 Enter 不发送（§14.3）。
  * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接。
  */
-import { useMemo, useRef, useState } from 'react';
-import { Paperclip, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Paperclip, Pen, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { SendButton } from './SendButton';
@@ -39,6 +39,11 @@ interface ChatInputProps {
   onAddFiles?: (files: File[]) => void;
   onPickFiles?: () => void;
   dragOver?: boolean;
+  /** 编辑上一条用户消息（Cindy 同款 Pen 按钮；不可用时隐藏） */
+  onEditLastMessage?: () => void;
+  /** 编辑态：横幅提示 + 聚焦全选 */
+  editing?: boolean;
+  onCancelEditing?: () => void;
 }
 
 export function ChatInput({
@@ -58,9 +63,24 @@ export function ChatInput({
   onAddFiles,
   onPickFiles,
   dragOver,
+  onEditLastMessage,
+  editing,
+  onCancelEditing,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+
+  // 进入编辑态：聚焦并全选原文本，改起来顺手
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
 
   const autoResize = (): void => {
     const el = textareaRef.current;
@@ -130,6 +150,23 @@ export function ChatInput({
         </div>
       )}
       <div className="relative flex max-h-[300px] min-h-[86px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]">
+        {editing && (
+          <div className="mb-2 flex items-center gap-2 rounded-inner border border-board bg-chip px-3 py-1.5 select-none">
+            <Pen size={12} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 text-12 text-secondary">
+              正在编辑上一条消息，发送后将替换原消息及其后的回复
+            </span>
+            {onCancelEditing && (
+              <button
+                type="button"
+                className="shrink-0 text-12 text-muted hover:text-primary"
+                onClick={onCancelEditing}
+              >
+                取消
+              </button>
+            )}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {attachments.map((a) => (
@@ -204,6 +241,12 @@ export function ChatInput({
                 return;
               }
             }
+            // 编辑态 Esc = 取消编辑（slash 面板开着时优先给面板）
+            if (editing && e.key === 'Escape' && !slashQuery) {
+              e.preventDefault();
+              onCancelEditing?.();
+              return;
+            }
             // Enter 发送 / Shift+Enter 换行；IME 组词期间的 Enter 不算发送（§14.3）
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -216,9 +259,10 @@ export function ChatInput({
           )}
         />
 
-        {/* 底部工具行：左侧 chip 组 / 右侧 chip + 发送 */}
+        {/* 底部工具行：左侧路径按钮领衔的 chip 组 + 回形针 + 编辑 / 右侧 chip + 发送 */}
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex min-w-0 shrink items-center gap-2">
+            {leadingControls}
             {onPickFiles && (
               <Tooltip label="添加文件" side="top">
                 <button
@@ -231,7 +275,21 @@ export function ChatInput({
                 </button>
               </Tooltip>
             )}
-            {leadingControls}
+            {onEditLastMessage && (
+              <Tooltip label="编辑上一条消息" side="top">
+                <button
+                  type="button"
+                  disabled={disabled || isRunning}
+                  onClick={onEditLastMessage}
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-full transition-colors disabled:opacity-40',
+                    editing ? 'bg-accent text-accent-fg' : 'text-muted hover:bg-hover hover:text-primary',
+                  )}
+                >
+                  <Pen size={14} />
+                </button>
+              </Tooltip>
+            )}
           </div>
           <div className="flex min-w-0 shrink items-center justify-end gap-2">
             {trailingControls}

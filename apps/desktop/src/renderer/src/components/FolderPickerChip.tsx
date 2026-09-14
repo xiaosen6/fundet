@@ -41,12 +41,13 @@ export function FolderPickerChip({ cwd, onSelect, size = 'compact' }: FolderPick
         'text-primary transition-colors select-none',
         big
           ? 'h-[42px] border-board bg-card px-[18px] text-14 font-medium hover:bg-hover'
-          : 'h-[30px] border-transparent bg-transparent px-2.5 text-13 hover:border-board hover:bg-composer-pill',
+          : // Cindy 会话态 composer 的路径按钮：带边框 pill（Folder 图标 + 目录名）
+            'h-[30px] shrink-0 border-board bg-card px-3 text-13 hover:bg-hover',
       )}
     >
-      <Folder size={big ? 15 : 14} className="shrink-0" />
-      <span className="min-w-0 max-w-[240px] truncate">{label}</span>
-      <ChevronDown size={big ? 12 : 14} className="shrink-0 text-muted" />
+      <Folder size={big ? 15 : 15} className="shrink-0" />
+      <span className="min-w-0 max-w-[200px] truncate">{label}</span>
+      {big && <ChevronDown size={12} className="shrink-0 text-muted" />}
     </button>
   );
 
