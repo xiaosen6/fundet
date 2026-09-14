@@ -17,8 +17,9 @@
  * - 每轮完成后的助手消息挂 MessageActionBar（复制 / 分享 / 分叉 / 更多），
  *   不含「复制当前消息链接」。
  */
-import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Info, Quote } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageActionBar } from './MessageActionBar';
@@ -208,14 +209,79 @@ function AssistantTurn({
   );
 }
 
-/** 窗口化（对齐 Cindy render-window）：首帧只挂末尾 N 条，滚到顶逐步扩窗；
- * 窗口外不进 DOM，叠加 content-visibility 把长会话首帧成本压到一屏。 */
-const FIRST_PAINT_ITEMS = 15;
-const EXPAND_STEP = 80;
-/** 空闲期自动扩到的窗口上限（对齐 Cindy INITIAL_ITEMS） */
-const INITIAL_ITEMS = 80;
-/** 距顶多少 px 内触发扩窗 */
-const EXPAND_AT_TOP_PX = 120;
+/** 虚拟行初估高度（动态测量迅速校正；粗估只影响首帧滚动条长度） */
+const ESTIMATE_ROW_PX = 140;
+/** 视口外上下各多渲染的行数 */
+const OVERSCAN_ROWS = 8;
+
+/** assistant 行渲染（虚拟化后从行 switch 抽出；含 turn 尾判定与操作栏挂载） */
+function AssistantRow({
+  item,
+  index,
+  grouped,
+  slice,
+  hasStreaming,
+  pinnedId,
+  workDir,
+  onOpenFile,
+  canFork,
+  onFork,
+  onAddToChat,
+  onDelete,
+  setSharePayload,
+}: {
+  item: AssistantItem;
+  index: number;
+  grouped: GroupedRow[];
+  slice: SessionSlice;
+  hasStreaming: boolean;
+  pinnedId: string | null;
+  workDir?: string;
+  onOpenFile?: (path: string) => void;
+  canFork?: boolean;
+  onFork?: (createdAt: number) => Promise<void>;
+  onAddToChat?: (text: string) => void;
+  onDelete?: (id: string) => Promise<void>;
+  setSharePayload: React.Dispatch<React.SetStateAction<ShareTurnPayload | null>>;
+}): React.JSX.Element {
+  const showBar = isTurnTailAssistant(grouped, index, slice.isRunning, hasStreaming);
+  const kbSources = knowledgeSourcesFor(slice.items, item.id);
+  if (!showBar) {
+    return (
+      <div className="flex justify-start">
+        <div className="w-full max-w-full min-w-0">
+          <AssistantMessage
+            text={item.text}
+            workDir={workDir}
+            onOpenFile={onOpenFile}
+            knowledgeSources={kbSources}
+          />
+        </div>
+      </div>
+    );
+  }
+  const userText = lastUserTextBefore(slice.items, item.id);
+  const createdAt = item.createdAt;
+  return (
+    <AssistantTurn
+      item={item}
+      pinned={item.id === pinnedId}
+      workDir={workDir}
+      onOpenFile={onOpenFile}
+      knowledgeSources={kbSources}
+      onShare={() =>
+        setSharePayload({
+          userText,
+          assistantText: item.text,
+          createdAt: item.createdAt,
+        })
+      }
+      onFork={canFork && createdAt && onFork ? () => onFork(createdAt) : undefined}
+      onAddToChat={onAddToChat ? () => onAddToChat(item.text) : undefined}
+      onDelete={onDelete ? () => onDelete(item.id) : undefined}
+    />
+  );
+}
 
 /** 底部居中悬浮 pill（对齐 Cindy JumpToBottomChip / NewMessageIndicator 同款规格，
  * 两者互斥共存：有未读时显示计数，否则显示跳底快捷钮） */
@@ -266,17 +332,24 @@ export function MessageStream({
   const stickRef = useRef(true);
   const lastScrollTopRef = useRef(0);
   const touchStartYRef = useRef<number | null>(null);
-  const [windowSize, setWindowSize] = useState(FIRST_PAINT_ITEMS);
-  const pendingAnchorRef = useRef<{ el: HTMLElement; top: number } | null>(null);
   const [sharePayload, setSharePayload] = useState<ShareTurnPayload | null>(null);
   const grouped = useMemo(
     () => groupWorkItems(slice.items, slice.isRunning),
     [slice.items, slice.isRunning],
   );
   const hasStreaming = Boolean(slice.streamingText);
-  const windowStart = Math.max(0, grouped.length - windowSize);
-  const visibleGrouped = windowStart > 0 ? grouped.slice(windowStart) : grouped;
-  const hiddenCount = windowStart;
+  // 虚拟化行 = 分组行 + 流式未封口伪行（永远最后一行）
+  const rows = useMemo<Array<GroupedRow | { kind: 'streaming'; id: string }>>(
+    () => (slice.streamingText ? [...grouped, { kind: 'streaming', id: '__streaming__' }] : grouped),
+    [grouped, slice.streamingText],
+  );
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ESTIMATE_ROW_PX,
+    overscan: OVERSCAN_ROWS,
+    getItemKey: (i) => rows[i]!.id,
+  });
   const pinnedId = useMemo(() => {
     if (slice.isRunning || hasStreaming) return null;
     for (let i = grouped.length - 1; i >= 0; i--) {
@@ -315,10 +388,13 @@ export function MessageStream({
   };
 
   const scrollToBottom = (): void => {
-    const el = containerRef.current;
-    if (!el) return;
     setStuck(true);
-    el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' });
+    if (rows.length > 0) {
+      virtualizer.scrollToIndex(rows.length - 1, {
+        align: 'end',
+        behavior: reducedMotion ? 'auto' : 'smooth',
+      });
+    }
   };
 
   // 跳到上一条提问（对齐 Cindy PrevMessageJumpChip：icon-only 圆钮落右上角）。
@@ -338,14 +414,16 @@ export function MessageStream({
     requestAnimationFrame(() => {
       rafPendingRef.current = false;
       const el = containerRef.current;
-      const content = contentRef.current;
-      if (!el || !content) return;
-      const domOffset = hiddenCount > 0 ? 1 : 0;
+      if (!el || rows.length === 0) {
+        setPrevQuestion(null);
+        return;
+      }
+      // 首个与视口顶相交的虚拟行（items 有序，含 overscan）
+      const offset = el.scrollTop;
       let firstVisible = -1;
-      for (let c = domOffset; c < content.children.length; c++) {
-        const child = content.children[c] as HTMLElement;
-        if (child.offsetTop + child.offsetHeight > el.scrollTop + 4) {
-          firstVisible = windowStart + (c - domOffset);
+      for (const it of virtualizer.getVirtualItems()) {
+        if (it.end >= offset + 4) {
+          firstVisible = it.index;
           break;
         }
       }
@@ -373,12 +451,9 @@ export function MessageStream({
   const jumpToPrevQuestion = (): void => {
     if (!prevQuestion) return;
     unpin();
-    const content = contentRef.current;
-    const domOffset = hiddenCount > 0 ? 1 : 0;
-    const child = content?.children[domOffset + (prevQuestion.index - windowStart)] as HTMLElement | undefined;
-    child?.scrollIntoView({
+    virtualizer.scrollToIndex(prevQuestion.index, {
+      align: 'start',
       behavior: reducedMotion ? 'auto' : 'smooth',
-      block: 'start',
     });
   };
 
@@ -426,62 +501,40 @@ export function MessageStream({
     setQuoteSel(null);
     // 右上角「上一条提问」跳钮探测（rAF 节流）
     updatePrevQuestion();
-    // 触顶扩窗：上方还有窗口外条目时向上读历史逐段挂载。
-    // 记录当前窗口首元素的视口位置，扩窗提交后按漂移补偿（不猜浏览器
-    // anchoring 是否生效，直接量同节点位移，天然无双补偿）。
-    if (el.scrollTop < EXPAND_AT_TOP_PX && windowStart > 0) {
-      const anchorEl = (contentRef.current?.children[windowStart] ?? null) as HTMLElement | null;
-      pendingAnchorRef.current = anchorEl ? { el: anchorEl, top: anchorEl.getBoundingClientRect().top } : null;
-      setWindowSize((w) => Math.min(w + EXPAND_STEP, grouped.length));
-    }
   };
 
-  // 扩窗提交后：按锚点元素的实际位移补偿 scrollTop，视口纹丝不动
-  useLayoutEffect(() => {
-    const pending = pendingAnchorRef.current;
-    if (!pending) return;
-    pendingAnchorRef.current = null;
-    const drift = pending.el.getBoundingClientRect().top - pending.top;
-    if (Math.abs(drift) > 1) {
-      const el = containerRef.current;
-      if (el) el.scrollTop += drift;
-    }
-  }, [windowStart]);
-
-  // 扩窗/切会话后重估「上一条提问」跳钮（视口内容变了）
+  // 切会话后重估「上一条提问」跳钮（视口内容变了）
   useEffect(() => {
     updatePrevQuestion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowStart, slice.historyLoaded]);
+  }, [slice.historyLoaded]);
 
-  // 内容高度任何来源增长（token 追加/图片加载/卡片展开/CV 纠偏）且贴底态 → 跟底
+  // 内容高度任何来源增长（token 追加/图片加载/卡片展开/测量校正）且贴底态 → 跟底。
+  // 虚拟化后内容高度 = virtualizer 总尺寸，观察挂载容器即可。
   useEffect(() => {
     const content = contentRef.current;
-    const el = containerRef.current;
-    if (!content || !el) return;
+    if (!content) return;
     const ro = new ResizeObserver(() => {
-      if (stickRef.current) el.scrollTop = el.scrollHeight;
+      if (stickRef.current && rows.length > 0) {
+        virtualizer.scrollToIndex(rows.length - 1, { align: 'end' });
+      }
     });
     ro.observe(content);
     return () => ro.disconnect();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length]);
 
-  // 空闲期自动扩窗到 80：正常体量的会话很快全量可见，只有真长会话才保留窗口
-  useEffect(() => {
-    if (windowSize >= INITIAL_ITEMS) return undefined;
-    const id = setTimeout(() => setWindowSize((w) => Math.max(w, INITIAL_ITEMS)), 600);
-    return () => clearTimeout(id);
-  }, [windowSize]);
-
-  // 切换会话（items 引用整体替换）时重置贴底与窗口
+  // 切换会话（items 引用整体替换）时重置贴底；rAF 后行测量就位再定位底
   const historyLoadMark = useMemo(() => ({ at: performance.now() }), [slice.historyLoaded]);
   useEffect(() => {
     setStuck(true);
     lastScrollTopRef.current = 0;
     setShowJump(false);
-    setWindowSize(FIRST_PAINT_ITEMS);
-    const el = containerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      if (rows.length > 0) {
+        virtualizer.scrollToIndex(rows.length - 1, { align: 'end', behavior: 'auto' });
+      }
+    });
     // ⑧ 渲染基线：historyLoaded 变化（render 起点挂 mark）→ 本 effect（commit 后）
     console.debug('[perf] stream first-paint', Math.round(performance.now() - historyLoadMark.at), 'ms');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -508,129 +561,100 @@ export function MessageStream({
           if (e.key === 'PageUp' || e.key === 'ArrowUp') unpin();
           if (e.key === 'Escape') setQuoteSel(null);
         }}
+        /* 浏览器滚动锚定会与虚拟化的位移补偿互相打架，显式关掉 */
+        style={{ overflowAnchor: 'none' }}
         className="min-h-0 w-full flex-1 overflow-y-auto px-6 py-4"
       >
-      <div ref={contentRef} className="msg-stream-items mx-auto flex max-w-[820px] flex-col gap-3.5">
-        {slice.items.length === 0 && !slice.streamingText && (
+      <div
+        ref={contentRef}
+        className="msg-stream-items relative mx-auto w-full max-w-[820px]"
+        style={rows.length > 0 ? { height: virtualizer.getTotalSize() } : undefined}
+      >
+        {rows.length === 0 && (
           <div className="pt-24 text-center text-13 text-muted select-none">
             输入消息或拖入文件开始对话
           </div>
         )}
 
-        {hiddenCount > 0 && (
-          <div className="pt-1 text-center text-12 text-muted select-none">
-            已省略上方 {hiddenCount} 条 · 向上滚动加载
-          </div>
-        )}
-
-        {visibleGrouped.map((item, relIndex) => {
-          const index = windowStart + relIndex;
-          if (item.kind === 'work_group') {
-            return (
-              <WorkGroupBlock
-                key={item.id}
-                childrenItems={item.children}
-                streaming={item.streaming}
-                workDir={workDir}
-                onOpenFile={onOpenFile}
-              />
-            );
-          }
-          switch (item.kind) {
-            case 'user':
-              return <UserBubble key={item.id} text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
-            case 'assistant': {
-              const showBar = isTurnTailAssistant(grouped, index, slice.isRunning, hasStreaming);
-              const kbSources = knowledgeSourcesFor(slice.items, item.id);
-              if (!showBar) {
-                return (
-                  <div key={item.id} className="flex justify-start">
+        {virtualizer.getVirtualItems().map((vr) => {
+          const item = rows[vr.index]!;
+          return (
+            <div
+              key={vr.key}
+              data-index={vr.index}
+              data-virtual
+              ref={virtualizer.measureElement}
+              className="absolute left-0 w-full"
+              style={{ transform: `translateY(${vr.start}px)` }}
+            >
+              {/* 行间距内化为行内 padding（绝对定位下容器 gap 失效） */}
+              <div className="pb-3.5">
+                {item.kind === 'work_group' ? (
+                  <WorkGroupBlock
+                    childrenItems={item.children}
+                    streaming={item.streaming}
+                    workDir={workDir}
+                    onOpenFile={onOpenFile}
+                  />
+                ) : item.kind === 'streaming' ? (
+                  <div className="flex justify-start">
                     <div className="w-full max-w-full min-w-0">
                       <AssistantMessage
-                        text={item.text}
+                        text={slice.streamingText}
+                        streaming
                         workDir={workDir}
                         onOpenFile={onOpenFile}
-                        knowledgeSources={kbSources}
                       />
                     </div>
                   </div>
-                );
-              }
-              const userText = lastUserTextBefore(slice.items, item.id);
-              const createdAt = item.createdAt;
-              return (
-                <AssistantTurn
-                  key={item.id}
-                  item={item}
-                  pinned={item.id === pinnedId}
-                  workDir={workDir}
-                  onOpenFile={onOpenFile}
-                  knowledgeSources={kbSources}
-                  onShare={() =>
-                    setSharePayload({
-                      userText,
-                      assistantText: item.text,
-                      createdAt: item.createdAt,
-                    })
-                  }
-                  onFork={
-                    canFork && createdAt && onFork ? () => onFork(createdAt) : undefined
-                  }
-                  onAddToChat={onAddToChat ? () => onAddToChat(item.text) : undefined}
-                  onDelete={onDelete ? () => onDelete(item.id) : undefined}
-                />
-              );
-            }
-            case 'error':
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-2 rounded-inner border border-error-border bg-error-bg px-3 py-2"
-                >
-                  <AlertCircle size={14} className="mt-[2px] shrink-0 text-error" />
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-13 break-all whitespace-pre-wrap text-error select-text">
-                      {item.message}
-                    </span>
-                    {onRetryError && (
-                      <button
-                        type="button"
-                        onClick={onRetryError}
-                        className="mt-1.5 rounded-full border border-error-border px-2.5 py-0.5 text-12 text-error transition-colors hover:bg-error-bg/60"
-                      >
-                        重新发送
-                      </button>
-                    )}
+                ) : item.kind === 'user' ? (
+                  <UserBubble text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
+                ) : item.kind === 'assistant' ? (
+                  <AssistantRow
+                    item={item}
+                    index={vr.index}
+                    grouped={grouped}
+                    slice={slice}
+                    hasStreaming={hasStreaming}
+                    pinnedId={pinnedId}
+                    workDir={workDir}
+                    onOpenFile={onOpenFile}
+                    canFork={canFork}
+                    onFork={onFork}
+                    onAddToChat={onAddToChat}
+                    onDelete={onDelete}
+                    setSharePayload={setSharePayload}
+                  />
+                ) : item.kind === 'error' ? (
+                  <div className="flex items-start gap-2 rounded-inner border border-error-border bg-error-bg px-3 py-2">
+                    <AlertCircle size={14} className="mt-[2px] shrink-0 text-error" />
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-13 break-all whitespace-pre-wrap text-error select-text">
+                        {item.message}
+                      </span>
+                      {onRetryError && (
+                        <button
+                          type="button"
+                          onClick={onRetryError}
+                          className="mt-1.5 rounded-full border border-error-border px-2.5 py-0.5 text-12 text-error transition-colors hover:bg-error-bg/60"
+                        >
+                          重新发送
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            case 'notice':
-              return (
-                <div key={item.id} className="flex items-center justify-center gap-1.5 select-none">
-                  <Info size={12} className="text-muted" />
-                  <span className="text-12 text-muted">{item.text}</span>
-                </div>
-              );
-            case 'task':
-              return <AgentTaskCard key={item.id} item={item} />;
-            default:
-              return null;
-          }
-        })}
-
-        {/* 未封口的流式文本（逐词淡入由 AssistantMessage streaming 分支处理） */}
-        {slice.streamingText && (
-          <div className="flex justify-start">
-            <div className="w-full max-w-full min-w-0">
-              <AssistantMessage
-                text={slice.streamingText}
-                streaming
-                workDir={workDir}
-                onOpenFile={onOpenFile}
-              />
+                ) : item.kind === 'notice' ? (
+                  <div className="flex items-center justify-center gap-1.5 select-none">
+                    <Info size={12} className="text-muted" />
+                    <span className="text-12 text-muted">{item.text}</span>
+                  </div>
+                ) : item.kind === 'task' ? (
+                  <AgentTaskCard item={item} />
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })}
       </div>
       {sharePayload ? (
         <ShareTurnModal payload={sharePayload} onClose={() => setSharePayload(null)} />

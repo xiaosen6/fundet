@@ -527,7 +527,7 @@ textarea:focus-visible {
 
 /* 消息条目视口外跳过布局与绘制（对齐 Cindy msg-stream-items）：长会话滚动/切换
    不再随总条数线性变沉。intrinsic-size 给 240px 估值，渲染后由真实尺寸纠偏。 */
-.msg-stream-items > * {
+.msg-stream-items > *:not([data-virtual]) {
   content-visibility: auto;
   contain-intrinsic-size: auto 240px;
 }
