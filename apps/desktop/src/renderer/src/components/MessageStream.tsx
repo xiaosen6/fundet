@@ -18,7 +18,7 @@
  *   不含「复制当前消息链接」。
  */
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, ArrowDown, Info } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Info, Quote } from 'lucide-react';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageActionBar } from './MessageActionBar';
@@ -27,6 +27,7 @@ import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { Tooltip } from './ui/Tooltip';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
 
@@ -319,6 +320,97 @@ export function MessageStream({
     el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' });
   };
 
+  // 跳到上一条提问（对齐 Cindy PrevMessageJumpChip：icon-only 圆钮落右上角）。
+  // rAF 节流地找「视口首个可见条目」之前最近的一条 user 消息。
+  const [prevQuestion, setPrevQuestion] = useState<{ index: number; preview: string } | null>(null);
+  const userIndexes = useMemo(() => {
+    const idx: number[] = [];
+    grouped.forEach((g, i) => {
+      if (g.kind === 'user') idx.push(i);
+    });
+    return idx;
+  }, [grouped]);
+  const rafPendingRef = useRef(false);
+  const updatePrevQuestion = (): void => {
+    if (rafPendingRef.current) return;
+    rafPendingRef.current = true;
+    requestAnimationFrame(() => {
+      rafPendingRef.current = false;
+      const el = containerRef.current;
+      const content = contentRef.current;
+      if (!el || !content) return;
+      const domOffset = hiddenCount > 0 ? 1 : 0;
+      let firstVisible = -1;
+      for (let c = domOffset; c < content.children.length; c++) {
+        const child = content.children[c] as HTMLElement;
+        if (child.offsetTop + child.offsetHeight > el.scrollTop + 4) {
+          firstVisible = windowStart + (c - domOffset);
+          break;
+        }
+      }
+      if (firstVisible <= 0) {
+        setPrevQuestion(null);
+        return;
+      }
+      let prev = -1;
+      for (const ui of userIndexes) {
+        if (ui < firstVisible) prev = ui;
+        else break;
+      }
+      const item = prev >= 0 ? grouped[prev] : undefined;
+      if (prev < 0 || !item || item.kind !== 'user') {
+        setPrevQuestion(null);
+        return;
+      }
+      const preview = (item.text.split('\n').find((l) => l.trim().length > 0) ?? '')
+        .trim()
+        .slice(0, 60);
+      setPrevQuestion({ index: prev, preview });
+    });
+  };
+
+  const jumpToPrevQuestion = (): void => {
+    if (!prevQuestion) return;
+    unpin();
+    const content = contentRef.current;
+    const domOffset = hiddenCount > 0 ? 1 : 0;
+    const child = content?.children[domOffset + (prevQuestion.index - windowStart)] as HTMLElement | undefined;
+    child?.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  };
+
+  // 划选引用：消息文本被划选后浮出「引用」钮（点击走 onAddToChat，> 前缀引用）
+  const [quoteSel, setQuoteSel] = useState<{ x: number; y: number; text: string } | null>(null);
+  const handleMouseUp = (): void => {
+    const el = containerRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.isCollapsed || !onAddToChat) {
+      setQuoteSel(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text || text.length > 500) {
+      setQuoteSel(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const anchor = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+    if (!anchor || !el.contains(anchor)) {
+      setQuoteSel(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    const wrapRect = el.getBoundingClientRect();
+    setQuoteSel({
+      x: rect.left - wrapRect.left + Math.min(rect.width / 2, 200),
+      y: Math.max(4, rect.top - wrapRect.top - 34),
+      text,
+    });
+  };
+
   const handleScroll = (): void => {
     const el = containerRef.current;
     if (!el) return;
@@ -329,6 +421,10 @@ export function MessageStream({
     if (!stickRef.current && goingDown && distance <= 8) setStuck(true);
     // 悬浮跳底钮显隐：脱离贴底且离底足够远（近距不闪）
     setShowJump(distance > 150 && !stickRef.current);
+    // 滚动时收起划选引用钮（选区与按钮错位没有意义）
+    setQuoteSel(null);
+    // 右上角「上一条提问」跳钮探测（rAF 节流）
+    updatePrevQuestion();
     // 触顶扩窗：上方还有窗口外条目时向上读历史逐段挂载。
     // 记录当前窗口首元素的视口位置，扩窗提交后按漂移补偿（不猜浏览器
     // anchoring 是否生效，直接量同节点位移，天然无双补偿）。
@@ -350,6 +446,12 @@ export function MessageStream({
       if (el) el.scrollTop += drift;
     }
   }, [windowStart]);
+
+  // 扩窗/切会话后重估「上一条提问」跳钮（视口内容变了）
+  useEffect(() => {
+    updatePrevQuestion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowStart, slice.historyLoaded]);
 
   // 内容高度任何来源增长（token 追加/图片加载/卡片展开/CV 纠偏）且贴底态 → 跟底
   useEffect(() => {
@@ -389,6 +491,7 @@ export function MessageStream({
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onMouseUp={handleMouseUp}
         onWheel={(e) => {
           if (e.deltaY < 0) unpin();
         }}
@@ -402,6 +505,7 @@ export function MessageStream({
         }}
         onKeyDown={(e) => {
           if (e.key === 'PageUp' || e.key === 'ArrowUp') unpin();
+          if (e.key === 'Escape') setQuoteSel(null);
         }}
         className="min-h-0 w-full flex-1 overflow-y-auto px-6 py-4"
       >
@@ -529,6 +633,21 @@ export function MessageStream({
         <ShareTurnModal payload={sharePayload} onClose={() => setSharePayload(null)} />
       ) : null}
       </div>
+      {/* 右上角「跳到上一条提问」（icon-only 圆钮，对齐 Cindy；hover 预览问题原文） */}
+      {prevQuestion && (
+        <div className="absolute top-4 right-4 z-40">
+          <Tooltip label={prevQuestion.preview || '上一条提问'}>
+            <button
+              type="button"
+              aria-label="跳到上一条提问"
+              onClick={jumpToPrevQuestion}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-board bg-card text-secondary shadow-[var(--shadow-menu)] transition-colors hover:bg-hover hover:text-primary active:scale-[0.98]"
+            >
+              <ArrowUp size={14} />
+            </button>
+          </Tooltip>
+        </div>
+      )}
       {/* 有未读时计数优先，无未读时显示跳底快捷钮（互斥，Cindy 同款） */}
       <StreamBottomChip
         visible={!stuck && unseen > 0}
@@ -540,6 +659,25 @@ export function MessageStream({
         label="跳到底部"
         onClick={scrollToBottom}
       />
+      {/* 划选引用浮钮（选区上方居中） */}
+      {quoteSel && (
+        <div className="absolute z-50 -translate-x-1/2" style={{ left: quoteSel.x, top: quoteSel.y }}>
+          <button
+            type="button"
+            // preventDefault 保住选区，click 才读得到原文
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onAddToChat?.(quoteSel.text);
+              window.getSelection()?.removeAllRanges();
+              setQuoteSel(null);
+            }}
+            className="flex h-7 items-center gap-1.5 rounded-full border border-board bg-card px-2.5 text-12 text-secondary shadow-[var(--shadow-menu)] hover:bg-hover active:scale-[0.98]"
+          >
+            <Quote size={12} />
+            引用
+          </button>
+        </div>
+      )}
     </div>
   );
 }

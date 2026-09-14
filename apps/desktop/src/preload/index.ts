@@ -9,6 +9,7 @@ import { FUNDET_INVOKE, FUNDET_PUSH } from '../main/ipc/channels.js';
 import { stripIpcErrorPrefix } from '../shared/friendly-error.js';
 import type {
   AgentEventPayload,
+  FindResultPayload,
   FundetApi,
   InteractionDismissedPayload,
   InteractionRequestPayload,
@@ -160,6 +161,8 @@ const api: FundetApi = {
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
   updateFeedHasToken: () => invoke(FUNDET_INVOKE.UPDATE_GET_TOKEN),
   setUpdateFeedToken: (token) => invoke(FUNDET_INVOKE.UPDATE_SET_TOKEN, token),
+  findInPage: (text, opts) => invoke(FUNDET_INVOKE.FIND_START, text, opts),
+  stopFindInPage: () => invoke(FUNDET_INVOKE.FIND_STOP),
 
   userHome: () => invoke(FUNDET_INVOKE.FS_HOME),
   pickDirectory: () => invoke(FUNDET_INVOKE.FS_PICK_DIR),
@@ -197,6 +200,7 @@ const api: FundetApi = {
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
+  onFindResult: (cb) => subscribe<FindResultPayload>(FUNDET_PUSH.FIND_RESULT, cb),
 };
 
 contextBridge.exposeInMainWorld('fundet', api);

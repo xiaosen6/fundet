@@ -250,6 +250,13 @@ export interface SearchTestResult {
   error?: string;
 }
 
+/** 页内搜索结果（webContents found-in-page 事件转发） */
+export interface FindResultPayload {
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
+}
+
 export interface FundetApi {
   createSession(input: SessionCreateInput): Promise<SessionMeta>;
   listSessions(): Promise<SessionListItem[]>;
@@ -345,6 +352,11 @@ export interface FundetApi {
   /** 配置/清除更新令牌（scope=api 的个人访问令牌；空串=清除） */
   setUpdateFeedToken(token: string): Promise<void>;
 
+  /** 页内搜索（Electron findInPage，全文高亮） */
+  findInPage(text: string, opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean }): Promise<void>;
+  /** 停止搜索并清除高亮 */
+  stopFindInPage(): Promise<void>;
+
   userHome(): Promise<string>;
   pickDirectory(): Promise<string | null>;
   pickFiles(): Promise<string[] | null>;
@@ -371,5 +383,6 @@ export interface FundetApi {
   onSessionListChanged(cb: () => void): () => void;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
+  onFindResult(cb: (payload: FindResultPayload) => void): () => void;
   onUpdateStatusChanged(cb: (payload: UpdateState) => void): () => void;
 }

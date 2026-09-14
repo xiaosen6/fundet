@@ -1013,4 +1013,39 @@ ${input.text}`;
       clipboard.writeImage(image);
     },
   );
+
+  // ---------- 页内搜索（Electron 原生 findInPage，全文高亮） ----------
+  /** 已挂 found-in-page 转发的 webContents（每窗口一次） */
+  const findWired = new WeakSet<Electron.WebContents>();
+  ipcMain.handle(
+    FUNDET_INVOKE.FIND_START,
+    async (
+      e,
+      text: string,
+      opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
+    ) => {
+      const wc = e.sender;
+      if (!findWired.has(wc)) {
+        findWired.add(wc);
+        wc.on('found-in-page', (_ev, result) => {
+          wc.send(FUNDET_PUSH.FIND_RESULT, {
+            activeMatchOrdinal: result.activeMatchOrdinal,
+            matches: result.matches,
+            finalUpdate: result.finalUpdate,
+          });
+        });
+      }
+      const query = String(text ?? '');
+      if (!query) return;
+      wc.findInPage(query, {
+        forward: opts?.forward !== false,
+        findNext: opts?.findNext === true,
+        matchCase: opts?.matchCase === true,
+      });
+    },
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.FIND_STOP, async (e) => {
+    e.sender.stopFindInPage('clearSelection');
+  });
 }

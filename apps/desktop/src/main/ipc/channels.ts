@@ -94,6 +94,8 @@ export const FUNDET_INVOKE = {
   UPDATE_INSTALL: 'update:install',
   UPDATE_GET_TOKEN: 'update:get-token',
   UPDATE_SET_TOKEN: 'update:set-token',
+  FIND_START: 'find:start',
+  FIND_STOP: 'find:stop',
 } as const;
 
 /** push 族（main → renderer，webContents.send 广播） */
@@ -112,4 +114,6 @@ export const FUNDET_PUSH = {
   KB_IMPORT_PROGRESS: 'kb:import-progress',
   /** 更新状态变化：payload = UpdateState */
   UPDATE_STATUS_CHANGED: 'update:status-changed',
+  /** 页内搜索结果（webContents found-in-page）：payload { activeMatchOrdinal, matches, finalUpdate } */
+  FIND_RESULT: 'find:result',
 } as const;

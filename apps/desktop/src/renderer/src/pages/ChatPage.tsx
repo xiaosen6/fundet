@@ -61,6 +61,7 @@ import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { hasFramelessControls } from '../components/WindowControls';
 import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
+import { FindBar } from '../components/FindBar';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
 
@@ -105,6 +106,20 @@ export function ChatPage(): React.JSX.Element {
   const dragCountRef = useRef(0);
 
   const slice = useSessionSlice(activeId);
+
+  // Ctrl+F 页内搜索（仅会话页生效；FindBar 内部处理 Esc/清高亮）
+  const [findOpen, setFindOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        if (!activeId) return;
+        e.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeId]);
 
   useEffect(() => {
     setRenamingHeader(false);
@@ -477,7 +492,8 @@ export function ChatPage(): React.JSX.Element {
         </Tooltip>
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
         {!activeId ? (
           // 空态（对齐 cindy-02 首页解剖）：品牌 wordmark 居中 + 引导卡
           <div className="flex flex-1 flex-col">
