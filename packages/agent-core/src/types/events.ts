@@ -199,6 +199,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * turn-stall 看门狗的「产品进展」判据（上游 #4353 移植）：status / account_usage
+ * 这类传输层或用量心跳、纯空白/控制字符的文本都不算进展，不得刷新看门狗——
+ * 否则链路已死也会被假心跳养着，任务永远卡住不中断。后台事件
+ * （turnScope='background'）不算当前 turn 的存活证据。
+ */
+const TURN_WATCHDOG_LIVENESS_TYPES = new Set<AgentEventType>([
+  'text',
+  'thinking',
+  'tool_use',
+  'tool_result',
+  'tool_result_full',
+  'agent_task_update',
+  'image',
+  'interaction_request',
+]);
+
+export function isTurnWatchdogLivenessEvent(event: AgentEvent): boolean {
+  if (event.turnScope === 'background') return false;
+  if (event.type === 'text' || event.type === 'thinking') {
+    // 空白 / 格式 / 控制字符不是进展（对齐 Desktop 可见文本语义）
+    const text = isRecord(event.data) ? event.data.text : undefined;
+    return typeof text === 'string' && /[^\s\p{Cf}\p{Cc}]/u.test(text);
+  }
+  return TURN_WATCHDOG_LIVENESS_TYPES.has(event.type);
+}
+
+/**
  * 用户交互请求 —— agent 暂停等待用户决策的统一抽象。
  *
  * 三种 kind 对应 Claude SDK canUseTool 拦截的三种场景:

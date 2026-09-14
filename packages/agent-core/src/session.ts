@@ -40,7 +40,7 @@ import type {
   RewindFilesResult,
   SendOrigin,
 } from './types/events.js';
-import { isTerminalAgentErrorEvent } from './types/events.js';
+import { isTerminalAgentErrorEvent, isTurnWatchdogLivenessEvent } from './types/events.js';
 import type { ContextUsageData } from './types/context-usage.js';
 import type { PiRuntimeCapabilityManifest } from './types/pi-runtime-capabilities.js';
 import type {
@@ -1305,7 +1305,9 @@ export class Session {
       this.currentTurnAttemptToken = null;
       // 终态之后不再计 stall 额度。
       this.clearTurnStallWatchdog();
-    } else if (isCurrentGeneration) {
+    } else if (isCurrentGeneration && isTurnWatchdogLivenessEvent(event)) {
+      // 只有「产品进展」事件才刷新看门狗（#4353）：status/用量心跳与空白文本
+      // 不算，否则假心跳能把已死的链路养到永不中断。
       this.armTurnStallWatchdog();
     }
   }

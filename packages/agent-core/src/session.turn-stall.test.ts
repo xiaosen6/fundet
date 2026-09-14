@@ -169,6 +169,51 @@ describe('Session turn stall watchdog', () => {
     }
   });
 
+  it('#4353: status/用量心跳不算进展——假心跳养不死看门狗', async () => {
+    vi.useFakeTimers();
+    try {
+      const stub = createStubHandle();
+      const session = createSession(stub);
+      const seen: AgentEvent[] = [];
+      session.onEvent((ev) => seen.push(ev));
+
+      await session.send('go');
+      // 心跳间隔远小于阈值（旧语义下每次都该重置），但零产品进展
+      for (let i = 0; i < 4; i++) {
+        await vi.advanceTimersByTimeAsync(STALL_MS / 3);
+        stub.pushEvent({ type: 'status', data: { isRunning: true, tokenUsage: 1 }, source: 'claude-code' } as AgentEvent);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+
+      // 累计静默预算已耗尽（4 × STALL_MS/3 > STALL_MS）→ 仍应判死
+      expect(seen.some((ev) => ev.type === 'error')).toBe(true);
+      expect(stub.abort).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('#4353: 纯空白文本不算进展', async () => {
+    vi.useFakeTimers();
+    try {
+      const stub = createStubHandle();
+      const session = createSession(stub);
+      const seen: AgentEvent[] = [];
+      session.onEvent((ev) => seen.push(ev));
+
+      await session.send('go');
+      for (let i = 0; i < 4; i++) {
+        await vi.advanceTimersByTimeAsync(STALL_MS / 3);
+        stub.pushEvent({ type: 'text', data: { text: '   \n\t\u200b' }, source: 'claude-code' } as AgentEvent);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+
+      expect(seen.some((ev) => ev.type === 'error')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('等用户回应交互期间不计时(离开电脑不该被判卡死)', async () => {
     vi.useFakeTimers();
     try {
