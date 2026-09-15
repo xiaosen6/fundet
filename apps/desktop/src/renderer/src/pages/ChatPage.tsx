@@ -751,6 +751,7 @@ export function ChatPage(): React.JSX.Element {
                 }
               }}
               onRetryError={resendLast}
+              onEditUserMessage={editUserMessage}
             />
 
             {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方 */}

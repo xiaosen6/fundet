@@ -34,116 +34,116 @@ import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
 
 /** 用户消息气泡：长文本自动收起（抄 Cindy userMessageCollapse：镜像节点实测行数
- * + ResizeObserver 跟宽重算），折叠态 line-clamp-10 + 「展开全文 / 收起」。
- * hover 浮出操作栏（Cindy 同款：复制 + 编辑，编辑走 composer 截断重发）。 */
+ * + ResizeObserver 跟宽重算），折叠态 line-clamp-10 + 「展开全文 / 收起」。 */
 function UserBubble({
   text,
   attachments,
   onOpenFile,
-  onEdit,
 }: {
   text: string;
   attachments?: Array<{ path: string; name: string }>;
   onOpenFile?: (path: string) => void;
-  onEdit?: (text: string) => void;
 }): React.JSX.Element {
   const mayExceed = mayExceedVisualLineThreshold(text);
   const { mirrorRef, shouldCollapse } = useUserMessageAutoCollapse(text, mayExceed);
   const [expanded, setExpanded] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
   const collapsed = shouldCollapse && !expanded;
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[488px] rounded-container border border-board bg-card px-4 py-3 text-15 leading-[1.6] text-primary select-text">
+        {attachments && attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((a) => (
+              <button
+                key={a.path}
+                type="button"
+                title={a.path}
+                className="max-w-full truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary hover:text-primary"
+                onClick={() => onOpenFile?.(a.path)}
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {mayExceed ? (
+          <div
+            ref={mirrorRef}
+            aria-hidden
+            className="max-h-0 overflow-hidden whitespace-pre-wrap break-words text-15 leading-[1.6] [overflow-wrap:anywhere]"
+          >
+            {text}
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
+            collapsed && 'line-clamp-10',
+          )}
+        >
+          {text}
+        </div>
+        {shouldCollapse ? (
+          <button
+            type="button"
+            className="mt-1.5 flex items-center gap-1 text-13 text-secondary hover:text-primary"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? '收起' : '展开全文'}
+            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!copied) return undefined;
-    const t = window.setTimeout(() => setCopied(false), 1800);
-    return () => window.clearTimeout(t);
-  }, [copied]);
-
+/** 用户消息整轮（气泡 + MessageActionBar：时间/复制/分叉/编辑，与 assistant 同栏同款） */
+function UserTurn({
+  item,
+  canFork,
+  onFork,
+  onEditUserMessage,
+  workDir,
+  onOpenFile,
+}: {
+  item: Extract<DisplayItem, { kind: 'user' }>;
+  canFork?: boolean;
+  onFork?: (createdAt: number) => Promise<void>;
+  onEditUserMessage?: (text: string, createdAt: number) => void;
+  workDir?: string;
+  onOpenFile?: (path: string) => void;
+}): React.JSX.Element {
+  const [hovered, setHovered] = useState(false);
   return (
     <div
       className="flex flex-col"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex justify-end">
-        <div className="max-w-[488px] rounded-container border border-board bg-card px-4 py-3 text-15 leading-[1.6] text-primary select-text">
-          {attachments && attachments.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {attachments.map((a) => (
-                <button
-                  key={a.path}
-                  type="button"
-                  title={a.path}
-                  className="max-w-full truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary hover:text-primary"
-                  onClick={() => onOpenFile?.(a.path)}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {mayExceed ? (
-            <div
-              ref={mirrorRef}
-              aria-hidden
-              className="max-h-0 overflow-hidden whitespace-pre-wrap break-words text-15 leading-[1.6] [overflow-wrap:anywhere]"
-            >
-              {text}
-            </div>
-          ) : null}
-          <div
-            className={cn(
-              'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
-              collapsed && 'line-clamp-10',
-            )}
-          >
-            {text}
-          </div>
-          {shouldCollapse ? (
-            <button
-              type="button"
-              className="mt-1.5 flex items-center gap-1 text-13 text-secondary hover:text-primary"
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {expanded ? '收起' : '展开全文'}
-              {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {/* hover 操作栏：复制 / 编辑（与 assistant 的 MessageActionBar 同款节奏） */}
-      <div
-        className={cn(
-          'mt-1 flex h-6 items-center justify-end gap-0.5 transition-opacity duration-150',
-          hovered ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
-      >
-        <Tooltip label={copied ? '已复制' : '复制'} side="top">
-          <button
-            type="button"
-            aria-label="复制"
-            className="group flex h-6 w-6 items-center justify-center rounded-[4px] text-muted transition-colors hover:bg-hover hover:text-primary"
-            onClick={() => {
-              void window.fundet.copyText(text).then(() => setCopied(true));
-            }}
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
-        </Tooltip>
-        {onEdit ? (
-          <Tooltip label="编辑" side="top">
-            <button
-              type="button"
-              aria-label="编辑"
-              className="group flex h-6 w-6 items-center justify-center rounded-[4px] text-muted transition-colors hover:bg-hover hover:text-primary"
-              onClick={() => onEdit(text)}
-            >
-              <Pen size={14} />
-            </button>
-          </Tooltip>
-        ) : null}
-      </div>
+      <UserBubble text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
+      <MessageActionBar
+        createdAt={item.createdAt}
+        copyText={item.text}
+        hovered={hovered}
+        onFork={
+          canFork && item.createdAt && onFork
+            ? () => {
+                const ts = item.createdAt;
+                if (ts !== undefined) return onFork(ts);
+                return Promise.resolve();
+              }
+            : undefined
+        }
+        onEdit={
+          onEditUserMessage && item.createdAt
+            ? () => {
+                const ts = item.createdAt;
+                if (ts !== undefined) onEditUserMessage(item.text, ts);
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
@@ -661,15 +661,13 @@ export function MessageStream({
                     </div>
                   </div>
                 ) : item.kind === 'user' ? (
-                  <UserBubble
-                    text={item.text}
-                    attachments={item.attachments}
+                  <UserTurn
+                    item={item}
+                    canFork={canFork}
+                    onFork={onFork}
+                    onEditUserMessage={onEditUserMessage}
+                    workDir={workDir}
                     onOpenFile={onOpenFile}
-                    onEdit={
-                      onEditUserMessage && item.createdAt
-                        ? (t) => onEditUserMessage(t, item.createdAt!)
-                        : undefined
-                    }
                   />
                 ) : item.kind === 'assistant' ? (
                   <AssistantRow

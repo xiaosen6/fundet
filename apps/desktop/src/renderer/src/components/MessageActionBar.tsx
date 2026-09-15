@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Ellipsis, MessageSquarePlus, Share, Split, Trash2 } from 'lucide-react';
+import { Check, Copy, Ellipsis, MessageSquarePlus, Pen, Share, Split, Trash2 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Tooltip } from './ui/Tooltip';
 
@@ -42,6 +42,7 @@ export function MessageActionBar({
   onFork,
   onAddToChat,
   onDelete,
+  onEdit,
 }: {
   createdAt?: number;
   copyText: string;
@@ -53,6 +54,8 @@ export function MessageActionBar({
   onFork?: () => Promise<void>;
   onAddToChat?: () => void;
   onDelete?: () => Promise<void>;
+  /** 编辑该条消息（用户消息用：进 composer 编辑态，发送截断重发） */
+  onEdit?: () => void;
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -149,6 +152,13 @@ export function MessageActionBar({
             }}
           >
             <Split size={14} />
+          </button>
+        </Tooltip>
+      ) : null}
+      {onEdit ? (
+        <Tooltip label="编辑" side="top">
+          <button type="button" className={ICON_BTN} aria-label="编辑" onClick={onEdit}>
+            <Pen size={14} />
           </button>
         </Tooltip>
       ) : null}
