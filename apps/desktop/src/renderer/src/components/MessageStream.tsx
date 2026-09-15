@@ -98,12 +98,15 @@ function UserBubble({
   );
 }
 
-/** 用户消息整轮（气泡 + MessageActionBar：时间/复制/分叉/编辑，与 assistant 同栏同款） */
+/** 用户消息整轮（气泡 + MessageActionBar：时间/复制/分享/分叉/编辑/删除，与 assistant 同栏同款）。
+ * 操作栏右对齐到气泡下方（Cindy 同款）。 */
 function UserTurn({
   item,
   canFork,
   onFork,
   onEditUserMessage,
+  onShare,
+  onDeleteUserMessage,
   workDir,
   onOpenFile,
 }: {
@@ -111,6 +114,8 @@ function UserTurn({
   canFork?: boolean;
   onFork?: (createdAt: number) => Promise<void>;
   onEditUserMessage?: (text: string, createdAt: number) => void;
+  onShare?: () => void;
+  onDeleteUserMessage?: () => void;
   workDir?: string;
   onOpenFile?: (path: string) => void;
 }): React.JSX.Element {
@@ -122,28 +127,32 @@ function UserTurn({
       onMouseLeave={() => setHovered(false)}
     >
       <UserBubble text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
-      <MessageActionBar
-        createdAt={item.createdAt}
-        copyText={item.text}
-        hovered={hovered}
-        onFork={
-          canFork && item.createdAt && onFork
-            ? () => {
-                const ts = item.createdAt;
-                if (ts !== undefined) return onFork(ts);
-                return Promise.resolve();
-              }
-            : undefined
-        }
-        onEdit={
-          onEditUserMessage && item.createdAt
-            ? () => {
-                const ts = item.createdAt;
-                if (ts !== undefined) onEditUserMessage(item.text, ts);
-              }
-            : undefined
-        }
-      />
+      <div className="flex justify-end">
+        <MessageActionBar
+          createdAt={item.createdAt}
+          copyText={item.text}
+          hovered={hovered}
+          onShare={onShare}
+          onFork={
+            canFork && item.createdAt && onFork
+              ? () => {
+                  const ts = item.createdAt;
+                  if (ts !== undefined) return onFork(ts);
+                  return Promise.resolve();
+                }
+              : undefined
+          }
+          onEdit={
+            onEditUserMessage && item.createdAt
+              ? () => {
+                  const ts = item.createdAt;
+                  if (ts !== undefined) onEditUserMessage(item.text, ts);
+                }
+              : undefined
+          }
+          onDelete={onDeleteUserMessage ? async () => onDeleteUserMessage() : undefined}
+        />
+      </div>
     </div>
   );
 }
@@ -163,6 +172,8 @@ interface MessageStreamProps {
   onRetryError?: () => void;
   /** 编辑某条用户消息（消息操作栏 Pen）：文本进 composer + 截断重发流 */
   onEditUserMessage?: (text: string, createdAt: number) => void;
+  /** 删除某条用户消息及其后全部内容（confirm 在调用方） */
+  onDeleteUserMessage?: (createdAt: number) => void;
 }
 
 function isTurnTailAssistant(
@@ -379,6 +390,7 @@ export function MessageStream({
   onDelete,
   onRetryError,
   onEditUserMessage,
+  onDeleteUserMessage,
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -631,6 +643,17 @@ export function MessageStream({
 
         {virtualizer.getVirtualItems().map((vr) => {
           const item = rows[vr.index]!;
+          // 用户消息的分享配对：向后找第一条 assistant 回复
+          let userShareReply: string | undefined;
+          if (item.kind === 'user') {
+            for (let j = vr.index + 1; j < rows.length; j++) {
+              const r = rows[j]!;
+              if (r.kind === 'assistant') {
+                userShareReply = r.text;
+                break;
+              }
+            }
+          }
           return (
             <div
               key={vr.key}
@@ -666,6 +689,24 @@ export function MessageStream({
                     canFork={canFork}
                     onFork={onFork}
                     onEditUserMessage={onEditUserMessage}
+                    onShare={
+                      userShareReply !== undefined
+                        ? () =>
+                            setSharePayload({
+                              userText: item.text,
+                              assistantText: userShareReply,
+                              createdAt: item.createdAt,
+                            })
+                        : undefined
+                    }
+                    onDeleteUserMessage={
+                      onDeleteUserMessage && item.createdAt
+                        ? () => {
+                            const ts = item.createdAt;
+                            if (ts !== undefined) onDeleteUserMessage(ts);
+                          }
+                        : undefined
+                    }
                     workDir={workDir}
                     onOpenFile={onOpenFile}
                   />

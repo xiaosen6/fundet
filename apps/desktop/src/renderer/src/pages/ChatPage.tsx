@@ -407,6 +407,30 @@ export function ChatPage(): React.JSX.Element {
     [activeId, slice.isRunning],
   );
 
+  // 删除某条用户消息及其后全部内容（composer 卡下方「⋯」/消息操作栏入口）
+  const deleteUserMessage = useCallback(
+    async (createdAt: number): Promise<void> => {
+      if (!activeId) return;
+      const ok = await confirmDialog({
+        title: '删除这条提问？',
+        description: '该提问及其后的全部回复将一并删除，此操作不可撤销。',
+        confirmText: '删除',
+        danger: true,
+      });
+      if (!ok) return;
+      if (!isDraftSession(activeId)) {
+        try {
+          await window.fundet.deleteTurn(activeId, createdAt - 1, Date.now() + 60_000);
+        } catch (err) {
+          setNotice(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+      }
+      truncateItemsFrom(activeId, createdAt);
+    },
+    [activeId],
+  );
+
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
     if (!activeId || (!text && attachments.length === 0)) return;
@@ -752,6 +776,7 @@ export function ChatPage(): React.JSX.Element {
               }}
               onRetryError={resendLast}
               onEditUserMessage={editUserMessage}
+              onDeleteUserMessage={(createdAt) => void deleteUserMessage(createdAt)}
             />
 
             {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方 */}

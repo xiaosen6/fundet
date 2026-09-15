@@ -121,6 +121,12 @@ export function MessageActionBar({
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
+      {/* 时间在最前（对齐 Cindy：先时间后操作钮） */}
+      {createdAt ? (
+        <Tooltip label={new Date(createdAt).toLocaleString('zh-CN')} side="top">
+          <span className="mr-1 text-12 text-muted">{formatRelative(createdAt)}</span>
+        </Tooltip>
+      ) : null}
       <Tooltip label={copyError ? '复制失败' : copied ? '已复制' : '复制'} side="top">
         <button
           type="button"
@@ -206,11 +212,6 @@ export function MessageActionBar({
             </div>
           )}
         </div>
-      ) : null}
-      {createdAt ? (
-        <Tooltip label={new Date(createdAt).toLocaleString('zh-CN')} side="top">
-          <span className="ml-1.5 text-12 text-muted">{formatRelative(createdAt)}</span>
-        </Tooltip>
       ) : null}
       {tokens > 0 ? (
         <Tooltip label={tooltip} side="top">
