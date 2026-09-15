@@ -9,7 +9,7 @@
  * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Paperclip, Pen, X } from 'lucide-react';
+import { FileText, Paperclip, Pen, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { SendButton } from './SendButton';
@@ -17,6 +17,13 @@ import { SlashPalette, type SlashItem } from './SlashPalette';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { Tooltip } from './ui/Tooltip';
+import { showLightbox } from './ui/Lightbox';
+
+export interface PastedTextChip {
+  id: number;
+  text: string;
+  lines: number;
+}
 
 interface ChatInputProps {
   value: string;
@@ -42,6 +49,10 @@ interface ChatInputProps {
   /** 编辑态：横幅提示 + 聚焦全选（编辑入口在消息操作栏的 Pen，不在本工具行） */
   editing?: boolean;
   onCancelEditing?: () => void;
+  /** 粘贴长文本收成的 chip（Cindy 同款：不糊输入框，发送时展开为原文） */
+  pastedTexts?: PastedTextChip[];
+  onPasteLongText?: (text: string, lines: number) => void;
+  onRemovePastedText?: (id: number) => void;
 }
 
 export function ChatInput({
@@ -63,6 +74,9 @@ export function ChatInput({
   dragOver,
   editing,
   onCancelEditing,
+  pastedTexts = [],
+  onPasteLongText,
+  onRemovePastedText,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -87,7 +101,10 @@ export function ChatInput({
   };
 
   const canSend =
-    (value.trim().length > 0 || attachments.length > 0) && !disabled && !sendDisabled && !isRunning;
+    (value.trim().length > 0 || attachments.length > 0 || pastedTexts.length > 0) &&
+    !disabled &&
+    !sendDisabled &&
+    !isRunning;
 
   const slashQuery = useMemo(() => {
     const t = value;
@@ -164,6 +181,49 @@ export function ChatInput({
             )}
           </div>
         )}
+        {/* 粘贴长文本 chip：点击预览全文，× 移除（Cindy「粘贴的文本(N 行)」同款） */}
+        {pastedTexts.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pastedTexts.map((p) => (
+              <span
+                key={p.id}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-board bg-card py-1 pl-2.5 pr-1.5 text-12 text-secondary"
+              >
+                <button
+                  type="button"
+                  title={p.text.slice(0, 400)}
+                  className="flex min-w-0 items-center gap-1.5"
+                  onClick={() =>
+                    showLightbox({
+                      kind: 'node',
+                      label: `粘贴的文本（${p.lines} 行）`,
+                      node: (
+                        <pre className="max-h-[60vh] max-w-[70vw] overflow-auto whitespace-pre-wrap break-words text-left text-13 leading-[1.6] text-primary">
+                          {p.text}
+                        </pre>
+                      ),
+                    })
+                  }
+                >
+                  <FileText size={13} className="shrink-0 text-muted" />
+                  <span className="truncate underline decoration-board underline-offset-2">
+                    粘贴的文本（{p.lines} 行）
+                  </span>
+                </button>
+                {onRemovePastedText && (
+                  <button
+                    type="button"
+                    title="移除"
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-hover hover:text-primary"
+                    onClick={() => onRemovePastedText(p.id)}
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {attachments.map((a) => (
@@ -201,7 +261,16 @@ export function ChatInput({
           }}
           onPaste={(e) => {
             const dt = e.clipboardData;
-            if (!dt || !onAddFiles) return;
+            if (!dt) return;
+            // 长文本粘贴：收成 chip（Cindy 同款），不糊输入框
+            const clipText = dt.getData('text/plain') ?? '';
+            const clipLines = clipText ? clipText.split('\n').length : 0;
+            if (clipText && onPasteLongText && (clipLines >= 10 || clipText.length > 600)) {
+              e.preventDefault();
+              onPasteLongText(clipText, clipLines);
+              return;
+            }
+            if (!onAddFiles) return;
             const files: File[] = [];
             for (const item of Array.from(dt.items ?? [])) {
               if (item.kind === 'file') {

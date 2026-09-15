@@ -113,6 +113,8 @@ export function ChatPage(): React.JSX.Element {
   const [findOpen, setFindOpen] = useState(false);
   // 编辑上一条用户消息：记录原消息时间戳，发送时截断其后重发（Cindy 同款 Pen）
   const [editingFrom, setEditingFrom] = useState<number | null>(null);
+  // 粘贴长文本 chip：发送时按序展开为原文追加
+  const [pastedTexts, setPastedTexts] = useState<Array<{ id: number; text: string; lines: number }>>([]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
@@ -129,6 +131,7 @@ export function ChatPage(): React.JSX.Element {
     setRenamingHeader(false);
     headerRenameCommitted.current = false;
     setEditingFrom(null);
+    setPastedTexts([]);
   }, [activeId]);
 
   const activeMeta = useMemo(
@@ -431,9 +434,17 @@ export function ChatPage(): React.JSX.Element {
     [activeId],
   );
 
+  // 粘贴长文本 chip
+  const pasteLongText = useCallback((text: string, lines: number): void => {
+    setPastedTexts((prev) => [...prev, { id: Date.now() + Math.random(), text, lines }]);
+  }, []);
+  const removePastedText = useCallback((id: number): void => {
+    setPastedTexts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
-    if (!activeId || (!text && attachments.length === 0)) return;
+    if (!activeId || (!text && attachments.length === 0 && pastedTexts.length === 0)) return;
     const pending = attachments;
     setInput('');
     setAttachments([]);
@@ -452,10 +463,16 @@ export function ChatPage(): React.JSX.Element {
       }
       truncateItemsFrom(activeId, from);
     }
+    // 粘贴 chip 展开：正文 = 输入框文本 + 各 chip 原文（按粘贴顺序追加）
+    let fullText = text;
+    if (pastedTexts.length > 0) {
+      for (const p of pastedTexts) fullText += (fullText ? '\n\n' : '') + p.text;
+      setPastedTexts([]);
+    }
     // 重启后旧会话 / 本地草稿都不在 main 内存：带 create 让 main lazy-create。
     const create = buildCreateParam();
-    await sendMessage(activeId, text, create, pending.length > 0 ? pending : undefined);
-  }, [activeId, attachments, buildCreateParam, editingFrom, input]);
+    await sendMessage(activeId, fullText, create, pending.length > 0 ? pending : undefined);
+  }, [activeId, attachments, buildCreateParam, editingFrom, input, pastedTexts]);
 
   const abort = useCallback(async (): Promise<void> => {
     if (activeId) await abortSession(activeId);
@@ -815,6 +832,9 @@ export function ChatPage(): React.JSX.Element {
                       dragOver={dragOver}
                       editing={editingFrom !== null}
                       onCancelEditing={() => setEditingFrom(null)}
+                      pastedTexts={pastedTexts}
+                      onPasteLongText={pasteLongText}
+                      onRemovePastedText={removePastedText}
                       leadingControls={
                         <>
                           <KnowledgeChip sessionId={activeId} />
