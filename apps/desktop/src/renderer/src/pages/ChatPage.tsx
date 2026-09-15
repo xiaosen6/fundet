@@ -392,22 +392,20 @@ export function ChatPage(): React.JSX.Element {
     if (picked && picked.length > 0) await stagePaths(picked);
   }, [stagePaths]);
 
-  // 「编辑」：取最后一条用户消息进输入框（编辑态聚焦全选；Esc/横幅可取消）
-  const startEditLastMessage = useCallback((): void => {
-    if (!activeId) return;
-    if (slice.isRunning) {
-      toast.info('等本轮回复结束后再编辑');
-      return;
-    }
-    const lastUser = [...slice.items].reverse().find((it) => it.kind === 'user');
-    if (!lastUser || lastUser.kind !== 'user') {
-      toast.info('还没有可编辑的消息');
-      return;
-    }
-    setInput(lastUser.text);
-    setEditingFrom(lastUser.createdAt ?? Date.now());
-    setNotice('');
-  }, [activeId, slice.isRunning, slice.items]);
+  // 「编辑」入口在用户消息 hover 操作栏（Cindy 同款）；文本进 composer 编辑态，发送即截断重发
+  const editUserMessage = useCallback(
+    (text: string, createdAt: number): void => {
+      if (!activeId) return;
+      if (slice.isRunning) {
+        toast.info('等本轮回复结束后再编辑');
+        return;
+      }
+      setInput(text);
+      setEditingFrom(createdAt);
+      setNotice('');
+    },
+    [activeId, slice.isRunning],
+  );
 
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
@@ -789,19 +787,10 @@ export function ChatPage(): React.JSX.Element {
                       onAddFiles={(files) => void addDroppedFiles(files)}
                       onPickFiles={() => void pickFiles()}
                       dragOver={dragOver}
-                      onEditLastMessage={
-                        activeId && slice.items.some((it) => it.kind === 'user') && !slice.isRunning
-                          ? startEditLastMessage
-                          : undefined
-                      }
                       editing={editingFrom !== null}
                       onCancelEditing={() => setEditingFrom(null)}
                       leadingControls={
                         <>
-                          <FolderPickerChip
-                            cwd={activeMeta?.workDir || workDir}
-                            onSelect={applyWorkDir}
-                          />
                           <KnowledgeChip sessionId={activeId} />
                           <PermissionSelector
                             current={permissionMode}
@@ -819,8 +808,10 @@ export function ChatPage(): React.JSX.Element {
                     />
                   </>
                 )}
-                {/* Cindy：用量环在输入卡下方右侧，不在顶栏 */}
-                <div className="mt-1.5 flex w-full items-center justify-end gap-3 px-1">
+                {/* Cindy：路径按钮在输入卡下方左侧（「WX」位），用量环 + 费用在右侧 */}
+                <div className="mt-1.5 flex w-full items-center justify-between gap-3 px-1">
+                  <FolderPickerChip cwd={activeMeta?.workDir || workDir} onSelect={applyWorkDir} />
+                  <div className="flex items-center justify-end gap-3">
                   {slice.usage.costUsd > 0 && (
                     <span className="text-12 tabular-nums text-muted">
                       ${slice.usage.costUsd.toFixed(4)}
@@ -838,6 +829,7 @@ export function ChatPage(): React.JSX.Element {
                     contextTokens={slice.usage.contextTokens}
                     contextWindow={shownWindow}
                   />
+                  </div>
                 </div>
               </div>
             </div>

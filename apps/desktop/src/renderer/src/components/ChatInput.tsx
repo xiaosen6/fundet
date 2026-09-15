@@ -39,9 +39,7 @@ interface ChatInputProps {
   onAddFiles?: (files: File[]) => void;
   onPickFiles?: () => void;
   dragOver?: boolean;
-  /** 编辑上一条用户消息（Cindy 同款 Pen 按钮；不可用时隐藏） */
-  onEditLastMessage?: () => void;
-  /** 编辑态：横幅提示 + 聚焦全选 */
+  /** 编辑态：横幅提示 + 聚焦全选（编辑入口在消息操作栏的 Pen，不在本工具行） */
   editing?: boolean;
   onCancelEditing?: () => void;
 }
@@ -63,7 +61,6 @@ export function ChatInput({
   onAddFiles,
   onPickFiles,
   dragOver,
-  onEditLastMessage,
   editing,
   onCancelEditing,
 }: ChatInputProps): React.JSX.Element {
@@ -259,10 +256,9 @@ export function ChatInput({
           )}
         />
 
-        {/* 底部工具行：左侧路径按钮领衔的 chip 组 + 回形针 + 编辑 / 右侧 chip + 发送 */}
+        {/* 底部工具行：左侧 回形针 + chip 组（知识库/权限…）/ 右侧 chip + 发送 */}
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex min-w-0 shrink items-center gap-2">
-            {leadingControls}
             {onPickFiles && (
               <Tooltip label="添加文件" side="top">
                 <button
@@ -275,21 +271,7 @@ export function ChatInput({
                 </button>
               </Tooltip>
             )}
-            {onEditLastMessage && (
-              <Tooltip label="编辑上一条消息" side="top">
-                <button
-                  type="button"
-                  disabled={disabled || isRunning}
-                  onClick={onEditLastMessage}
-                  className={cn(
-                    'flex h-7 w-7 items-center justify-center rounded-full transition-colors disabled:opacity-40',
-                    editing ? 'bg-accent text-accent-fg' : 'text-muted hover:bg-hover hover:text-primary',
-                  )}
-                >
-                  <Pen size={14} />
-                </button>
-              </Tooltip>
-            )}
+            {leadingControls}
           </div>
           <div className="flex min-w-0 shrink items-center justify-end gap-2">
             {trailingControls}
