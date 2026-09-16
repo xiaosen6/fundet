@@ -94,6 +94,7 @@ import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
+import { assertPreviewablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
 import type {
@@ -794,7 +795,9 @@ ${input.text}`;
   });
 
   ipcMain.handle(FUNDET_INVOKE.FS_READ_TEXT, async (_e, filePath: string, workDir: string) => {
-    const resolved = resolveUnderWorkDir(filePath, workDir);
+    // 预览走 deny-list 策略（对齐 Cindy：系统/敏感目录外全放行，agent 可引用
+    // 工作目录外文件）；大小上限不变
+    const resolved = assertPreviewablePath(String(filePath ?? ''));
     const stat = fs.statSync(resolved);
     if (!stat.isFile()) throw new Error('不是文件');
     if (stat.size > 2 * 1024 * 1024) throw new Error('文件超过 2MB，请用系统打开');
@@ -802,7 +805,7 @@ ${input.text}`;
   });
 
   ipcMain.handle(FUNDET_INVOKE.FS_READ_DATA_URL, async (_e, filePath: string, workDir: string) => {
-    const resolved = resolveUnderWorkDir(filePath, workDir);
+    const resolved = assertPreviewablePath(String(filePath ?? ''));
     const stat = fs.statSync(resolved);
     if (!stat.isFile()) throw new Error('不是文件');
     if (stat.size > 8 * 1024 * 1024) throw new Error('图片超过 8MB');
