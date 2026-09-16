@@ -22,7 +22,10 @@ export function resolveUnderWorkDir(filePath: string, workDir: string): string {
   const root = path.resolve(workDir);
   const resolved = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(root, filePath);
   if (!isPathInsideRoot(root, resolved)) {
-    throw new Error('只能预览当前工作目录内的文件');
+    // fail-closed：只放行工作目录内文件。带上路径与工作目录，用户能一眼看出出界原因
+    throw new Error(
+      `只能预览当前工作目录内的文件（文件：${resolved}，工作目录：${root}）。可用「用系统打开」查看目录外文件。`,
+    );
   }
   if (!fs.existsSync(resolved)) throw new Error('文件不存在');
   return resolved;

@@ -85,7 +85,19 @@ export function LocalImagePreview({
             onError={fallbackToDataUrl}
           />
         ) : (
-          <span className="block px-2 py-6 text-12 text-muted">{error || '加载图片…'}</span>
+          <span className="block px-2 py-4 text-12 text-muted">
+            {error || '加载图片…'}
+            {/* 出界/读取失败时的逃生口：走系统默认程序打开（openPath 不受工作目录守卫限制） */}
+            {error && /^([A-Za-z]:[\\/]|\/)/.test(path.trim()) && (
+              <button
+                type="button"
+                className="ml-2 rounded-full border border-board px-2 py-0.5 text-11 text-secondary hover:text-primary"
+                onClick={() => void window.fundet.openPath(path)}
+              >
+                用系统打开
+              </button>
+            )}
+          </span>
         )}
       </button>
     </span>
