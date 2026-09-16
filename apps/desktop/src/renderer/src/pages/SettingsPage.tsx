@@ -25,11 +25,7 @@ import {
   UI_FONT_PRESETS,
 } from '../lib/fonts';
 import { useTheme, type ThemeMode } from '../themes/useTheme';
-import { SkillsPanel } from './settings/SkillsPanel';
 import { SearchPanel } from './settings/SearchPanel';
-import { ImBotPanel } from './settings/ImBotPanel';
-import { McpPanel } from './settings/McpPanel';
-import { KnowledgePanel } from './settings/KnowledgePanel';
 import { UpdateCard } from '../components/settings/UpdateCard';
 import { BrowserSection } from '../components/settings/BrowserSection';
 import { UsageHistoryPanel } from './settings/UsageHistoryPanel';
@@ -51,11 +47,7 @@ type SettingsTab =
   | 'providers'
   | 'automation'
   | 'usage'
-  | 'search'
-  | 'im'
-  | 'knowledge'
-  | 'mcp'
-  | 'skills';
+  | 'search';
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: '通用',
@@ -63,10 +55,6 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   automation: '自动操作',
   usage: '用量历史',
   search: '搜索',
-  im: 'IM 机器人',
-  knowledge: '知识库',
-  mcp: 'MCP 服务器',
-  skills: '技能',
 };
 
 /** 表单字段样式（对齐 Cindy 设置字段：h-10 + 12px 圆角 + Card 底 + 1px Board；
@@ -287,14 +275,6 @@ export function SettingsPage(): React.JSX.Element {
             {tab === 'usage' && <UsageHistoryPanel />}
 
             {tab === 'search' && <SearchPanel />}
-
-            {tab === 'im' && <ImBotPanel />}
-
-            {tab === 'knowledge' && <KnowledgePanel />}
-
-            {tab === 'mcp' && <McpPanel />}
-
-            {tab === 'skills' && <SkillsPanel />}
           </div>
         </div>
       </div>
