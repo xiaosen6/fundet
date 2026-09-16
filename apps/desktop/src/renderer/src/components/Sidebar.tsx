@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { SessionListItem } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
@@ -22,7 +22,7 @@ import { getProfile, subscribeProfile } from '../lib/profile';
 import { BrandMark } from './BrandMark';
 import { SessionRenameInput } from './SessionRenameInput';
 import { Tooltip } from './ui/Tooltip';
-import { SidebarPanelDrawer, type SidebarPanelId } from './sidebar/SidebarPanelDrawer';
+import { SIDEBAR_PANEL_PATHS, type SidebarPanelId } from './sidebar/SidebarPanelDrawer';
 
 interface SidebarProps {
   sessions: SessionListItem[];
@@ -222,9 +222,7 @@ export function Sidebar({
   onResizeStart,
 }: SidebarProps): React.JSX.Element {
   const profile = useSyncExternalStore(subscribeProfile, getProfile, getProfile);
-
-  // 左上能力入口的独立抽屉面板
-  const [panel, setPanel] = useState<SidebarPanelId | null>(null);
+  const navigate = useNavigate();
 
   // 会话列表窗口化：limit 随滚动单调增长；activeId 落到窗口外时扩到覆盖
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -267,20 +265,16 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* 顶部常驻动作行：四个能力入口（独立抽屉面板，就地管理）+ 新对话 */}
+      {/* 顶部常驻动作行：四个能力入口（整屏路由页）+ 新对话 */}
       <div className="flex flex-col gap-0.5 px-3 pt-1 pb-2.5">
         {PANEL_BUTTONS.map(({ id, label, Icon }) => (
           <button
             key={id}
             type="button"
-            onClick={() => setPanel((p) => (p === id ? null : id))}
-            aria-pressed={panel === id}
-            className={cn(
-              NAV_ROW_CLASS,
-              panel === id ? 'bg-hover font-medium' : '',
-            )}
+            onClick={() => void navigate(SIDEBAR_PANEL_PATHS[id])}
+            className={NAV_ROW_CLASS}
           >
-            <Icon size={15} strokeWidth={1.8} className={cn('shrink-0', panel === id ? 'text-primary' : 'text-muted')} />
+            <Icon size={15} strokeWidth={1.8} className="shrink-0 text-muted" />
             <span className="leading-none">{label}</span>
           </button>
         ))}
@@ -355,9 +349,6 @@ export function Sidebar({
           </span>
         </Link>
       </div>
-
-      {/* 左上能力入口的独立抽屉面板（portal） */}
-      {panel && <SidebarPanelDrawer panel={panel} onClose={() => setPanel(null)} />}
     </aside>
   );
 }

@@ -1,11 +1,11 @@
 /**
- * SidebarPanelDrawer —— 侧栏左上能力入口（IM 机器人 / 技能 / MCP 服务器 / 知识库）
- * 的整屏面板：点击按钮全屏接管（对齐设置页的整页解剖：返回 + 大标题 + 居中内容列），
- * 不再跳转设置页。复用设置页的四个 Panel 组件（自含状态，挂载即拉数据）；
- * Esc / 返回键退出。portal 到 body。
+ * PanelPage —— 侧栏左上能力入口（IM 机器人 / 技能 / MCP 服务器 / 知识库）的
+ * 整屏路由页：点击按钮切换路由（ChatPage 卸载，其 drag 层随之消失——portal
+ * 覆盖方案在 Windows 上会被 drag 区吃掉点击，实机结论见 WindowControls 注释）。
+ * 页面解剖对齐设置页：返回 + 24px 标题 + 居中 920px 内容列；Esc 返回。
  */
 import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { ImBotPanel } from '../../pages/settings/ImBotPanel';
 import { SkillsPanel } from '../../pages/settings/SkillsPanel';
@@ -14,51 +14,64 @@ import { KnowledgePanel } from '../../pages/settings/KnowledgePanel';
 
 export type SidebarPanelId = 'im' | 'skills' | 'mcp' | 'knowledge';
 
-const TITLES: Record<SidebarPanelId, string> = {
-  im: 'IM 机器人',
-  skills: '技能',
-  mcp: 'MCP 服务器',
-  knowledge: '知识库',
+const PANELS: Record<SidebarPanelId, { title: string; body: () => React.JSX.Element }> = {
+  im: { title: 'IM 机器人', body: ImBotPanel },
+  skills: { title: '技能', body: SkillsPanel },
+  mcp: { title: 'MCP 服务器', body: McpPanel },
+  knowledge: { title: '知识库', body: KnowledgePanel },
 };
 
-export function SidebarPanelDrawer({
-  panel,
-  onClose,
-}: {
-  panel: SidebarPanelId;
-  onClose: () => void;
-}): React.JSX.Element {
+export const SIDEBAR_PANEL_PATHS: Record<SidebarPanelId, string> = {
+  im: '/panel/im',
+  skills: '/panel/skills',
+  mcp: '/panel/mcp',
+  knowledge: '/panel/knowledge',
+};
+
+export function PanelPage(): React.JSX.Element | null {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const panel = id && id in PANELS ? (id as SidebarPanelId) : null;
+
+  const back = (): void => {
+    void navigate('/');
+  };
+
   useEffect(() => {
+    if (!panel) return undefined;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') back();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
 
-  return createPortal(
-    <div className="fixed inset-0 z-[45] flex flex-col bg-surface">
-      {/* 页头：返回 + 大标题（对齐设置页内栏头部解剖） */}
-      <div className="flex h-[46px] shrink-0 items-center gap-2.5 px-4">
+  if (!panel) {
+    // 未知面板 id：回首页
+    void navigate('/', { replace: true });
+    return null;
+  }
+  const { title, body: Body } = PANELS[panel];
+  return (
+    <div className="flex h-full w-full flex-col bg-surface">
+      {/* 页头：返回 + 大标题（对齐设置页内栏头部解剖；头部自带 drag 区，返回钮 no-drag 挖洞） */}
+      <div className="drag-region flex h-[46px] shrink-0 items-center gap-2.5 pl-4 select-none">
         <button
           type="button"
           aria-label="返回"
-          onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-hover hover:text-primary"
+          onClick={back}
+          className="no-drag flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-hover hover:text-primary"
         >
           <ArrowLeft size={18} />
         </button>
-        <h1 className="text-24 leading-[1.1] font-medium text-primary">{TITLES[panel]}</h1>
+        <h1 className="text-24 leading-[1.1] font-medium text-primary">{title}</h1>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full min-w-0 max-w-[920px] px-1 pb-32 pt-2">
-          {panel === 'im' && <ImBotPanel />}
-          {panel === 'skills' && <SkillsPanel />}
-          {panel === 'mcp' && <McpPanel />}
-          {panel === 'knowledge' && <KnowledgePanel />}
+      <div className="min-h-0 flex-1 overflow-y-auto pt-[56px]">
+        <div className="mx-auto w-full min-w-0 max-w-[920px] px-1 pb-32">
+          <Body />
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

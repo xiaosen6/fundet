@@ -11,6 +11,7 @@ import { ChatPage } from './pages/ChatPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DebugPage } from './pages/DebugPage';
 import { WindowControls } from './components/WindowControls';
+import { PanelPage } from './components/sidebar/SidebarPanelDrawer';
 import { ToastContainer } from './components/ui/toast';
 import { ConfirmDialogHost } from './components/ui/ConfirmDialog';
 import { LightboxHost } from './components/ui/Lightbox';
@@ -22,6 +23,8 @@ initGlobalListeners();
 const router = createHashRouter([
   { path: '/', element: <ChatPage /> },
   { path: '/settings', element: <SettingsPage /> },
+  // 侧栏左上能力入口的整屏页（IM/技能/MCP/知识库）
+  { path: '/panel/:id', element: <PanelPage /> },
   // 调试台保留：E2E 复验与原始事件流排查用
   { path: '/debug', element: <DebugPage /> },
 ]);
