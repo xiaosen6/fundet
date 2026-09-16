@@ -158,7 +158,7 @@ Fundet/
 - Canvas 开关钉窗口右上（fixed）；贴附件不强制打开 Canvas。
 - 会话重命名（侧栏 hover 铅笔/双击）、侧栏宽度拖拽（200-400px，localStorage 持久化）、**超长会话列表增量窗口化**（2026-09-11：首窗最近 60 行，触底 sentinel 再扩 80，activeId 越界自动扩到覆盖——Sidebar.tsx）。
 - **交互反馈基元（2026-09-11 对齐 Cindy）**：全局 `ui/Tooltip`（450ms 延迟悬停提示，替代原生 title，已覆盖消息操作栏/侧栏/头部/输入区）、`ui/toast`（模块级 store + `toast.success/error/info`，知识库导入/笔记/快照反馈）、`ui/ConfirmDialog`（`confirmDialog()` 服务替代 window.confirm，danger 态错误色；删会话/删回复/删 KB/MCP/登录态开关全量接入，**删会话从此有确认**）；MessageStream 底部居中悬浮 chip 双件套（有未读→「N 条新消息」计数，无未读且离底>150px→「跳到底部」，互斥，Cindy 同款规格），reduced-motion 下滚动不smooth。
-- **侧栏左上能力入口整屏化（2026-09-14，用户要求；初版 520px 抽屉被否，纠正为整屏）**：IM 机器人/技能/MCP 服务器/**知识库**（新增第四个）四按钮常驻侧栏顶部，点击**整屏接管**（对齐设置页整页解剖：返回 + 24px 大标题 + 居中 920px 内容列；Esc/返回退出），不再跳转设置页；设置页同步摘除对应四块（SettingsTab 收敛为 general/providers/automation/usage/search）。组件：`components/sidebar/SidebarPanelDrawer.tsx`（文件名沿用，实为整屏 Page）。
+- **侧栏左上能力入口·主区内嵌面板（2026-09-16 定稿；历经三版：520px 抽屉→整屏路由页→主区内嵌）**：IM 机器人/技能/MCP 服务器/**知识库**四按钮常驻侧栏顶部，点击后**右侧主区（原会话区域）就地切换**为对应面板，**侧栏全程可见**；当前面板按钮高亮、再点收起；返回箭头/Esc/点会话/新对话均回会话视图；面板打开时 Canvas 开关隐藏。设置页同步摘除四块（SettingsTab = general/providers/automation/usage/search）。组件：`components/sidebar/SidebarPanelDrawer.tsx`（文件名沿用，导出 PanelView）。**形态演进教训**：整屏路由页版是为绕 ChatPage drag 层吃点击（Windows app-region 命中按布局矩形、portal 层级骗不过）——主区内嵌后面板在 main 布局流内，天然无此问题。
 - **确认弹窗柔和化（2026-09-14 对齐 Cindy confirm-dialog）**：中性遮罩 `neutral-900/40`（去掉模糊）+ 卡片缩放淡入/淡出（140-160ms，reduced-motion 跳过）+ danger 确认键**错误色实底** + 按钮 h-9 圆角矩形 min-w-88px；时间序：先标题后描述再 `mt-5` 按钮行。keyframes：`confirm-overlay-in/out`、`confirm-card-in/out`（globals.css）。
 - **导航与媒体（2026-09-11 对齐 Cindy 批二）**：划选引用浮钮（消息文本划选→「引用」→onAddToChat 通道）；Ctrl+F 页内搜索（Electron 原生 `findInPage` 四件套 find:start/find:stop + find:result push，FindBar 计数/上下个/大小写）；右上角「跳到上一条提问」icon 圆钮（rAF 探测视口上方最近 user 消息，hover 预览）；`ui/Lightbox` 全屏查看统一三入口（本地图/远程 markdown 图/mermaid 图表点击放大，Esc/遮罩关闭）；**AgentTaskCard**（`agent_task_update` 事件接入 sessionStore applyEvent + DisplayItem task 变体——事件不落库，历史重建不回放）。
 - **Composer 编辑与路径按钮（2026-09-11 对齐 Cindy 批三；初版位置做错，经用户截图纠正）**：「编辑」入口在**每条用户消息的 hover 操作栏**（复制 + Pen；**不在** composer 工具行——Cindy 同款）——点击载入原文进输入框（编辑态横幅 + 聚焦全选 + Esc/取消；运行中拦截 toast），发送即真编辑：`deleteTurn` 截断原消息及其后全部内容再重发（sessionStore `truncateItemsFrom` 同步本地条目）。路径按钮（FolderPickerChip，Cindy 会话式带边框 pill：Folder 图标 + 目录名）位于**输入卡下方左侧**（与费用/上下文环同行，不在 composer 工具行内）。
@@ -170,6 +170,7 @@ Fundet/
 - 拖/贴/回形针多选；工作目录外文件拷到 `{workDir}/.fundet-uploads/`；粘贴图片魔数嗅探 mime（QQ「原图」=PNG 套 .jpeg 的坑）。
 - PDF/Word 拖入自动提取正文随消息发模型（unpdf/mammoth，200k 字/30MB 上限，失败不阻断）。
 - 粘贴长文本 chip（2026-09-14 对齐 Cindy）：粘贴 ≥10 行或 >600 字符文本自动收成「粘贴的文本（N 行）」chip（点击 Lightbox 预览全文、× 移除），发送时按粘贴顺序展开为原文追加；DB 存完整拼接文本。
+- **预览安全模型（2026-09-16 对齐 Cindy filePathPolicy）**：读取侧（readFileDataUrl/readTextFile/fundet-file:// 协议）从「workDir 白名单」改为 **deny-list**——工作目录外普通文件可预览（agent 引用任意盘路径、原始位置附件），只拦系统目录（Win 系统盘族 + POSIX /etc 等）、凭据（.ssh/.aws/.gnupg…）、浏览器 profile；符号链接 realpath 后判定。策略模块 `main/filePathPolicy.ts`（11 用例）。**附件发送侧 workDir 硬约束不变**（界外必须 stage 进 .fundet-uploads）。
 
 ### 4.4 浏览器自动化
 - 设置→自动操作开关（默认关）。新会话注入 MCP `browser`（单工具 23 action + list_tools），审批跟会话档。
