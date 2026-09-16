@@ -55,8 +55,8 @@ export function PanelPage(): React.JSX.Element | null {
   const { title, body: Body } = PANELS[panel];
   return (
     <div className="flex h-full w-full flex-col bg-surface">
-      {/* 页头：返回 + 大标题（对齐设置页内栏头部解剖；头部自带 drag 区，返回钮 no-drag 挖洞） */}
-      <div className="drag-region flex h-[46px] shrink-0 items-center gap-2.5 pl-4 select-none">
+      {/* 页头：返回箭头 + 拖拽区（标题由各面板正文自带，页头不再重复） */}
+      <div className="drag-region flex h-[46px] shrink-0 items-center pl-4 select-none">
         <button
           type="button"
           aria-label="返回"
@@ -65,9 +65,9 @@ export function PanelPage(): React.JSX.Element | null {
         >
           <ArrowLeft size={18} />
         </button>
-        <h1 className="text-24 leading-[1.1] font-medium text-primary">{title}</h1>
+        <span className="sr-only">{title}</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pt-[56px]">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full min-w-0 max-w-[920px] px-1 pb-32">
           <Body />
         </div>
