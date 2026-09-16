@@ -281,7 +281,7 @@ Fundet/
 > **应用内更新已切 GitLab（0.2.16 起，产品决策 2026-09-11）**：updater.ts generic feed 两跳解析——GET `releases?per_page=1` 拿最新 tag → setFeedURL 指 `packages/generic/fundet/<版本>/` 直连（不走 downloads API：它 302 到包文件，重定向上自定义头不受控）。项目 272 私有——**用户须在 设置→通用「版本与更新」配 GitLab 访问令牌（scope=api；safeStorage 落盘 `keys/gitlab-updater.bin`；`FUNDET_UPDATER_TOKEN` 环境变量可覆盖，部署/测试用）**，未配时中文指引。**存量过渡**：0.2.15 及以前的安装仍指 GitHub、永远收不到新版本——须手动装一次 0.2.16（Release 页或 `D:\Fundet-Setup-0.2.16-x64.exe`），此后自动更新走 GitLab。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
-> **在途事项（2026-09-14）**：无——v0.2.14 ~ v0.2.17 均已发 GitLab Release（安装包静默装冒烟过，资产抽验可下载）。注意 v0.2.15 曾有一次 tag 重指（首打 tag 含 BOM 坏 package.json，提交 `fix: package.json 去 BOM` 后删远端 tag 重推；当时 Release 未建故无 draft 风险）。**改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)**。**Defender 活跃日（2026-09-14 实测）出包与静默装都会被实时扫描拖慢**：dist:win 可能超 10 分钟（NSIS 压缩被拖）、冒烟安装 300s 不够（拷 pi.exe 半途被斩）——构建/冒烟命令超时预算放宽到 15-20 分钟，冒烟分步执行（先装、验完整性，再启动验证）。
+> **在途事项（2026-09-16 交接快照）**：GitLab 持续断连中——本地 `main` 领先远端 **15 个提交** + 未推 tag `v0.2.18`/`v0.2.19`（内容上 0.2.18 已并入 0.2.19，恢复后可只发 0.2.19）。**v0.2.19 安装包已出**：`D:\Fundet-Setup-0.2.19-x64.exe`（静默装冒烟过，窗口标题 [Fundet]）。**恢复后动作**（用户明示不急，等口令）：`git push origin main v0.2.18 v0.2.19` → 按 §6.5 上传 0.2.19 三资产 → 建 Release（0.2.18 可只推 tag 不建 Release，或同样发）→ memory.md §3.5 两行补「已发」。注意 v0.2.15 曾有一次 tag 重指（BOM 坏 package.json）——**改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)**。**Defender 活跃日出包与静默装都会被实时扫描拖慢**：dist:win 可能超 10 分钟（超时预算放宽到 20-25 分钟，斩死后无孤儿进程直接重跑即可）、冒烟安装 300s 不够（分步执行：先装验完整性，再启动验窗口标题）。
 
 ---
 
