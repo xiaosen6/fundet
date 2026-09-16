@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { SessionListItem } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
@@ -22,7 +22,7 @@ import { getProfile, subscribeProfile } from '../lib/profile';
 import { BrandMark } from './BrandMark';
 import { SessionRenameInput } from './SessionRenameInput';
 import { Tooltip } from './ui/Tooltip';
-import { SIDEBAR_PANEL_PATHS, type SidebarPanelId } from './sidebar/SidebarPanelDrawer';
+import { type SidebarPanelId } from './sidebar/SidebarPanelDrawer';
 
 interface SidebarProps {
   sessions: SessionListItem[];
@@ -33,11 +33,14 @@ interface SidebarProps {
   onCreate: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void>;
-  /** 空态常驻说明框：点「新对话」开启，开启后收起 */
   showNewHint?: boolean;
   width?: number;
   /** 拖拽条按下时回调（renderer 侧管理拖拽逻辑） */
   onResizeStart?: (e: React.PointerEvent) => void;
+  /** 当前打开的主区面板（右侧就地显示，null = 会话视图） */
+  activePanel?: SidebarPanelId | null;
+  /** 打开/关闭面板（null = 返回会话）；再点同款 = 关闭 */
+  onOpenPanel?: (id: SidebarPanelId | null) => void;
 }
 
 function formatTime(ts: number): string {
@@ -220,9 +223,10 @@ export function Sidebar({
   showNewHint,
   width = 260,
   onResizeStart,
+  activePanel = null,
+  onOpenPanel,
 }: SidebarProps): React.JSX.Element {
   const profile = useSyncExternalStore(subscribeProfile, getProfile, getProfile);
-  const navigate = useNavigate();
 
   // 会话列表窗口化：limit 随滚动单调增长；activeId 落到窗口外时扩到覆盖
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -265,16 +269,21 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* 顶部常驻动作行：四个能力入口（整屏路由页）+ 新对话 */}
+      {/* 顶部常驻动作行：四个能力入口（主区右侧就地显示面板）+ 新对话 */}
       <div className="flex flex-col gap-0.5 px-3 pt-1 pb-2.5">
         {PANEL_BUTTONS.map(({ id, label, Icon }) => (
           <button
             key={id}
             type="button"
-            onClick={() => void navigate(SIDEBAR_PANEL_PATHS[id])}
-            className={NAV_ROW_CLASS}
+            onClick={() => onOpenPanel?.(activePanel === id ? null : id)}
+            aria-pressed={activePanel === id}
+            className={cn(NAV_ROW_CLASS, activePanel === id ? 'bg-hover font-medium' : '')}
           >
-            <Icon size={15} strokeWidth={1.8} className="shrink-0 text-muted" />
+            <Icon
+              size={15}
+              strokeWidth={1.8}
+              className={cn('shrink-0', activePanel === id ? 'text-primary' : 'text-muted')}
+            />
             <span className="leading-none">{label}</span>
           </button>
         ))}

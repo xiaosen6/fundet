@@ -64,6 +64,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
+import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
 
@@ -111,6 +112,8 @@ export function ChatPage(): React.JSX.Element {
 
   // Ctrl+F 页内搜索（仅会话页生效；FindBar 内部处理 Esc/清高亮）
   const [findOpen, setFindOpen] = useState(false);
+  // 主区面板（IM/技能/MCP/知识库）：右侧就地显示，替代会话视图；侧栏保持可见
+  const [activePanel, setActivePanel] = useState<SidebarPanelId | null>(null);
   // 编辑上一条用户消息：记录原消息时间戳，发送时截断其后重发（Cindy 同款 Pen）
   const [editingFrom, setEditingFrom] = useState<number | null>(null);
   // 粘贴长文本 chip：发送时按序展开为原文追加
@@ -534,8 +537,14 @@ export function ChatPage(): React.JSX.Element {
         sessions={sessions}
         activeId={activeId}
         runningIds={runningIds}
-        onSelect={setActiveId}
-        onCreate={() => void createSession()}
+        onSelect={(id) => {
+          setActivePanel(null);
+          setActiveId(id);
+        }}
+        onCreate={() => {
+          setActivePanel(null);
+          void createSession();
+        }}
         onDelete={(id) => void deleteSession(id)}
         onRename={async (id, title) => {
           try {
@@ -547,11 +556,14 @@ export function ChatPage(): React.JSX.Element {
         showNewHint={sessions.length === 0 && !activeId}
         width={sidebarWidth}
         onResizeStart={startSidebarResize}
+        activePanel={activePanel}
+        onOpenPanel={setActivePanel}
       />
 
       {/* Canvas 开关钉在窗口右上（WindowControls 左侧），不随主列/Canvas 面板
-          宽度变化漂移——对齐 Cindy「折叠 toggle 钉在窗口层，不跟面板跑」 */}
-      {activeId && (
+          宽度变化漂移——对齐 Cindy「折叠 toggle 钉在窗口层，不跟面板跑」；
+          面板视图时隐藏（右侧不是会话） */}
+      {activeId && !activePanel && (
         <Tooltip label="Canvas 产物画布" side="bottom">
           <button
             type="button"
@@ -569,7 +581,12 @@ export function ChatPage(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
-        {!activeId ? (
+        {activePanel ? (
+          // 能力面板：右侧主区就地显示（相当于会话的部分），侧栏保持可见
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <PanelView id={activePanel} onBack={() => setActivePanel(null)} />
+          </div>
+        ) : !activeId ? (
           // 空态（对齐 cindy-02 首页解剖）：品牌 wordmark 居中 + 引导卡
           <div className="flex flex-1 flex-col">
             {/* 拖拽条在窗口按钮左侧截止（mr 而非 pr：app-region 按元素矩形算，
