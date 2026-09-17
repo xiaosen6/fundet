@@ -358,6 +358,12 @@ export function translatePiEvent(
         ctx.generationTimingReliable = false;
       }
       const fullText = assistantTextOf(message);
+      // 成功但为空的末次响应不得继承更早工具轮的进度（上游 #4493）：正常 stop
+      // 即使无文字也覆盖，settlement 才能看见有界的静默停止——否则 done.result
+      // 把上一轮工具间的旧文本当最终回复（IM turn-collector 等下游读它）。
+      if (message.stopReason === 'stop') {
+        ctx.finalAssistantText = fullText;
+      }
       if (fullText.length > 0) {
         // 覆盖为本 turn 最新一条有文本的 assistant 回复,agent_settled 作 done.result 上报。
         ctx.finalAssistantText = fullText;

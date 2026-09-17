@@ -175,6 +175,83 @@ describe('cindy-bridge extension source', () => {
     expect(CINDY_BRIDGE_EXTENSION_SOURCE).toContain("startsWith('mcp__')");
   });
 
+  it('forces confirmation for control-plane writes even under Full access (#4518)', () => {
+    const source = CINDY_BRIDGE_EXTENSION_SOURCE;
+    // 门序：extra-dirs 拦截 → 控制面判定 → bypass 放行必须带 controlPlaneWrite 例外
+    const extraDirsGate = source.indexOf("'Cindy extra reference directories are read-only.'");
+    const controlPlaneCompute = source.indexOf('const controlPlaneWrite = Boolean(');
+    const bypassReturn = source.indexOf(
+      "permission.mode === 'bypassPermissions' && !controlPlaneWrite",
+    );
+    expect(extraDirsGate).toBeGreaterThan(-1);
+    expect(controlPlaneCompute).toBeGreaterThan(extraDirsGate);
+    expect(bypassReturn).toBeGreaterThan(controlPlaneCompute);
+    // 审批卡带控制面标记与规范路径证据
+    expect(source).toContain('controlPlaneWrite: true, resolvedWritePath: writeTargetResolved');
+    // 真实目标无法解析（悬空/循环链接）时非 bypass 档 fail closed
+    expect(source).toContain("'Cindy could not verify the real file-write target.'");
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'resolves write targets through symlinks and fails closed on dangling links',
+    () => {
+      const source = CINDY_BRIDGE_EXTENSION_SOURCE;
+      const start = source.indexOf('function isInsideRoot');
+      const end = source.indexOf('function reviewAncestorsWithin');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const executableSource = [
+        source.slice(start, end),
+        '(globalThis as any).resolveFileWriteTargetPath = resolveFileWriteTargetPath;',
+        '(globalThis as any).isInsideRoot = isInsideRoot;',
+      ].join('\n');
+      const compiled = ts.transpileModule(executableSource, {
+        compilerOptions: {
+          module: ts.ModuleKind.None,
+          target: ts.ScriptTarget.ES2022,
+        },
+      }).outputText;
+
+      const tempRoot = mkdtempSync(path.join(tmpdir(), 'cindy-pi-write-target-'));
+      try {
+        const agentHome = path.join(tempRoot, 'agent-home');
+        const realDir = path.join(tempRoot, 'real-dir');
+        mkdirSync(agentHome);
+        mkdirSync(realDir);
+        // agentHome 内的 link 指向外面：字面路径在控制面内，realpath 在外面
+        const escapeLink = path.join(agentHome, 'escape');
+        symlinkSync(realDir, escapeLink);
+        // 悬空链接：目标不存在且自身是链接
+        const dangling = path.join(realDir, 'dangling-link');
+        symlinkSync(path.join(realDir, 'no-such-target'), dangling);
+
+        const context: Record<string, unknown> = { path, realpathSync, lstatSync };
+        runInNewContext(compiled, context);
+        const resolve = context['resolveFileWriteTargetPath'] as (p: string) => string | null;
+        const isInsideRoot = context['isInsideRoot'] as (c: string, r: string) => boolean;
+        expect(resolve).toBeTypeOf('function');
+
+        // 已存在文件 → 规范路径
+        const existing = path.join(realDir, 'a.txt');
+        writeFileSync(existing, 'x');
+        expect(resolve(existing)).toBe(realpathSync(existing));
+        // 新文件（不存在）→ 沿最近存在父目录解析
+        expect(resolve(path.join(realDir, 'new.txt'))).toBe(
+          path.join(realpathSync(realDir), 'new.txt'),
+        );
+        // 控制面内的符号链接目录 → 解析到根外（字面命中控制面，resolved 不命中）
+        expect(isInsideRoot(escapeLink, agentHome)).toBe(true);
+        expect(resolve(path.join(escapeLink, 'payload'))).toBe(
+          path.join(realpathSync(realDir), 'payload'),
+        );
+        // 悬空链接 → null（fail closed）
+        expect(resolve(dangling)).toBeNull();
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('checks the Review deny-by-default boundary before ordinary permission handling', () => {
     const source = CINDY_BRIDGE_EXTENSION_SOURCE;
     const reviewGate = source.indexOf('if (permission.reviewOnly)');

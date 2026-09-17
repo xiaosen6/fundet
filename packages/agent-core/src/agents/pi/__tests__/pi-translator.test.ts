@@ -891,3 +891,42 @@ describe('pi translator', () => {
     });
   });
 });
+
+// ── #4493：空 stop 不得继承旧工具轮文本 ──────────────────────────────────────
+describe('pi translator finalAssistantText (empty stop)', () => {
+  const assistantEnd = (text: string, stopReason: string): PiRpcEvent =>
+    ev({
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: text ? [{ type: 'text', text }] : [],
+        stopReason,
+        usage: { input: 1, output: 1 },
+      },
+    });
+
+  it('normal empty stop overwrites the earlier tool-round text', () => {
+    const ctx = createPiTranslateContext(noopLogger);
+    const { queue, events } = makeQueue();
+    translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+    translatePiEvent(assistantEnd('工具轮间的旧文本', 'tool_use'), queue, ctx);
+    translatePiEvent(assistantEnd('', 'stop'), queue, ctx);
+    translatePiEvent(ev({ type: 'agent_settled' }), queue, ctx);
+
+    const done = events.find((e) => e.type === 'done');
+    expect(done?.data).toEqual(expect.objectContaining({ result: '' }));
+  });
+
+  it('non-stop empty messages keep the last non-empty text', () => {
+    const ctx = createPiTranslateContext(noopLogger);
+    const { queue, events } = makeQueue();
+    translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+    translatePiEvent(assistantEnd('最终回复', 'stop'), queue, ctx);
+    // settle 前的空非 stop 消息（如异常中断的中间轮）不得清空最终文本
+    translatePiEvent(assistantEnd('', 'error'), queue, ctx);
+    translatePiEvent(ev({ type: 'agent_settled' }), queue, ctx);
+
+    const done = events.find((e) => e.type === 'done');
+    expect(done?.data).toEqual(expect.objectContaining({ result: '最终回复' }));
+  });
+});

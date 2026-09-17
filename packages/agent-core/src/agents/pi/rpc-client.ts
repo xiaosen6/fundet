@@ -48,6 +48,11 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 3_000;
 /** exit 确认后等尾帧的排水窗(上游 #4182 同值)。 */
 const EXIT_DRAIN_MS = 250;
+/** JSONL 单行字节上限(上游 #4518 同值)：超限行丢弃并按帧超限处理，防无限缓冲。 */
+const MAX_LINE_BYTES = 16 * 1024 * 1024;
+
+export const PI_RPC_OVERSIZED_FRAME_ERROR =
+  'RPC response exceeded 16 MiB and was discarded.';
 
 /**
  * 帧诊断日志的标签白名单:pi 协议的事件类型 / role / stopReason / 块类型都是短
@@ -68,6 +73,8 @@ export class PiRpcProcess {
     resolve: (resp: PiRpcResponse) => void;
     reject: (err: Error) => void;
     timer: NodeJS.Timeout;
+    /** 命令 type（超限帧只结束可确定归属的 get_entries，见 failOversizedPending） */
+    commandType: string;
   }>();
   private closed = false;
   private readonly logger: Logger;
@@ -97,7 +104,13 @@ export class PiRpcProcess {
       }
     }
 
-    attachJsonlReader(this.child.stdout, (line) => this.handleStdoutLine(line));
+    attachJsonlReader(this.child.stdout, (line) => this.handleStdoutLine(line), {
+      maxLineBytes: MAX_LINE_BYTES,
+      onOversizedLine: (bytes) => {
+        this.logger.warn('pi rpc: discarded oversized JSONL line', { bytes });
+        this.failOversizedPending();
+      },
+    });
     attachJsonlReader(this.child.stderr, (line) => {
       if (line.trim().length === 0) return;
       this.logger.warn('pi stderr', { line: line.slice(0, 2000) });
@@ -174,7 +187,12 @@ export class PiRpcProcess {
         this.pending.delete(id);
         reject(new Error(`pi rpc timeout after ${timeoutMs}ms: ${String(command.type)}`));
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, {
+        resolve,
+        reject,
+        timer,
+        commandType: typeof command.type === 'string' ? command.type : '',
+      });
       this.child.stdin.write(payload + '\n', (err) => {
         if (err) {
           const entry = this.pending.get(id);
@@ -309,6 +327,27 @@ export class PiRpcProcess {
     }
   }
 
+  /**
+   * 超限帧处理(上游 #4518)：超限通知不带帧 type / 响应 id；事件帧(如
+   * message_end)也可能超限。只能结束可确定归属的 get_entries(大响应只可能
+   * 是它)，不能把唯一 pending 的 steer/abort 猜成受害者。
+   */
+  private failOversizedPending(): void {
+    const victims = [...this.pending.entries()].filter(([, entry]) => entry.commandType === 'get_entries');
+    if (victims.length === 0) return;
+    for (const [id, entry] of victims) {
+      clearTimeout(entry.timer);
+      this.pending.delete(id);
+      entry.resolve({
+        type: 'response',
+        id,
+        command: entry.commandType,
+        success: false,
+        error: PI_RPC_OVERSIZED_FRAME_ERROR,
+      });
+    }
+  }
+
   private failAllPending(err: Error): void {
     for (const [, entry] of this.pending) {
       clearTimeout(entry.timer);
@@ -321,30 +360,65 @@ export class PiRpcProcess {
 /**
  * 协议合规的 JSONL 读取:只按 \n 切,strip 尾部 \r,跨 chunk 维护缓冲。
  * (pi docs/rpc.md 明确警告 Node readline 不合规。)
+ * maxLineBytes:单行超限时整行丢弃(吃到下一个换行为止)并回调 onOversizedLine，
+ * 防超长帧把缓冲撑爆(上游 #4518)。
  */
 export function attachJsonlReader(
   stream: NodeJS.ReadableStream,
   onLine: (line: string) => void,
+  opts: { maxLineBytes?: number; onOversizedLine?: (bytes: number) => void } = {},
 ): void {
   const decoder = new StringDecoder('utf8');
   let buffer = '';
+  let discarding = false;
+  let discardedBytes = 0;
+
+  const handleCompleteLine = (line: string): void => {
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    onLine(line);
+  };
 
   stream.on('data', (chunk: Buffer | string) => {
-    buffer += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    // 字符数近似字节上限（JSON 主体是 ASCII，1 char ≈ 1 byte；CJK 行最坏 3x
+    // 余量）——目的是有界内存，不是精确计量。
+    const maxChars = opts.maxLineBytes ?? Infinity;
+    buffer += text;
     while (true) {
       const newlineIndex = buffer.indexOf('\n');
-      if (newlineIndex === -1) break;
-      let line = buffer.slice(0, newlineIndex);
+      if (newlineIndex === -1) {
+        // 无换行的部分行超限 → 进丢弃模式，等行尾
+        if (!discarding && buffer.length > maxChars) {
+          discarding = true;
+          discardedBytes = buffer.length;
+          buffer = '';
+        }
+        break;
+      }
+      const line = buffer.slice(0, newlineIndex);
       buffer = buffer.slice(newlineIndex + 1);
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      onLine(line);
+      if (discarding) {
+        discarding = false;
+        opts.onOversizedLine?.(discardedBytes + line.length);
+        continue;
+      }
+      // 单 chunk 内完整到达的超限行同样丢弃
+      if (line.length > maxChars) {
+        opts.onOversizedLine?.(line.length);
+        continue;
+      }
+      handleCompleteLine(line);
     }
   });
 
   stream.on('end', () => {
     buffer += decoder.end();
     if (buffer.length > 0) {
-      onLine(buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer);
+      if (discarding) {
+        opts.onOversizedLine?.(discardedBytes + buffer.length);
+        return;
+      }
+      handleCompleteLine(buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer);
     }
   });
 }

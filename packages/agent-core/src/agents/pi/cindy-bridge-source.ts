@@ -166,6 +166,46 @@ function isInsideRoot(candidate: string, root: string): boolean {
   return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
 }
 
+/**
+ * 写目标的规范路径（上游 #4518 同款）：目标存在 → realpath 目标；目标不存在 →
+ * realpath 最近的存在父目录再拼回尾部（父链上的 symlink 一并解析）。全链无法
+ * 解析（悬空/循环链接、权限错误）返回 null —— 调用方按不可信目标处理。
+ */
+function resolveFileWriteTargetPath(targetPath: string): string | null {
+  if (!targetPath) return null;
+  try {
+    return realpathSync(targetPath);
+  } catch {
+    try {
+      lstatSync(targetPath);
+      return null;
+    } catch (lstatError) {
+      const code = (lstatError as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') return null;
+    }
+    let dir = path.dirname(targetPath);
+    for (let i = 0; i < 64; i += 1) {
+      try {
+        return path.join(realpathSync(dir), path.relative(dir, targetPath));
+      } catch {
+        // 词法祖先存在却无法 realpath（悬空/循环链接或权限错误）。越过它继续
+        // 会把未知真实目标伪装成授权根内路径，fail closed。
+        try {
+          lstatSync(dir);
+          return null;
+        } catch (lstatError) {
+          const code = (lstatError as NodeJS.ErrnoException).code;
+          if (code !== 'ENOENT' && code !== 'ENOTDIR') return null;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) return null;
+        dir = parent;
+      }
+    }
+    return null;
+  }
+}
+
 function reviewAncestorsWithin(start: string, root: string): string[] {
   const boundary = path.resolve(root);
   const ancestors: string[] = [];
@@ -1071,8 +1111,8 @@ export default async function cindyBridge(pi: any) {
         // Best-effort capture; the permission boundary below remains authoritative.
       }
     }
-    // Extra Dirs 的结构化写工具永远禁止，即使 Full access 也不能把“只读引用”静默
-    // 升级成写目录。bash 仍由 Cindy 审批/模型指令约束（Pi 暂无 OS sandbox API）。
+    // Extra Dirs 的结构化写工具禁止（本仓 extraDirs 未接 UI，readOnlyRoots 实际
+    // 恒空；上游 09-17 #4518 已改为 Full access 放行——接 UI 时再对齐）。
     const targetPath = typeof event.input?.path === 'string' ? event.input.path : '';
     if (
       targetPath
@@ -1081,19 +1121,50 @@ export default async function cindyBridge(pi: any) {
     ) {
       return { block: true, reason: 'Cindy extra reference directories are read-only.' };
     }
+    // agent 运行时目录（PI_CODING_AGENT_DIR：models.json/权限档/扩展）是控制面：
+    // 模型改写 models.json 的 baseUrl/apiKey 可把后续请求全部 MITM 到攻击者
+    // endpoint。Host 侧写入不经此门；模型的结构化写冒泡强制用户确认——含完全
+    // 放行档（上游 #4518）。子进程继承同一 PI_CODING_AGENT_DIR，无需单列 run dir。
+    const agentHomeDir = process.env.PI_CODING_AGENT_DIR;
+    // 写目标 symlink 绕过：isInsideRoot 只看字面路径，realpath 跟随后再判一次。
+    const writeTargetResolved = resolveFileWriteTargetPath(targetPath);
+    if (
+      targetPath
+      && FILE_WRITE_BUILTINS.has(event.toolName)
+      && writeTargetResolved === null
+      && permission.mode !== 'bypassPermissions'
+    ) {
+      return { block: true, reason: 'Cindy could not verify the real file-write target.' };
+    }
+    const controlPlaneWrite = Boolean(
+      targetPath
+      && FILE_WRITE_BUILTINS.has(event.toolName)
+      && agentHomeDir
+      && (
+        isInsideRoot(targetPath, agentHomeDir)
+        || (writeTargetResolved !== null && isInsideRoot(writeTargetResolved, agentHomeDir))
+      )
+    );
     // 凭证/密钥路径的内置只读工具(read/grep/find/ls)在 Ask 档不走免审批直通:
     // 原始路径命不中时还要跟随符号链接,工作区内的 link 可指向敏感目标,
     // realpath 后再判一次。完全放行(bypassPermissions)不再对凭证读硬拦——
     // 与原生 Pi 一致,文本拦截不是安全边界;真正的隔离用 Ask/自动档或 OS 沙箱。
     const credentialRead = READONLY_BUILTINS.has(event.toolName)
       && (touchesCredentialPath(event.input) || resolvesToCredentialPath(event.input));
-    if (permission.mode === 'bypassPermissions') return;
+    if (permission.mode === 'bypassPermissions' && !controlPlaneWrite) return;
     if (READONLY_BUILTINS.has(event.toolName) && !credentialRead) return;
     let approved = false;
     try {
       approved = await ctx.ui.confirm(
         PERMISSION_TITLE,
-        JSON.stringify({ toolName: event.toolName, input: event.input ?? {} }),
+        JSON.stringify({
+          toolName: event.toolName,
+          input: event.input ?? {},
+          // 控制面写：审批卡带出规范路径证据，Host/UI 可据此升级提示强度
+          ...(controlPlaneWrite
+            ? { controlPlaneWrite: true, resolvedWritePath: writeTargetResolved }
+            : {}),
+        }),
       );
     } catch {
       approved = false;
