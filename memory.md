@@ -291,7 +291,9 @@ Fundet/
 
 > **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
 
-> **在途事项（2026-09-17）**：**无**——0.2.20（体验高级感批，见 §3.5/§4.2）已发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过（窗口标题正常，HKCU/快捷方式痕迹已清）；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`。老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列在冒烟机自动生效）。
+> **在途事项（2026-09-17）**：**上游必移植项已落地、未发版**（commit dd5ffe6，随下个版本发）：①#4493 translator 空 stop 覆盖 finalAssistantText（治 IM 回放陈旧回复）；②#4518 桥控制面写守卫（模型改写 agent-home models.json = MITM 劫持面，现在**完全放行档也强制确认**——产品语义变化：放行档会话里模型写自己运行时目录时会弹一次审批卡，属设计内）+ realpath 防 symlink 绕过 + 无法解析 fail-closed；③#4518 RPC 超限帧（16MiB 上限）。验证：typecheck 全过、agent-core 875 测（含真 pi 集成，桥源在真实扩展运行时加载正常）+ desktop 100 + 新增 7 用例、dev:win boot 冒烟过。**建议移植项待做**（见 §9.5 09-17 核查）：#4533 开机自启、#4544 分享卡片 DOM 光栅化、#4540 Vertex/Azure 预设。
+>
+> 0.2.20（体验高级感批）已于同日发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`；老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列自动生效）。
 
 ---
 
