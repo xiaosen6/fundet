@@ -124,6 +124,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.20 | 09-17 | **体验高级感批（对齐 Cindy §14.4）**：Motion token 全组件落地；FadeSwitcher 切换淡入（路由/面板/会话）；侧栏 settle 闪烁 + attention 关注点（完成未读绿/错误红）+ 运行扫动条 + 标题 marquee；消息行软入场 + done 收束弹跳；启动 Splash；composer @ 文件引用（fs:list-dir）+ 图片附件缩略图；会话置顶/拖拽排序（sessions 补列）+ FLIP 重排 |
 | 0.2.19 | 09-16 | **预览安全模型对齐 Cindy**（deny-list）；能力入口主区内嵌面板（三版演进终态，无返回钮）；确认弹窗柔和化；粘贴长文本 chip；**更新源回 GitHub**（GitLab 弃用，gh CLI + xiaosen6/fundet 单线发版）；**已发 GitHub Release**（三资产，冒烟过；0.2.8~0.2.15 存量装机更新通道复活） |
 | 0.2.18 | 09-15 | 粘贴长文本自动收成 chip（≥10 行或 >600 字符；点击预览全文/× 移除；发送按序展开为原文）；含 0.2.17 后的布局修正（编辑入口在消息操作栏/路径按钮在输入卡下方/用户消息完整操作栏）；**tag 本地未推，内容并入 0.2.19** |
 | 0.2.17 | 09-14 | **流畅度对齐 Cindy 批（14 项）**：Tooltip/Toast/ConfirmDialog 反馈基元（删会话有确认）+ 跳底/新消息 chip；划选引用、Ctrl+F 页内搜索、跳上一条提问；Lightbox 全屏查看（图/mermaid）、AgentTaskCard 子任务卡；MessageStream 换 TanStack Virtual 真虚拟化；composer 编辑按钮（真编辑截断重发）+ 路径按钮带边框 pill；另含 Cindy #4353 看门狗活性语义移植；**已发 GitLab Release**（静默装冒烟过，查窗口标题无 Error） |
