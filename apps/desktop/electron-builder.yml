@@ -58,6 +58,7 @@ win:
       to: cua-driver/win32-x64
 
 nsis:
+  include: build/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   shortcutName: Fundet
