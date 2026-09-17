@@ -124,6 +124,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.21 | 09-18 | **上游安全/诊断批 + 优化批**：#4493 空 stop、#4518 桥控制面写守卫（完全放行档也强制确认）+ RPC 超限帧、#4626 启动 stderr 诊断；思考档位 UI、会话搜索（FTS5）、错误分类自动重试、开机自启、分享卡片 DOM 光栅化、产出文件卡、Vertex/Azure 预设；updater GitLab 死代码清理；发版冒烟脚本化（tools/smoke-installer.mjs） |
 | 0.2.20 | 09-17 | **体验高级感批（对齐 Cindy §14.4）**：Motion token 全组件落地；FadeSwitcher 切换淡入（路由/面板/会话）；侧栏 settle 闪烁 + attention 关注点（完成未读绿/错误红）+ 运行扫动条 + 标题 marquee；消息行软入场 + done 收束弹跳；启动 Splash；composer @ 文件引用（fs:list-dir）+ 图片附件缩略图；会话置顶/拖拽排序（sessions 补列）+ FLIP 重排 |
 | 0.2.19 | 09-16 | **预览安全模型对齐 Cindy**（deny-list）；能力入口主区内嵌面板（三版演进终态，无返回钮）；确认弹窗柔和化；粘贴长文本 chip；**更新源回 GitHub**（GitLab 弃用，gh CLI + xiaosen6/fundet 单线发版）；**已发 GitHub Release**（三资产，冒烟过；0.2.8~0.2.15 存量装机更新通道复活） |
 | 0.2.18 | 09-15 | 粘贴长文本自动收成 chip（≥10 行或 >600 字符；点击预览全文/× 移除；发送按序展开为原文）；含 0.2.17 后的布局修正（编辑入口在消息操作栏/路径按钮在输入卡下方/用户消息完整操作栏）；**tag 本地未推，内容并入 0.2.19** |
@@ -360,7 +361,9 @@ pnpm -r --if-present run test
 
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
-**上次同步点：a15a240bf（fix(auto-review) #4597，2026-09-17；窗口 f4422f816..a15a240bf 共 134 提交已核查，裁决见下）**。
+**上次同步点：c3fcefd49（feat(navigation) #4590，2026-09-18；窗口 f4422f816..c3fcefd49 已全部核查，裁决见下）**。
+
+**2026-09-18 核查（a15a240bf..c3fcefd49，23 提交）**：**已移植 1 项**——`2848dbf97` #4626 pi 启动失败诊断（pending 拒绝带脱敏+路径遮蔽的 stderr 尾部摘要；**本仓改造点**：sanitizeStartupDiagnostic 必须在 redactSensitiveText **之前**跑——本仓脱敏函数会吃反斜杠，顺序反了 Windows 路径先被搅碎；首个 RPC 响应到达即停收集；同日落地 efd9c70）。红线/不适用：navigation/teammates、remote-desktop 防窥屏、bots 伙伴通信、mobile、winget 入口（本仓 GitHub Releases+NSIS 无 winget 清单）、slider 家族统一（本仓 EffortSelector 是菜单形态非 slider）、「Cindy 项目管理工具」MCP 十连（任务/项目体系本仓无）。
 
 **2026-09-17 核查（f4422f816..a15a240bf，134 提交，大头 mobile/remote-desktop/codex/bots/teammates/design-system 内部工具均红线）**：**必移植两项（同构文件已定位缺口）**——①`bc40023e7` #4493 translator 空 stop 修复：末次 assistant 消息 stopReason='stop' 但空文本时也要覆盖 `finalAssistantText`（否则 done.result 继承旧工具轮文本，IM turn-collector 读到陈旧回复）；**本仓 translator.ts:361 同款代码在**（`fullText.length > 0` 才覆盖），~5 行 + 测试。②`618cc8d25` #4518 两半：pi 桥**控制面写守卫**（PI_CODING_AGENT_DIR 内 models.json 等被模型改写 = MITM 端点劫持，上游改为即使 bypassPermissions 也强制确认；**本仓 vendored cindy-bridge-source.ts 完全无此守卫**，且本仓 subagent 无 durable 运行故 rg 拷贝半边不适用、extra dirs 未接 UI 故越界写语义半边低优先）+ **RPC 超限帧**（>16MiB JSONL 丢弃并精确 fail pending 的 get_entries，不猜 steer/abort；本仓 attachJsonlReader 无行上限）。**建议移植**：#4533 开机自启（IM 机器人要应用常开，天然配套，app.setLoginItemSettings + NSIS 清理）、#4544 分享卡片改 DOM 光栅化（html-to-image + 主进程原生写剪贴板，治 capturePage 失焦/最小化空图）、#4540 Vertex/Azure 预设（本仓 providerBranding/providerPresets 无这两族）。**可选**：Switch thumb 动效（eaac55cae）、#4620 注视会话排序优先、#4271+#4351 token 速度浮窗。**核查后不适用（勿重查）**：#4468 running 残留/#4520 中断横幅（他们的 projects/remote 多端 store 架构）、#4484 侧栏千条性能（本仓已窗口化）、#4351 单独无意义（本仓无速度功能）、#4591 computer-output 层（本仓 cua-driver 直通）、ab0a5bbe1 model-compat 网关层（本仓无）、auto-review 族持续演进均在 desktop auto-permission-reviewer 管线（与本仓 agent-core auto-review 不同构，维持 09-11 裁决）、#4437 原地加载项目 skill（本仓 pi 启动无 --no-approve 场景不同构，暂缓）、主题对比度 commit+revert 净零、worktree/Slack/Discord/ollama/iOS/Arch Linux 红线。**挂账项**：vendor lock b972feb3 未变（窗口内 browser-control-runtime 零提交）；网络守卫竞态、MCP 懒加载上游仍未落地；pi 版本未动（0.84.4）。
 
