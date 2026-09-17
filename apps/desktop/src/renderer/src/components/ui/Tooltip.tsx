@@ -61,7 +61,7 @@ export function Tooltip({
           className={cn(
             'pointer-events-none absolute left-1/2 z-50 w-max max-w-[280px] -translate-x-1/2 whitespace-pre-line rounded-lg border border-board bg-card px-2 py-1 text-center text-12 leading-[1.5] text-secondary shadow-[var(--shadow-menu)] select-none',
             side === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5',
-            !reduced && 'animate-[tooltip-in_120ms_ease-out]',
+            !reduced && 'animate-[tooltip-in_var(--motion-fast)_var(--motion-ease-out)]',
             className,
           )}
         >

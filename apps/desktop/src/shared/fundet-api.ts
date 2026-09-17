@@ -103,6 +103,8 @@ export interface SessionListItem {
   effort: string | null;
   permissionMode: string | null;
   status: string;
+  /** 置顶段（列表置顶 + 可拖拽排序） */
+  pinned?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -257,6 +259,14 @@ export interface FindResultPayload {
   finalUpdate: boolean;
 }
 
+/** 目录清单条目（composer @ 文件引用用） */
+export interface DirEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
+  mtime: number;
+}
+
 export interface FundetApi {
   createSession(input: SessionCreateInput): Promise<SessionMeta>;
   listSessions(): Promise<SessionListItem[]>;
@@ -271,6 +281,10 @@ export interface FundetApi {
   setSessionEffort(id: string, effort: Effort | null): Promise<void>;
   setSessionPermissionMode(id: string, mode: PermissionMode): Promise<void>;
   renameSession(id: string, title: string): Promise<void>;
+  /** 置顶/取消置顶（置顶段置顶显示，可拖拽排序） */
+  setSessionPinned(id: string, pinned: boolean): Promise<void>;
+  /** 持久化置顶段的手动顺序（ids 按从上到下） */
+  reorderSessions(ids: string[]): Promise<void>;
 
   resolveInteraction(requestId: string, decision: InteractionDecision): Promise<void>;
   getPendingInteractions(): Promise<InteractionRequestPayload[]>;
@@ -367,6 +381,8 @@ export interface FundetApi {
   getPathForFile(file: Blob): string;
   readTextFile(filePath: string, workDir: string): Promise<string>;
   readFileDataUrl(filePath: string, workDir: string): Promise<string>;
+  /** 列目录（deny-list 策略同预览；跳隐藏/node_modules；上限 500 条） */
+  listDir(dir: string): Promise<DirEntry[]>;
   openPath(filePath: string): Promise<void>;
   platform: NodeJS.Platform;
   windowMinimize(): void;

@@ -110,7 +110,12 @@ export function RunningStatus({ visible, status, tokenUsage }: RunningStatusProp
       <div
         key={shimmerCycle}
         onAnimationEnd={handleShimmerEnd}
-        className={cn('flex min-w-0 items-center gap-[6px]', !hidden && visible && !reducedMotion && 'status-bar-shimmer')}
+        className={cn(
+          'flex min-w-0 items-center gap-[6px]',
+          !hidden && visible && !reducedMotion && 'status-bar-shimmer',
+          // Done 收束：唯一 sanctioned 过冲（0.85→1.08→1 一次），运行色保持橙
+          !reducedMotion && isDone && 'status-done-pop',
+        )}
         style={{ ...fadeStyle, color: 'var(--warning)' }}
         aria-hidden={hidden}
       >

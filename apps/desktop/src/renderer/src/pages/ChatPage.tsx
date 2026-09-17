@@ -24,6 +24,7 @@ import {
   getDraftProviderId,
   getDraftSession,
   isDraftSession,
+  markSessionSeen,
   refreshSessionList,
   renameSession,
   resolvePermission,
@@ -64,6 +65,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
+import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
@@ -135,6 +137,8 @@ export function ChatPage(): React.JSX.Element {
     headerRenameCommitted.current = false;
     setEditingFrom(null);
     setPastedTexts([]);
+    // 切进即视为已看：清侧栏关注点，此后该会话完成不再打未读标
+    markSessionSeen(activeId);
   }, [activeId]);
 
   const activeMeta = useMemo(
@@ -581,6 +585,8 @@ export function ChatPage(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
+        {/* 面板 ↔ 会话切换整块淡入（不重挂子树，输入草稿保留） */}
+        <FadeSwitcher trigger={activePanel ?? 'chat'} className="min-h-0 min-w-0 flex-1">
         {activePanel ? (
           // 能力面板：右侧主区就地显示（相当于会话的部分），侧栏保持可见
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -765,6 +771,8 @@ export function ChatPage(): React.JSX.Element {
               </div>
             </header>
 
+            {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留） */}
+            <FadeSwitcher trigger={activeId ?? 'none'} className="min-h-0 flex-1">
             <MessageStream
               slice={slice}
               workDir={activeMeta?.workDir || workDir}
@@ -812,6 +820,7 @@ export function ChatPage(): React.JSX.Element {
               onEditUserMessage={editUserMessage}
               onDeleteUserMessage={(createdAt) => void deleteUserMessage(createdAt)}
             />
+            </FadeSwitcher>
 
             {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方 */}
             <div className="px-6 pt-1 pb-4">
@@ -852,6 +861,8 @@ export function ChatPage(): React.JSX.Element {
                       pastedTexts={pastedTexts}
                       onPasteLongText={pasteLongText}
                       onRemovePastedText={removePastedText}
+                      workDir={sessionWorkDir}
+                      onStagePaths={(paths) => void stagePaths(paths)}
                       leadingControls={
                         <>
                           <KnowledgeChip sessionId={activeId} />
@@ -908,6 +919,7 @@ export function ChatPage(): React.JSX.Element {
             )}
           </div>
         )}
+        </FadeSwitcher>
       </main>
     </div>
   );

@@ -69,6 +69,8 @@ export interface SessionSlice {
   pendingInteraction: InteractionRequest | null;
   /** DB 历史是否已重建进 items */
   historyLoaded: boolean;
+  /** 侧栏关注态：turn 在非注视下完成（绿）/ 终态出错（红）；注视即清除 */
+  attention: 'done' | 'error' | null;
 }
 
 const EMPTY_USAGE: UsageSnapshot = { tokenUsage: 0, contextTokens: 0, contextWindow: 0, costUsd: 0 };
@@ -81,6 +83,7 @@ const EMPTY_SLICE: SessionSlice = {
   usage: EMPTY_USAGE,
   pendingInteraction: null,
   historyLoaded: false,
+  attention: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -119,7 +122,10 @@ function rebuildCombinedList(): void {
   const visibleDrafts = Array.from(drafts.values())
     .filter((d) => draftHasDialogue(d.item.id))
     .map((d) => d.item);
-  combinedList = [...visibleDrafts, ...sessionList];
+  // 置顶段最前（服务端已按 pinned/sortOrder 排好），草稿其次，其余按更新时间
+  const pinned = sessionList.filter((s) => s.pinned);
+  const rest = sessionList.filter((s) => !s.pinned);
+  combinedList = [...pinned, ...visibleDrafts, ...rest];
 }
 
 function notifyList(): void {
@@ -130,6 +136,10 @@ function notifyList(): void {
 const anyListeners = new Set<() => void>();
 /** 运行中 sessionId 集合快照（useSyncExternalStore 需要引用稳定） */
 let runningSnapshot: ReadonlySet<string> = new Set();
+/** 侧栏关注态快照（sessionId → done/error）；与 runningSnapshot 同点重算 */
+let attentionSnapshot: ReadonlyMap<string, 'done' | 'error'> = new Map();
+/** 当前注视（打开）的会话：其 turn 完成不打未读标记 */
+let focusedSessionId: string | null = null;
 
 /** 「本会话总允许」工具白名单（pi 的 permission decision 只认 allow/deny，
  *  会话级规则由 renderer 侧自动放行实现） */
@@ -149,11 +159,16 @@ function notifySlice(sessionId: string): void {
   notifyAny();
 }
 
-/** 重算运行中集合并通知跨会话视图 */
+/** 重算运行中集合与关注态快照并通知跨会话视图 */
 function notifyAny(): void {
-  const next = new Set<string>();
-  for (const [id, s] of slices) if (s.isRunning) next.add(id);
-  runningSnapshot = next;
+  const nextRunning = new Set<string>();
+  const nextAttention = new Map<string, 'done' | 'error'>();
+  for (const [id, s] of slices) {
+    if (s.isRunning) nextRunning.add(id);
+    if (s.attention) nextAttention.set(id, s.attention);
+  }
+  runningSnapshot = nextRunning;
+  attentionSnapshot = nextAttention;
   for (const l of anyListeners) l();
 }
 
@@ -391,7 +406,14 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         next[lastAi] = { ...lastItem, usage: usageSnap };
         items = next;
       }
-      patchSlice(sessionId, { items, streamingText: '', isRunning: false, statusText: 'Done' });
+      patchSlice(sessionId, {
+        items,
+        streamingText: '',
+        isRunning: false,
+        statusText: 'Done',
+        // 注视中的会话完成不打未读；先前 error 被成功的下一轮覆盖
+        attention: sessionId === focusedSessionId ? null : 'done',
+      });
       void refreshSessionList();
       return 'immediate';
     }
@@ -407,10 +429,10 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         if (last && last.kind === 'error') {
           const items = s0.items.slice();
           items[items.length - 1] = { ...last, message };
-          patchSlice(sessionId, { items, streamingText: '', isRunning: false });
+          patchSlice(sessionId, { items, streamingText: '', isRunning: false, attention: 'error' });
         } else {
           appendItem(sessionId, { kind: 'error', id: nextId('e'), message });
-          patchSlice(sessionId, { isRunning: false, streamingText: '' });
+          patchSlice(sessionId, { isRunning: false, streamingText: '', attention: 'error' });
         }
       } else {
         // 瞬时重试提示原地更新（1/3 → 2/3 不堆多条）
@@ -467,6 +489,7 @@ export function initGlobalListeners(): void {
       streamingText: '',
       statusText: '',
       pendingInteraction: null,
+      attention: 'error',
     });
     appendItem(sessionId, {
       kind: 'notice',
@@ -545,6 +568,28 @@ export function useRunningIds(): ReadonlySet<string> {
     },
     () => runningSnapshot,
   );
+}
+
+/** 侧栏关注态（sessionId → done 未读绿 / error 红）；ChatPage 切会话时 markSessionSeen */
+export function useSessionAttentionMap(): ReadonlyMap<string, 'done' | 'error'> {
+  return useSyncExternalStore(
+    (cb) => {
+      anyListeners.add(cb);
+      return () => anyListeners.delete(cb);
+    },
+    () => attentionSnapshot,
+  );
+}
+
+/** 注视会话（切进即看）：清未读关注态；此后该会话 turn 完成不再打标 */
+export function markSessionSeen(sessionId: string | null): void {
+  focusedSessionId = sessionId;
+  if (!sessionId) return;
+  const s = slices.get(sessionId);
+  if (s?.attention) {
+    patchSlice(sessionId, { attention: null });
+    notifyAny();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -678,7 +723,8 @@ export async function sendMessage(
     createdAt: Date.now(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   });
-  patchSlice(sessionId, { isRunning: true, statusText: 'Working…' });
+  // 用户正在与会话交互：清关注态
+  patchSlice(sessionId, { isRunning: true, statusText: 'Working…', attention: null });
   notifySlice(sessionId);
   if (drafts.has(sessionId)) {
     rebuildCombinedList();
@@ -926,6 +972,25 @@ export function updateDraftSession(
   });
   rebuildCombinedList();
   notifyList();
+}
+
+/** 置顶/取消置顶：先就地更新（即时反馈），再拉服务端权威序 */
+export async function setSessionPinned(sessionId: string, pinned: boolean): Promise<void> {
+  await window.fundet.setSessionPinned(sessionId, pinned);
+  sessionList = sessionList.map((s) => (s.id === sessionId ? { ...s, pinned } : s));
+  sessionList = [
+    ...sessionList.filter((s) => s.pinned),
+    ...sessionList.filter((s) => !s.pinned),
+  ];
+  rebuildCombinedList();
+  notifyList();
+  void refreshSessionList();
+}
+
+/** 持久化置顶段手动顺序（ids 从上到下） */
+export async function reorderSessions(ids: string[]): Promise<void> {
+  await window.fundet.reorderSessions(ids);
+  void refreshSessionList();
 }
 
 /** 删除草稿：纯本地移除，main/DB 里本来就没有它 */

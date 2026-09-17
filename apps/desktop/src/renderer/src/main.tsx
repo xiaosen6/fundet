@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { createHashRouter, RouterProvider } from 'react-router-dom';
+import { createHashRouter, Outlet, RouterProvider, useLocation } from 'react-router-dom';
 import { brand } from '../../shared/brand.js';
 import './styles/globals.css';
 import { applyFonts } from './lib/fonts';
@@ -14,16 +14,33 @@ import { WindowControls } from './components/WindowControls';
 import { ToastContainer } from './components/ui/toast';
 import { ConfirmDialogHost } from './components/ui/ConfirmDialog';
 import { LightboxHost } from './components/ui/Lightbox';
+import { FadeSwitcher } from './components/ui/FadeSwitcher';
+import { Splash } from './components/Splash';
 
 // 全局 agent:event 监听只装一次（模块级 store，与 React 树解耦，
 // 切页面/切会话不影响后台 turn 的事件分发）
 initGlobalListeners();
 
+/** 路由切换淡入（Cindy F4）：pathname 变化 → 220ms 浮现 */
+function RouteFade(): React.JSX.Element {
+  const location = useLocation();
+  return (
+    <FadeSwitcher trigger={location.pathname} className="h-full">
+      <Outlet />
+    </FadeSwitcher>
+  );
+}
+
 const router = createHashRouter([
-  { path: '/', element: <ChatPage /> },
-  { path: '/settings', element: <SettingsPage /> },
-  // 调试台保留：E2E 复验与原始事件流排查用
-  { path: '/debug', element: <DebugPage /> },
+  {
+    element: <RouteFade />,
+    children: [
+      { path: '/', element: <ChatPage /> },
+      { path: '/settings', element: <SettingsPage /> },
+      // 调试台保留：E2E 复验与原始事件流排查用
+      { path: '/debug', element: <DebugPage /> },
+    ],
+  },
 ]);
 
 document.title = brand.name;
@@ -35,6 +52,7 @@ createRoot(document.getElementById('root')!).render(
         <WindowControls />
       </div>
       <RouterProvider router={router} />
+      <Splash />
       <ToastContainer />
       <ConfirmDialogHost />
       <LightboxHost />

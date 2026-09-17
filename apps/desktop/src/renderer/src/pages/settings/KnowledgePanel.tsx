@@ -273,7 +273,7 @@ export function KnowledgePanel(): React.JSX.Element {
                     <div className="flex flex-col gap-1">
                       <div className="h-1 overflow-hidden rounded-full bg-chip">
                         <div
-                          className="h-full bg-accent transition-[width] duration-150"
+                          className="h-full bg-accent transition-[width] duration-[var(--motion-fast)]"
                           style={{ width: `${Math.round((importProgress.completed / importProgress.total) * 100)}%` }}
                         />
                       </div>

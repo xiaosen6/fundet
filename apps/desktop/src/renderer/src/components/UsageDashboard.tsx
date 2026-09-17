@@ -318,7 +318,7 @@ export function UsageDashboard(): React.JSX.Element | null {
           aria-label={collapsed ? '展开' : '收起'}
           className="flex size-[22px] shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-chip hover:text-secondary"
         >
-          <ChevronDown size={14} className={cn('transition-transform duration-200', collapsed && '-rotate-90')} />
+          <ChevronDown size={14} className={cn('transition-transform duration-[var(--motion-base)]', collapsed && '-rotate-90')} />
         </button>
       </div>
 

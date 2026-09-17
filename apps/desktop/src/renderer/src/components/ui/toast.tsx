@@ -70,7 +70,7 @@ export function ToastContainer(): React.JSX.Element {
             key={t.id}
             className={cn(
               'flex h-8 max-w-[420px] items-center gap-2 rounded-full border border-board bg-card px-3.5 text-13 text-primary shadow-[var(--shadow-menu)]',
-              'transition-all duration-200 ease-out',
+              'transition-all duration-[var(--motion-base)] ease-[var(--motion-ease-move)]',
               t.exiting ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100',
             )}
           >

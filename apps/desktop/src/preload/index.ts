@@ -79,6 +79,8 @@ const api: FundetApi = {
   setSessionPermissionMode: (id, mode) =>
     invoke(FUNDET_INVOKE.SESSION_SET_PERMISSION_MODE, id, mode),
   renameSession: (id, title) => invoke(FUNDET_INVOKE.SESSION_SET_TITLE, id, title),
+  setSessionPinned: (id, pinned) => invoke(FUNDET_INVOKE.SESSION_SET_PINNED, id, pinned),
+  reorderSessions: (ids) => invoke(FUNDET_INVOKE.SESSION_REORDER, ids),
 
   resolveInteraction: (requestId, decision) =>
     invoke(FUNDET_INVOKE.INTERACTION_RESOLVE, requestId, decision),
@@ -182,6 +184,7 @@ const api: FundetApi = {
     invoke(FUNDET_INVOKE.FS_READ_TEXT, filePath, workDir),
   readFileDataUrl: (filePath, workDir) =>
     invoke(FUNDET_INVOKE.FS_READ_DATA_URL, filePath, workDir),
+  listDir: (dir) => invoke(FUNDET_INVOKE.FS_LIST_DIR, dir),
   openPath: (filePath) => invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath),
   platform: process.platform,
   windowMinimize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MINIMIZE),

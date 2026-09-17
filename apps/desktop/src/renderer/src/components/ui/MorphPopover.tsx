@@ -443,7 +443,7 @@ export function MorphPopover({
               className={cn(
                 'max-h-full overflow-y-hidden',
                 side === 'top' ? 'translate-y-[5px]' : 'translate-y-[-5px]',
-                'opacity-0 transition-[opacity,transform] delay-[50ms] duration-[140ms] ease-out',
+                'opacity-0 transition-[opacity,transform] delay-[50ms] duration-[var(--motion-fast)] ease-[var(--motion-ease-out)]',
                 'group-data-[state=open]:translate-y-0 group-data-[state=open]:opacity-100',
                 'motion-reduce:transition-none',
                 panelClassName,

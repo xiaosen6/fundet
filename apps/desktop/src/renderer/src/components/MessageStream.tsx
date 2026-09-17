@@ -22,6 +22,7 @@ import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Info, Pen, Quote } from '
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
 import { AssistantMessage } from './AssistantMessage';
+import { AttachmentThumb } from './AttachmentThumb';
 import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
@@ -58,10 +59,11 @@ function UserBubble({
                 key={a.path}
                 type="button"
                 title={a.path}
-                className="max-w-full truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary hover:text-primary"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-board bg-chip py-0.5 pl-1 pr-2 text-11 text-secondary hover:text-primary"
                 onClick={() => onOpenFile?.(a.path)}
               >
-                {a.name}
+                <AttachmentThumb path={a.path} />
+                <span className="min-w-0 truncate">{a.name}</span>
               </button>
             ))}
           </div>
@@ -362,7 +364,7 @@ function StreamBottomChip({
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        'absolute bottom-6 left-1/2 z-40 -translate-x-1/2 transition-all duration-150 ease-out',
+        'absolute bottom-6 left-1/2 z-40 -translate-x-1/2 transition-all duration-[var(--motion-fast)] ease-[var(--motion-ease-out)]',
         visible
           ? 'pointer-events-auto translate-y-0 opacity-100'
           : 'pointer-events-none translate-y-2 opacity-0',
@@ -371,7 +373,7 @@ function StreamBottomChip({
       <button
         type="button"
         onClick={onClick}
-        className="flex h-8 items-center gap-1.5 rounded-full border border-board bg-card px-3 py-1.5 text-12 font-medium leading-none text-secondary shadow-[var(--shadow-menu)] transition-colors duration-150 hover:bg-hover active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+        className="flex h-8 items-center gap-1.5 rounded-full border border-board bg-card px-3 py-1.5 text-12 font-medium leading-none text-secondary shadow-[var(--shadow-menu)] transition-colors duration-[var(--motion-fast)] hover:bg-hover active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
       >
         <ArrowDown size={14} className="shrink-0" />
         <span className="translate-y-[0.5px]">{label}</span>
@@ -379,6 +381,17 @@ function StreamBottomChip({
     </div>
   );
 }
+
+/**
+ * 入场动画账本（模块级，app 生命周期）：
+ * - 只对「运行中尾部追加的行」播 150ms 软淡入（Cindy detail-soft-in 语义：0.4→1
+ *   浮现，不是从 0 起——软化「突然就位」，不制造位移）；
+ * - 历史装载/切会话重建（0→N 大批量）不播——整块浮现由外层 FadeSwitcher 负责；
+ * - 已入场的行进 seen 集，虚拟滚动回收重挂不重播。
+ */
+const enteredRows = new Set<string>();
+/** 一次渲染新增 ≤4 行才算「尾部追加」；更大批次按历史/重建处理 */
+const APPEND_BATCH_MAX = 4;
 
 export function MessageStream({
   slice,
@@ -408,6 +421,18 @@ export function MessageStream({
     () => (slice.streamingText ? [...grouped, { kind: 'streaming', id: '__streaming__' }] : grouped),
     [grouped, slice.streamingText],
   );
+  // 入场动画：本渲染是否「尾部追加批次」（少量增量；首渲染与 0→N 批量不算）
+  const prevRowsLenRef = useRef(0);
+  const firstRenderRef = useRef(true);
+  const isAppendBatch =
+    !firstRenderRef.current &&
+    prevRowsLenRef.current > 0 &&
+    rows.length > prevRowsLenRef.current &&
+    rows.length - prevRowsLenRef.current <= APPEND_BATCH_MAX;
+  useEffect(() => {
+    firstRenderRef.current = false;
+    prevRowsLenRef.current = rows.length;
+  });
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
@@ -643,6 +668,13 @@ export function MessageStream({
 
         {virtualizer.getVirtualItems().map((vr) => {
           const item = rows[vr.index]!;
+          // 入场账本：追加批次里首次出现的行播一次软淡入（幂等登记，重挂不重播；
+          // __streaming__ 伪行 id 常量，天然只播首次——流式本身即动效，跳过）
+          const rowEnter =
+            item.kind !== 'streaming' &&
+            isAppendBatch &&
+            !enteredRows.has(item.id) &&
+            (enteredRows.add(item.id), true);
           // 用户消息的分享配对：向后找第一条 assistant 回复
           let userShareReply: string | undefined;
           if (item.kind === 'user') {
@@ -664,7 +696,7 @@ export function MessageStream({
               style={{ transform: `translateY(${vr.start}px)` }}
             >
               {/* 行间距内化为行内 padding（绝对定位下容器 gap 失效） */}
-              <div className="pb-3.5">
+              <div className={cn('pb-3.5', rowEnter && 'animate-row-enter')}>
                 {item.kind === 'work_group' ? (
                   <WorkGroupBlock
                     childrenItems={item.children}

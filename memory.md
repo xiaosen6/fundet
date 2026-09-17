@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-09-10。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
+> 最后更新：2026-09-17。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
 >
 > 仓库路径：源码已推内网 GitLab `git@172.16.56.11:fundet-harness/fundet-buddy.git`（2026-09-03 起）。**活跃分支 `main`；`master` 是收编进来的落后占位历史，不要在上面开发**。初始开发机工作副本 `D:\AI\Fundet`。
 >
@@ -165,6 +165,7 @@ Fundet/
 - 用量：首页折叠仪表盘（20 周热力图 + 30 天堆叠柱）+ 设置「用量历史」页（概览 5 格/热力图/按模型表含缓存命中率）。
 - 本地图片预览 `fundet-file://` 协议；复制走 clipboard IPC；分享=回合卡片截图。
 - **流式渲染纵深（2026-09-10 对齐 Cindy 五层，治「长回答越流越卡/长会话发沉/上滑被拽回」）**：①sessionStore delta 通知 32ms 帧级合帧（状态同步写，只压通知）；②消息条目 `content-visibility:auto`（`.msg-stream-items > *`，屏外零布局成本）；③贴底跟随 = 意图判据（wheel/touch/PageUp 上滚 1px 立即解除）+ ResizeObserver 跟底 + 恢复双信号（向下滚 + 贴底 ≤8px）；④流式 markdown 先 repair（补未闭合围栏/摘半截链接，`lib/streamingMarkdown.ts`）再按顶层块分块 memo，**只有尾块重 parse/重高亮**；逐词淡入只挂尾块（按块位号独立账本，稳定块冻结）；⑤消息列表 **TanStack Virtual 真虚拟化**（2026-09-11 替换原「首帧15→扩80→触顶+80」窗口扩展：动态测量行高、overscan 8、行间距内化为行内 pb-3.5、滚动容器 `overflowAnchor:none` 防浏览器锚定与虚拟化打架、流式未封口文本作伪行恒挂末位、globals 的 content-visibility 规则以 `:not([data-virtual])` 排除虚拟行防测量被腐蚀；跳底/跳上一问/切会话定位全走 scrollToIndex）；⑥`[perf] stream first-paint` debug 日志 = 丝滑度回归基线。thinking/工具卡折叠即卸载（Collapse 移植自带，收起不占 DOM）。
+- **动效体系与状态可感知批（2026-09-17 对齐 Cindy DESIGN.md §14.4，已完成未发版）**：①Motion token 全组件落地（`--motion-*` 5 档 + 3 曲线 + 新增 `--motion-morph` 220ms 容器形变例外类；组件硬编码时长清零，新增动效一律引用 token）；②**FadeSwitcher**（`ui/FadeSwitcher.tsx`，trigger 驱动、子树不重挂——composer 草稿/滚动跨切换保留）三处接线：路由切换（main.tsx layout route）/ 能力面板开关（ChatPage 主区）/ 会话切换（仅包 MessageStream）；③**侧栏动态四件套**——运行结束 settle 底色闪烁（0.9s 一次性）、attention 关注点（turn 非注视下完成=绿点带光环 `session-dot-pulse`、终态出错=红点；sessionStore 追踪 + `markSessionSeen` 切进即清）、运行中非选中行底部扫动条（`session-sweep`）、溢出标题 hover marquee（MarqueeTitle：真溢出+hover 才播、每可视宽 2.4s、离开复位）；④**消息行入场软淡入**（`animate-row-enter` 0.4→1；MessageStream `enteredRows` 账本：仅「尾部追加批次」（≤4 行增量且非首渲染）播，历史装载/切会话/虚拟滚动重挂不播）；⑤**Done 收束** `status-done-pop`（0.85→1.08→1 back-out，全应用唯一 sanctioned 过冲，挂 RunningStatus 左段）；⑥**启动 Splash**（`Splash.tsx` renderer 内实现：品牌球光泽 sheen 扫动 + 最短亮 500ms，会话列表就绪即 200ms 淡出）；⑦**composer 增强**——@ 文件引用（新 IPC `fs:list-dir`；输入 @ 唤出工作目录候选面板 `FileMentionPanel`，目录可下钻 `/`，选中文件 stage 成附件 chip）+ 图片附件缩略图（`AttachmentThumb` 24×24，composer chip 与用户消息气泡共用，读失败回落图标）；⑧**会话置顶/拖拽排序**（sessions 表幂等补列 `pinned`/`sort_order`；新 IPC `session:set-pinned`/`session:reorder`；hover 动作区 Pin/PinOff（草稿不显示）；置顶段单独段标「置顶」+ dragenter 活换序 + dragend 持久化）+ **列表 FLIP 重排动画**（Sidebar offsetTop 快照 + translateY 补偿，motion-base move 曲线；offsetTop 而非 viewport rect——不受滚动影响）。**克制红线**：循环动画全部 compositor-only（transform/opacity）+ reduced-motion 白名单登记每个新 keyframes；装饰性 idle 循环（空态品牌球浮动）按 §14.4「禁循环装饰」裁决**不做**；ConfirmDialog 140-160ms 是 0.2.19 用户拍板值不动。SendButton send↔stop 交叉淡切 morph 此前已有（核查确认）。
 
 ### 4.3 附件与文档
 - 拖/贴/回形针多选；工作目录外文件拷到 `{workDir}/.fundet-uploads/`；粘贴图片魔数嗅探 mime（QQ「原图」=PNG 套 .jpeg 的坑）。
@@ -288,6 +289,8 @@ Fundet/
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
 > **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
+
+> **在途事项（2026-09-17）**：**UI 高级感批已完成、未发版**——三批全量落地（详见 §4.2「动效体系与状态可感知批」条目）。新增 IPC ×3（`fs:list-dir` / `session:set-pinned` / `session:reorder`，四件套齐）；sessions 表幂等补列 pinned/sort_order（老库启动自动升级，已实测）。验证：typecheck 5 包过、全仓单测 1149 全过、dev:win 真机冒烟（启动日志净 + 窗口标题正常 + CDP 截图核验渲染 + listDir IPC 实测）；**发版前真机人工过一遍新交互**（置顶/拖拽、@ 引用、标题 marquee hover、切会话/面板淡入、后台会话跑完的绿点+settle 闪烁），认可后按 §6 流程发 0.2.20。
 
 ---
 

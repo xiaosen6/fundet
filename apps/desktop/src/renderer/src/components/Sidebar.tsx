@@ -12,13 +12,15 @@
  * - 底部：设置入口做成「用户胶囊」同款（icon 圆 + 文字的 pill 卡，对齐 Cindy
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
+import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { getProfile, subscribeProfile } from '../lib/profile';
+import { reorderSessions, setSessionPinned, useSessionAttentionMap } from '../stores/sessionStore';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { BrandMark } from './BrandMark';
 import { SessionRenameInput } from './SessionRenameInput';
 import { Tooltip } from './ui/Tooltip';
@@ -57,7 +59,7 @@ const NAV_ROW_CLASS =
   'flex h-8 w-full items-center gap-2.5 rounded-full px-3 text-14 font-normal text-primary transition-colors hover:bg-hover select-none cursor-pointer';
 
 const ACTION_BTN =
-  'flex h-6 w-6 items-center justify-center rounded-full transition-opacity duration-120';
+  'flex h-6 w-6 items-center justify-center rounded-full transition-opacity duration-[var(--motion-fast)]';
 
 /** 超长会话列表的增量窗口（对齐 MessageStream 列表窗口化思路）：
  * 首窗渲染最近 60 条（侧栏一屏约 20 行），触底 sentinel 再扩 80 条。 */
@@ -72,25 +74,101 @@ const PANEL_BUTTONS: Array<{ id: SidebarPanelId; label: string; Icon: typeof Bot
   { id: 'knowledge', label: '知识库', Icon: BookOpen },
 ];
 
-function SessionRow({
-  session,
-  isActive,
-  isRunning,
-  onSelect,
-  onDelete,
-  onRename,
-}: {
+/** 会话行标题：真溢出时 hover 播一次匀速阅读滚动（Cindy SidebarTitleMarquee
+ * 语义窄例外：每可视宽 2.4s、300ms 起播延迟、离开立即复位回省略号头；
+ * reduced-motion 保持省略号 + 原生 title 提示）。 */
+function MarqueeTitle({ text }: { text: string }): React.JSX.Element {
+  const reducedMotion = useReducedMotion();
+  const containerRef = useRef<HTMLSpanElement | null>(null);
+  const [shift, setShift] = useState<number | null>(null);
+
+  const stop = useCallback((): void => setShift(null), []);
+  const start = useCallback((): void => {
+    const el = containerRef.current;
+    if (!el) return;
+    const overflow = el.scrollWidth - el.clientWidth;
+    setShift(overflow > 1 ? overflow : null);
+  }, []);
+
+  return (
+    <span
+      ref={containerRef}
+      className="min-w-0 flex-1 truncate"
+      title={reducedMotion ? text : undefined}
+      onMouseEnter={start}
+      onMouseLeave={stop}
+    >
+      {shift !== null && !reducedMotion ? (
+        <span
+          className="marquee-track inline-block"
+          style={{
+            '--marquee-shift': `${shift}px`,
+            '--marquee-duration': `${Math.max(1, Math.ceil(shift / Math.max(1, containerRef.current?.clientWidth ?? 1))) * 2400}ms`,
+          } as React.CSSProperties}
+        >
+          {text}
+        </span>
+      ) : (
+        text
+      )}
+    </span>
+  );
+}
+
+interface SessionRowProps {
   session: SessionListItem;
   isActive: boolean;
   isRunning: boolean;
+  /** 关注态：turn 非注视下完成（绿）/ 终态出错（红）；注视即清 */
+  attention: 'done' | 'error' | null;
+  /** 拖拽排序进行中（本行是拖拽源）：降透明度 */
+  isDragging?: boolean;
+  /** 置顶行可拖拽换序 */
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnter?: () => void;
+  onDragEnd?: () => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void>;
-}): React.JSX.Element {
+  /** 置顶/取消置顶（草稿不显示入口） */
+  onSetPinned?: (pinned: boolean) => void;
+}
+
+const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionRow(
+  {
+    session,
+    isActive,
+    isRunning,
+    attention,
+    isDragging = false,
+    draggable = false,
+    onDragStart,
+    onDragEnter,
+    onDragEnd,
+    onSelect,
+    onDelete,
+    onRename,
+    onSetPinned,
+  },
+  ref,
+): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title);
   const committed = useRef(false);
   const display = session.title || session.model || session.id.slice(0, 8);
+
+  // 运行 → 空闲的跳变：非选中行播一次 settle 底色闪烁（0.9s，低调的「完成了」）
+  const wasRunning = useRef(isRunning);
+  const [settling, setSettling] = useState(false);
+  useEffect(() => {
+    const transitioned = wasRunning.current && !isRunning;
+    wasRunning.current = isRunning;
+    if (!transitioned) return;
+    setSettling(true);
+    const t = setTimeout(() => setSettling(false), 1000);
+    return () => clearTimeout(t);
+  }, [isRunning]);
 
   const startEdit = (): void => {
     committed.current = false;
@@ -114,8 +192,14 @@ function SessionRow({
 
   return (
     <div
+      ref={ref}
       role="button"
       tabIndex={0}
+      draggable={draggable && !editing}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onDragOver={draggable ? (e) => e.preventDefault() : undefined}
+      onDragEnd={onDragEnd}
       onClick={() => {
         if (!editing) onSelect(session.id);
       }}
@@ -137,11 +221,17 @@ function SessionRow({
         isActive
           ? 'cursor-pointer bg-accent text-accent-fg'
           : 'cursor-pointer text-primary hover:bg-hover',
+        settling && !isActive && 'session-settle',
+        isDragging && 'opacity-40',
       )}
     >
       <span className="flex w-[15px] shrink-0 items-center justify-center">
         {isRunning ? (
           <span className="h-2 w-2 animate-fundet-pulse rounded-full bg-warning" />
+        ) : attention === 'error' ? (
+          <span className="h-2 w-2 rounded-full bg-error" />
+        ) : attention === 'done' ? (
+          <span className="session-dot-pulse relative h-2 w-2 rounded-full bg-success" />
         ) : (
           <MessageSquare
             size={12}
@@ -150,6 +240,8 @@ function SessionRow({
           />
         )}
       </span>
+      {/* 运行中非选中行：底部短条扫动（活动感；选中行由反相胶囊自身表达） */}
+      {isRunning && !isActive && <span aria-hidden className="session-sweep" />}
 
       {editing ? (
         <SessionRenameInput
@@ -159,14 +251,14 @@ function SessionRow({
           onCancel={cancel}
         />
       ) : (
-        <span className="min-w-0 flex-1 truncate">{display}</span>
+        <MarqueeTitle text={display} />
       )}
 
       {!editing && (
         <div className="group/slot relative ml-auto flex h-6 min-w-12 shrink-0 items-center justify-end">
           <time
             className={cn(
-              'text-12 font-medium tabular-nums transition-opacity duration-120',
+              'text-12 font-medium tabular-nums transition-opacity duration-[var(--motion-fast)]',
               'group-hover:opacity-0 group-focus-within/slot:opacity-0',
               isActive ? 'text-accent-fg opacity-80' : 'text-muted',
             )}
@@ -176,11 +268,28 @@ function SessionRow({
           <div
             className={cn(
               'absolute top-0 right-0 flex h-6 items-center',
-              'transition-opacity duration-120',
+              'transition-opacity duration-[var(--motion-fast)]',
               'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
               'group-focus-within/slot:pointer-events-auto group-focus-within/slot:opacity-100',
             )}
           >
+            {onSetPinned && (
+              <Tooltip label={session.pinned ? '取消置顶' : '置顶'} side="bottom">
+                <button
+                  type="button"
+                  className={cn(
+                    ACTION_BTN,
+                    isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-primary',
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetPinned(!session.pinned);
+                  }}
+                >
+                  {session.pinned ? <PinOff size={13} /> : <Pin size={13} />}
+                </button>
+              </Tooltip>
+            )}
             <Tooltip label="重命名" side="bottom">
               <button
                 type="button"
@@ -210,7 +319,7 @@ function SessionRow({
       )}
     </div>
   );
-}
+});
 
 export function Sidebar({
   sessions,
@@ -227,12 +336,33 @@ export function Sidebar({
   onOpenPanel,
 }: SidebarProps): React.JSX.Element {
   const profile = useSyncExternalStore(subscribeProfile, getProfile, getProfile);
+  const attentionMap = useSessionAttentionMap();
+  const reducedMotion = useReducedMotion();
+
+  // 置顶段拖拽：本地顺序覆盖（服务端权威序到达后清空）
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [pinnedOrder, setPinnedOrder] = useState<string[] | null>(null);
+  const draggingRef = useRef(false);
+
+  const ordered = useMemo(() => {
+    if (!pinnedOrder) return sessions;
+    const rank = new Map(pinnedOrder.map((id, i) => [id, i]));
+    const pinned = sessions
+      .filter((s) => s.pinned)
+      .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    return [...pinned, ...sessions.filter((s) => !s.pinned)];
+  }, [sessions, pinnedOrder]);
+
+  // 服务端序刷新（非拖拽中）即视为权威，清本地覆盖
+  useEffect(() => {
+    if (!draggingRef.current) setPinnedOrder(null);
+  }, [sessions]);
 
   // 会话列表窗口化：limit 随滚动单调增长；activeId 落到窗口外时扩到覆盖
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [limit, setLimit] = useState(LIST_INITIAL);
-  const activeIndex = activeId ? sessions.findIndex((s) => s.id === activeId) : -1;
+  const activeIndex = activeId ? ordered.findIndex((s) => s.id === activeId) : -1;
   useEffect(() => {
     if (activeIndex >= limit) setLimit(activeIndex + 1);
   }, [activeIndex, limit]);
@@ -242,15 +372,75 @@ export function Sidebar({
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
-          setLimit((v) => (v < sessions.length ? v + LIST_EXTEND : v));
+          setLimit((v) => (v < ordered.length ? v + LIST_EXTEND : v));
         }
       },
       { root: listRef.current, rootMargin: '200px' },
     );
     io.observe(sentinel);
     return () => io.disconnect();
-  }, [sessions.length]);
-  const visible = sessions.slice(0, Math.min(limit, sessions.length));
+  }, [ordered.length]);
+  const visible = ordered.slice(0, Math.min(limit, ordered.length));
+  const hasPinned = ordered.some((s) => s.pinned);
+
+  // ---- FLIP 重排动画（Cindy List reorder 原型：transform 位移，非位移属性禁动） ----
+  // 行元素按 id 登记；paint 后快照 offsetTop（布局稳定，不受滚动影响），
+  // 下次渲染若位置变了 → 从旧位 translateY 到新位。
+  const rowEls = useRef(new Map<string, HTMLDivElement>());
+  const rowTops = useRef(new Map<string, number>());
+  const orderKey = visible.map((s) => s.id).join('\u0000');
+  useLayoutEffect(() => {
+    if (reducedMotion) return;
+    const rafs: number[] = [];
+    for (const [id, el] of rowEls.current) {
+      const old = rowTops.current.get(id);
+      if (old === undefined) continue;
+      const dy = old - el.offsetTop;
+      if (Math.abs(dy) < 2) continue;
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      rafs.push(
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform var(--motion-base) var(--motion-ease-move)';
+          el.style.transform = '';
+        }),
+      );
+    }
+    return () => {
+      for (const r of rafs) cancelAnimationFrame(r);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey, reducedMotion]);
+  useEffect(() => {
+    const next = new Map<string, number>();
+    for (const [id, el] of rowEls.current) next.set(id, el.offsetTop);
+    rowTops.current = next;
+  });
+  const registerRow = useCallback((id: string, el: HTMLDivElement | null): void => {
+    if (el) rowEls.current.set(id, el);
+    else rowEls.current.delete(id);
+  }, []);
+
+  // ---- 拖拽换位（仅置顶段；dragenter 即活换序，FLIP 负责动画，dragend 持久化） ----
+  const swapPinned = useCallback(
+    (targetId: string): void => {
+      if (!dragId || targetId === dragId) return;
+      const pinnedIds = ordered.filter((s) => s.pinned).map((s) => s.id);
+      const from = pinnedIds.indexOf(dragId);
+      const to = pinnedIds.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      const next = [...pinnedIds];
+      next.splice(to, 0, next.splice(from, 1)[0]!);
+      setPinnedOrder(next);
+    },
+    [dragId, ordered],
+  );
+  const endDrag = useCallback((): void => {
+    draggingRef.current = false;
+    setDragId(null);
+    const order = pinnedOrder;
+    if (order && order.length > 1) void reorderSessions(order);
+  }, [pinnedOrder]);
 
   return (
     <aside
@@ -318,26 +508,53 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* 会话区标签（对齐 Cindy 的「Chat」段标） */}
-      <div className="px-6 pt-1 pb-1 text-13 text-muted select-none">会话</div>
-
-      {/* 会话列表 */}
+      {/* 会话区（对齐 Cindy 的「Chat」段标；有置顶段时拆成 置顶/会话 两段标） */}
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
-        {sessions.length === 0 && (
+        {hasPinned ? (
+          <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">置顶</div>
+        ) : (
+          <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
+        )}
+        {ordered.length === 0 && (
           <div className="px-3 pt-1 text-13 text-muted select-none">还没有会话</div>
         )}
-        {visible.map((s) => (
-          <SessionRow
-            key={s.id}
-            session={s}
-            isActive={s.id === activeId}
-            isRunning={runningIds.has(s.id)}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            onRename={onRename}
-          />
+        {visible.map((s, i) => (
+          <Fragment key={s.id}>
+            {hasPinned && !s.pinned && !visible[i - 1]?.pinned && (
+              <div className="mt-2 px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
+            )}
+            <SessionRow
+              ref={(el) => registerRow(s.id, el)}
+              session={s}
+              isActive={s.id === activeId}
+              isRunning={runningIds.has(s.id)}
+              attention={attentionMap.get(s.id) ?? null}
+              isDragging={dragId === s.id}
+              draggable={Boolean(s.pinned)}
+              onDragStart={
+                s.pinned
+                  ? (e) => {
+                      draggingRef.current = true;
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', s.id);
+                      setDragId(s.id);
+                    }
+                  : undefined
+              }
+              onDragEnter={s.pinned ? () => swapPinned(s.id) : undefined}
+              onDragEnd={s.pinned ? endDrag : undefined}
+              onSelect={onSelect}
+              onDelete={onDelete}
+              onRename={onRename}
+              onSetPinned={
+                s.status === 'draft'
+                  ? undefined
+                  : (pinned) => void setSessionPinned(s.id, pinned)
+              }
+            />
+          </Fragment>
         ))}
-        {visible.length < sessions.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
+        {visible.length < ordered.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
       </div>
 
       {/* 底部：设置入口（对齐 Cindy 用户胶囊位：icon 圆 + 文字的 pill 卡） */}

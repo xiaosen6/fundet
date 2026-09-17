@@ -302,7 +302,8 @@ function sessionRowsToList(): SessionListItem[] {
   return getDb()
     .select()
     .from(sessions)
-    .orderBy(desc(sessions.updatedAt))
+    // 置顶段在前（段内按手动序），其余按更新时间倒序
+    .orderBy(desc(sessions.pinned), desc(sessions.sortOrder), desc(sessions.updatedAt))
     .all()
     .map((r) => ({
       id: r.id,
@@ -312,6 +313,7 @@ function sessionRowsToList(): SessionListItem[] {
       effort: r.effort,
       permissionMode: r.permissionMode,
       status: r.status,
+      pinned: r.pinned === 1,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
@@ -547,6 +549,31 @@ ${input.text}`;
     if (!row) throw new Error('会话不存在');
     // 不 bump updatedAt：改名不应把会话顶到列表最前。
     getDb().update(sessions).set({ title: trimmed }).where(eq(sessions.id, id)).run();
+  });
+
+  // 置顶/取消：置顶取当前时间作序（新置顶在最上），取消清序
+  ipcMain.handle(FUNDET_INVOKE.SESSION_SET_PINNED, async (_e, id: string, pinned: boolean) => {
+    const row = getDb().select({ id: sessions.id }).from(sessions).where(eq(sessions.id, id)).get();
+    if (!row) throw new Error('会话不存在');
+    getDb()
+      .update(sessions)
+      .set({ pinned: pinned ? 1 : 0, sortOrder: pinned ? Date.now() : 0 })
+      .where(eq(sessions.id, id))
+      .run();
+    broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null);
+  });
+
+  // 置顶段手动顺序持久化（ids 从上到下 → sortOrder 大者靠上）
+  ipcMain.handle(FUNDET_INVOKE.SESSION_REORDER, async (_e, ids: string[]) => {
+    const list = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string') : [];
+    list.forEach((id, i) => {
+      getDb()
+        .update(sessions)
+        .set({ sortOrder: list.length - i })
+        .where(eq(sessions.id, id))
+        .run();
+    });
+    broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null);
   });
 
   // ---------- 审批 ----------
@@ -812,6 +839,30 @@ ${input.text}`;
     const buf = fs.readFileSync(resolved);
     const mime = mimeFromExt(resolved);
     return `data:${mime};base64,${buf.toString('base64')}`;
+  });
+
+  // 目录清单（composer @ 文件引用）：deny-list 同预览；跳隐藏/node_modules，上限 500
+  ipcMain.handle(FUNDET_INVOKE.FS_LIST_DIR, async (_e, dir: string) => {
+    const resolved = assertPreviewablePath(path.resolve(String(dir ?? '')));
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) throw new Error('不是目录');
+    const out: Array<{ name: string; isDir: boolean; size: number; mtime: number }> = [];
+    for (const ent of fs.readdirSync(resolved, { withFileTypes: true })) {
+      if (ent.name.startsWith('.') || ent.name === 'node_modules') continue;
+      let size = 0;
+      let mtime = 0;
+      try {
+        const s = fs.statSync(path.join(resolved, ent.name));
+        size = s.size;
+        mtime = s.mtimeMs;
+      } catch {
+        /* 单项 stat 失败不阻断清单 */
+      }
+      out.push({ name: ent.name, isDir: ent.isDirectory(), size, mtime });
+      if (out.length >= 500) break;
+    }
+    out.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name, 'zh-CN') : a.isDir ? -1 : 1));
+    return out;
   });
 
   ipcMain.handle(FUNDET_INVOKE.FS_OPEN_PATH, async (_e, filePath: string) => {

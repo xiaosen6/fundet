@@ -22,6 +22,10 @@ export const sessions = sqliteTable('sessions', {
   status: text('status').notNull().default('active'),
   /** pi 内部 session id（SDK 侧），用于 resume */
   sdkSessionId: text('sdk_session_id'),
+  /** 置顶（1=置顶段，列表置顶 + 可拖拽排序） */
+  pinned: integer('pinned').notNull().default(0),
+  /** 置顶段内的手动序（大者靠上；非置顶恒 0，按 updatedAt 排） */
+  sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

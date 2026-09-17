@@ -47,6 +47,17 @@ export function initDatabase(): FundetDb {
 
   db = drizzle(native, { schema });
   migrate(db, { migrationsFolder: resolveMigrationsFolder() });
+  // 幂等补列（对齐 knowledge store 做法；drizzle-kit 生成迁移留给大版本）：
+  // sessions.pinned/sort_order —— 侧栏置顶与手动排序
+  const sessionCols = new Set(
+    (native.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!sessionCols.has('pinned')) {
+    native.prepare('ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0').run();
+  }
+  if (!sessionCols.has('sort_order')) {
+    native.prepare('ALTER TABLE sessions ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run();
+  }
   console.log('[fundet:db] migrations applied');
   return db;
 }

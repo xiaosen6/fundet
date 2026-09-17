@@ -117,7 +117,7 @@ export function MessageActionBar({
     <div
       ref={rootRef}
       className={cn(
-        'mt-1 flex h-6 items-center gap-0.5 transition-opacity duration-150',
+        'mt-1 flex h-6 items-center gap-0.5 transition-opacity duration-[var(--motion-fast)]',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >

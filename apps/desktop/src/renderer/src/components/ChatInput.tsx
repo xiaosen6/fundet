@@ -6,7 +6,8 @@
  * 内部两段：textarea 编辑区（px-[11px] pt-[11px]，min-h-[86px]）+ 底部工具行
  * （左：权限 chip 等 leadingControls；右：模型 chip（modelControl）+ SendButton）。
  * Enter 发送 / Shift+Enter 换行 / IME 组词期间 Enter 不发送（§14.3）。
- * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接。
+ * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接；图片附件带缩略图。
+ * @ 引用：输入 @ 唤出工作目录文件候选（FileMentionPanel），选中 stage 成附件。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Paperclip, Pen, X } from 'lucide-react';
@@ -14,6 +15,8 @@ import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { SendButton } from './SendButton';
 import { SlashPalette, type SlashItem } from './SlashPalette';
+import { FileMentionPanel, useDirEntries } from './FileMentionPanel';
+import { AttachmentThumb } from './AttachmentThumb';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { Tooltip } from './ui/Tooltip';
@@ -53,6 +56,9 @@ interface ChatInputProps {
   pastedTexts?: PastedTextChip[];
   onPasteLongText?: (text: string, lines: number) => void;
   onRemovePastedText?: (id: number) => void;
+  /** @ 文件引用：工作目录 + 选中路径的 stage 回调（两者都给才启用） */
+  workDir?: string;
+  onStagePaths?: (paths: string[]) => void;
 }
 
 export function ChatInput({
@@ -77,9 +83,14 @@ export function ChatInput({
   pastedTexts = [],
   onPasteLongText,
   onRemovePastedText,
+  workDir,
+  onStagePaths,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
+  const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
 
   // 进入编辑态：聚焦并全选原文本，改起来顺手
   useEffect(() => {
@@ -136,6 +147,63 @@ export function ChatInput({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  // ---- @ 文件引用 ----
+  // 光标前是「@起头的无空格 token」即激活（输入/删改时检测；支持 @dir/sub/ 过滤）
+  const mentionEnabled = Boolean(workDir && onStagePaths);
+  const detectMention = (text: string, caret: number): void => {
+    if (!mentionEnabled) {
+      setMention(null);
+      return;
+    }
+    const m = text.slice(0, caret).match(/(?:^|\s)@([^\s]*)$/);
+    setMention(m ? { query: m[1] ?? '', tokenStart: caret - (m[1]?.length ?? 0) - 1 } : null);
+    setMentionActiveIndex(0);
+  };
+
+  const mentionCtx = useMemo(() => {
+    if (!mention || !workDir) return null;
+    const q = mention.query;
+    const slash = q.lastIndexOf('/');
+    const dirPart = slash >= 0 ? q.slice(0, slash) : '';
+    const filter = slash >= 0 ? q.slice(slash + 1) : q;
+    const root = workDir.replace(/[\\/]+$/, '');
+    return { baseDir: dirPart ? `${root}/${dirPart}` : root, filter, root, dirPart };
+  }, [mention, workDir]);
+
+  const dirEntries = useDirEntries(mentionCtx?.baseDir ?? null);
+  const mentionCandidates = useMemo(() => {
+    const list = dirEntries.entries ?? [];
+    const f = (mentionCtx?.filter ?? '').toLowerCase();
+    return list.filter((e) => !f || e.name.toLowerCase().includes(f)).slice(0, 30);
+  }, [dirEntries.entries, mentionCtx?.filter]);
+
+  const pickMentionDir = (name: string): void => {
+    if (!mention || !mentionCtx) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const token = `@${mention.query}${name}/`;
+    onChange(value.slice(0, mention.tokenStart) + token + value.slice(caret));
+    setMention({ query: `${mention.query}${name}/`, tokenStart: mention.tokenStart });
+    setMentionActiveIndex(0);
+    const pos = mention.tokenStart + token.length;
+    requestAnimationFrame(() => {
+      const t = textareaRef.current;
+      if (!t) return;
+      t.focus();
+      t.setSelectionRange(pos, pos);
+    });
+  };
+
+  const pickMentionFile = (name: string): void => {
+    if (!mention || !mentionCtx || !onStagePaths) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    onChange(value.slice(0, mention.tokenStart) + value.slice(caret));
+    setMention(null);
+    onStagePaths([`${mentionCtx.baseDir}/${name}`]);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
   return (
     <div
       className={cn(
@@ -151,6 +219,17 @@ export function ChatInput({
           activeIndex={Math.min(activeIndex, Math.max(filtered.length - 1, 0))}
           onHover={setActiveIndex}
           onPick={pick}
+        />
+      )}
+      {mention && mentionCtx && (
+        <FileMentionPanel
+          entries={dirEntries.entries}
+          error={dirEntries.error}
+          filter={mentionCtx.filter}
+          activeIndex={mentionActiveIndex}
+          onHover={setMentionActiveIndex}
+          onPickDir={pickMentionDir}
+          onPickFile={(entry) => pickMentionFile(entry.name)}
         />
       )}
       {dragOver && (
@@ -229,9 +308,10 @@ export function ChatInput({
             {attachments.map((a) => (
               <span
                 key={a.path}
-                className="inline-flex max-w-full items-center gap-1 rounded-full border border-board bg-chip py-0.5 pl-2 pr-1 text-11 text-secondary"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-board bg-chip py-0.5 pl-1 pr-1 text-11 text-secondary"
                 title={a.path}
               >
+                <AttachmentThumb path={a.path} />
                 <span className="min-w-0 truncate">{a.name}</span>
                 <span className="text-10 text-muted">{fileKind(a.path)}</span>
                 {onRemoveAttachment && (
@@ -257,6 +337,7 @@ export function ChatInput({
           onChange={(e) => {
             onChange(e.target.value);
             setActiveIndex(0);
+            detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
             autoResize();
           }}
           onPaste={(e) => {
@@ -285,6 +366,35 @@ export function ChatInput({
             onAddFiles(files);
           }}
           onKeyDown={(e) => {
+            // @ 引用面板开着：导航/回车/退出优先给面板（同 slash 语义）
+            if (mention && mentionCtx) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionActiveIndex((i) => (i + 1) % Math.max(mentionCandidates.length, 1));
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionActiveIndex(
+                  (i) => (i - 1 + Math.max(mentionCandidates.length, 1)) % Math.max(mentionCandidates.length, 1),
+                );
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                const hit = mentionCandidates[Math.min(mentionActiveIndex, mentionCandidates.length - 1)];
+                if (hit) {
+                  e.preventDefault();
+                  if (hit.isDir) pickMentionDir(hit.name);
+                  else pickMentionFile(hit.name);
+                }
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMention(null);
+                return;
+              }
+            }
             if (slashQuery && filtered.length > 0) {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
