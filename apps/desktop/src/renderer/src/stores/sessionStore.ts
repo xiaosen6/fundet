@@ -13,12 +13,14 @@
  */
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
+import { classifyRetryableError, retryDelayMs } from '../lib/errorRetry';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
 import type {
   MessageView,
   SessionAttachment,
   SessionCreateInput,
   SessionListItem,
+  SessionSendInput,
 } from '../../../shared/fundet-api.js';
 
 // ---------------------------------------------------------------------------
@@ -144,6 +146,101 @@ let focusedSessionId: string | null = null;
 /** 「本会话总允许」工具白名单（pi 的 permission decision 只认 allow/deny，
  *  会话级规则由 renderer 侧自动放行实现） */
 const autoAllowTools = new Map<string, Set<string>>();
+
+// ---------------------------------------------------------------------------
+// 错误分类自动重试（限流/过载/网络瞬断，最多 2 次，倒计时可被任何新动作打断）
+// ---------------------------------------------------------------------------
+
+/** sessionId → 最近一次被 main 接受的发送参数（重发用，retry 标记覆写） */
+const lastSendInputs = new Map<string, SessionSendInput>();
+/** sessionId → 已自动重试次数（done 清零） */
+const retryAttempts = new Map<string, number>();
+interface ActiveRetry {
+  timer: ReturnType<typeof setTimeout>;
+  ticker: ReturnType<typeof setInterval> | null;
+  noticeId: string;
+}
+const activeRetries = new Map<string, ActiveRetry>();
+
+function cancelAutoRetry(sessionId: string): void {
+  const plan = activeRetries.get(sessionId);
+  if (!plan) return;
+  activeRetries.delete(sessionId);
+  clearTimeout(plan.timer);
+  if (plan.ticker) clearInterval(plan.ticker);
+  // 倒计时 notice 就地移除（不打扰其它条目）
+  const s = getSlice(sessionId);
+  if (s.items.some((it) => it.id === plan.noticeId)) {
+    patchSlice(sessionId, { items: s.items.filter((it) => it.id !== plan.noticeId) });
+    notifySlice(sessionId);
+  }
+}
+
+function updateRetryNotice(sessionId: string, noticeId: string, text: string): void {
+  const s = getSlice(sessionId);
+  patchSlice(sessionId, {
+    items: s.items.map((it) => (it.id === noticeId && it.kind === 'notice' ? { ...it, text } : it)),
+  });
+  notifySlice(sessionId);
+}
+
+function performAutoRetry(sessionId: string): void {
+  const plan = activeRetries.get(sessionId);
+  activeRetries.delete(sessionId);
+  if (plan?.ticker) clearInterval(plan.ticker);
+  const input = lastSendInputs.get(sessionId);
+  if (!input) return;
+  patchSlice(sessionId, { isRunning: true, statusText: '自动重试中…' });
+  notifySlice(sessionId);
+  void window.fundet
+    .sendMessage({ ...input, retry: true })
+    .then((result) => {
+      if (!result.accepted) {
+        appendItem(sessionId, {
+          kind: 'error',
+          id: nextId('e'),
+          message: `自动重试未接受：${result.reason ?? '未知原因'}`,
+        });
+        patchSlice(sessionId, { isRunning: false });
+        notifySlice(sessionId);
+      }
+    })
+    .catch((err: unknown) => {
+      appendItem(sessionId, {
+        kind: 'error',
+        id: nextId('e'),
+        message: `自动重试失败：${err instanceof Error ? err.message : String(err)}`,
+      });
+      patchSlice(sessionId, { isRunning: false });
+      notifySlice(sessionId);
+    });
+}
+
+function scheduleAutoRetry(sessionId: string, message: string): void {
+  const seed = classifyRetryableError(message);
+  if (!seed) return;
+  const attempt = (retryAttempts.get(sessionId) ?? 0) + 1;
+  if (attempt > 2) return; // 两次之后交还手动重发
+  retryAttempts.set(sessionId, attempt);
+  const delayMs = retryDelayMs(seed, attempt);
+  const noticeId = nextId('n');
+  const totalSec = Math.round(delayMs / 1000);
+  appendItem(sessionId, {
+    kind: 'notice',
+    id: noticeId,
+    text: `${seed.label}，${totalSec} 秒后自动重试（${attempt}/2）`,
+  });
+  notifySlice(sessionId);
+  let remain = totalSec;
+  const ticker = setInterval(() => {
+    remain -= 1;
+    if (remain > 0) {
+      updateRetryNotice(sessionId, noticeId, `${seed.label}，${remain} 秒后自动重试（${attempt}/2）`);
+    }
+  }, 1000);
+  const timer = setTimeout(() => performAutoRetry(sessionId), delayMs);
+  activeRetries.set(sessionId, { timer, ticker, noticeId });
+}
 
 let idSeq = 0;
 function nextId(prefix: string): string {
@@ -414,6 +511,8 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         // 注视中的会话完成不打未读；先前 error 被成功的下一轮覆盖
         attention: sessionId === focusedSessionId ? null : 'done',
       });
+      retryAttempts.delete(sessionId);
+      cancelAutoRetry(sessionId);
       void refreshSessionList();
       return 'immediate';
     }
@@ -434,6 +533,8 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
           appendItem(sessionId, { kind: 'error', id: nextId('e'), message });
           patchSlice(sessionId, { isRunning: false, streamingText: '', attention: 'error' });
         }
+        // 限流/过载/网络瞬断：自动重试（带倒计时；最多 2 次）
+        scheduleAutoRetry(sessionId, message);
       } else {
         // 瞬时重试提示原地更新（1/3 → 2/3 不堆多条）
         const last = s0.items[s0.items.length - 1];
@@ -482,6 +583,8 @@ export function initGlobalListeners(): void {
   // 不订阅这个事件的话 isRunning 恒 true：停止按钮点了没反应、UI 永久转圈。
   window.fundet.onStatusChanged(({ sessionId, status }) => {
     if (status !== 'closed' && status !== 'error') return;
+    cancelAutoRetry(sessionId);
+    retryAttempts.delete(sessionId);
     const s = getSlice(sessionId);
     if (!s.isRunning && !s.pendingInteraction) return;
     patchSlice(sessionId, {
@@ -733,6 +836,9 @@ export async function sendMessage(
   try {
     const result = await window.fundet.sendMessage({ sessionId, text, create, attachments });
     if (result.accepted) {
+      // 记住本次发送参数（自动重试用），并取消任何挂起的自动重试
+      lastSendInputs.set(sessionId, { sessionId, text, create, attachments });
+      cancelAutoRetry(sessionId);
       // 草稿首条消息已被 main 接受（lazy-create 落 DB）：摘掉草稿标记，
       // 后续走正式会话路径；随即刷新 sidebar 拿到 DB 行（含自动标题）。
       if (drafts.delete(sessionId)) rebuildCombinedList();
@@ -769,6 +875,8 @@ export async function sendMessage(
 export async function abortSession(sessionId: string): Promise<void> {
   // 即时反馈：pi 侧若卡死，abort RPC 要等主进程复核兜底（约 15s）才真正收口，
   // 期间不能让「正在中断」看起来像没点到。
+  cancelAutoRetry(sessionId);
+  retryAttempts.delete(sessionId);
   patchSlice(sessionId, { statusText: '正在中断…' });
   notifySlice(sessionId);
   await window.fundet.abortSession(sessionId);
@@ -985,6 +1093,19 @@ export async function setSessionPinned(sessionId: string, pinned: boolean): Prom
   rebuildCombinedList();
   notifyList();
   void refreshSessionList();
+}
+
+/** 思考档位：草稿只改本地；已落库走 IPC（死会话只落库，lazy-create 带上） */
+export async function setSessionEffortLevel(sessionId: string, effort: string | null): Promise<void> {
+  const draft = drafts.get(sessionId);
+  if (draft) {
+    updateDraftSession(sessionId, { effort });
+    return;
+  }
+  await window.fundet.setSessionEffort(sessionId, effort as Parameters<typeof window.fundet.setSessionEffort>[1]);
+  sessionList = sessionList.map((s) => (s.id === sessionId ? { ...s, effort } : s));
+  rebuildCombinedList();
+  notifyList();
 }
 
 /** 持久化置顶段手动顺序（ids 从上到下） */

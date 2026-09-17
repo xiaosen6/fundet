@@ -13,9 +13,9 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Puzzle, Trash2, UserRound, Zap } from 'lucide-react';
+import { BookOpen, Bot, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Puzzle, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import type { SessionListItem } from '../../../shared/fundet-api.js';
+import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { getProfile, subscribeProfile } from '../lib/profile';
@@ -339,6 +339,25 @@ export function Sidebar({
   const attentionMap = useSessionAttentionMap();
   const reducedMotion = useReducedMotion();
 
+  // ---- 会话搜索（标题 + 正文 FTS5；200ms 防抖） ----
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SessionSearchHit[] | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setSearchResults(null);
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      window.fundet
+        .searchSessions(q)
+        .then((hits) => setSearchResults(hits))
+        .catch(() => setSearchResults([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query]);
+
   // 置顶段拖拽：本地顺序覆盖（服务端权威序到达后清空）
   const [dragId, setDragId] = useState<string | null>(null);
   const [pinnedOrder, setPinnedOrder] = useState<string[] | null>(null);
@@ -508,53 +527,116 @@ export function Sidebar({
         </div>
       </div>
 
+      {/* 会话搜索：标题 + 正文 FTS5；输入即搜（200ms 防抖），Esc/清空恢复列表 */}
+      <div className="px-3 pb-1.5">
+        <div className="flex h-8 items-center gap-2 rounded-full border border-board bg-card px-3">
+          <Search size={13} className="shrink-0 text-muted" strokeWidth={1.8} />
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setQuery('');
+              }
+            }}
+            placeholder="搜索会话…"
+            className="min-w-0 flex-1 bg-transparent text-13 text-primary outline-none placeholder:text-placeholder"
+          />
+          {query && (
+            <button
+              type="button"
+              title="清空"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary"
+              onClick={() => setQuery('')}
+            >
+              <X size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* 会话区（对齐 Cindy 的「Chat」段标；有置顶段时拆成 置顶/会话 两段标） */}
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
-        {hasPinned ? (
-          <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">置顶</div>
+        {query.trim() ? (
+          <>
+            <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">
+              {searchResults === null ? '搜索中…' : `命中 ${searchResults.length} 个会话`}
+            </div>
+            {searchResults?.map((hit) => (
+              <button
+                key={hit.sessionId}
+                type="button"
+                className={cn(
+                  'flex w-full flex-col gap-0.5 rounded-inner px-3 py-2 text-left transition-colors',
+                  hit.sessionId === activeId ? 'bg-hover' : 'hover:bg-hover-soft',
+                )}
+                onClick={() => {
+                  setQuery('');
+                  onSelect(hit.sessionId);
+                }}
+              >
+                <span className="min-w-0 truncate text-13 font-medium text-primary">
+                  {hit.title || hit.sessionId.slice(0, 8)}
+                </span>
+                {hit.snippet && (
+                  <span className="line-clamp-2 min-w-0 text-11 leading-snug text-muted">
+                    {hit.snippet}
+                  </span>
+                )}
+              </button>
+            ))}
+          </>
         ) : (
-          <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
-        )}
-        {ordered.length === 0 && (
-          <div className="px-3 pt-1 text-13 text-muted select-none">还没有会话</div>
-        )}
-        {visible.map((s, i) => (
-          <Fragment key={s.id}>
-            {hasPinned && !s.pinned && !visible[i - 1]?.pinned && (
-              <div className="mt-2 px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
+          <>
+            {hasPinned ? (
+              <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">置顶</div>
+            ) : (
+              <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
             )}
-            <SessionRow
-              ref={(el) => registerRow(s.id, el)}
-              session={s}
-              isActive={s.id === activeId}
-              isRunning={runningIds.has(s.id)}
-              attention={attentionMap.get(s.id) ?? null}
-              isDragging={dragId === s.id}
-              draggable={Boolean(s.pinned)}
-              onDragStart={
-                s.pinned
-                  ? (e) => {
-                      draggingRef.current = true;
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', s.id);
-                      setDragId(s.id);
-                    }
-                  : undefined
-              }
-              onDragEnter={s.pinned ? () => swapPinned(s.id) : undefined}
-              onDragEnd={s.pinned ? endDrag : undefined}
-              onSelect={onSelect}
-              onDelete={onDelete}
-              onRename={onRename}
-              onSetPinned={
-                s.status === 'draft'
-                  ? undefined
-                  : (pinned) => void setSessionPinned(s.id, pinned)
-              }
-            />
-          </Fragment>
-        ))}
-        {visible.length < ordered.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
+            {ordered.length === 0 && (
+              <div className="px-3 pt-1 text-13 text-muted select-none">还没有会话</div>
+            )}
+            {visible.map((s, i) => (
+              <Fragment key={s.id}>
+                {hasPinned && !s.pinned && !visible[i - 1]?.pinned && (
+                  <div className="mt-2 px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
+                )}
+                <SessionRow
+                  ref={(el) => registerRow(s.id, el)}
+                  session={s}
+                  isActive={s.id === activeId}
+                  isRunning={runningIds.has(s.id)}
+                  attention={attentionMap.get(s.id) ?? null}
+                  isDragging={dragId === s.id}
+                  draggable={Boolean(s.pinned)}
+                  onDragStart={
+                    s.pinned
+                      ? (e) => {
+                          draggingRef.current = true;
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', s.id);
+                          setDragId(s.id);
+                        }
+                      : undefined
+                  }
+                  onDragEnter={s.pinned ? () => swapPinned(s.id) : undefined}
+                  onDragEnd={s.pinned ? endDrag : undefined}
+                  onSelect={onSelect}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  onSetPinned={
+                    s.status === 'draft'
+                      ? undefined
+                      : (pinned) => void setSessionPinned(s.id, pinned)
+                  }
+                />
+              </Fragment>
+            ))}
+            {visible.length < ordered.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
+          </>
+        )}
       </div>
 
       {/* 底部：设置入口（对齐 Cindy 用户胶囊位：icon 圆 + 文字的 pill 卡） */}

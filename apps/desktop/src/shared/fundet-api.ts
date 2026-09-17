@@ -93,6 +93,8 @@ export interface SessionSendInput {
   attachments?: SessionAttachment[];
   /** sessionId 对应的会话不在内存（或不存在）时的 lazy-create 参数 */
   create?: SessionCreateInput;
+  /** true = 自动重试重发：消息已在库里，main 跳过 insertMessage/自动标题（不重复入历史） */
+  retry?: boolean;
 }
 
 export interface SessionListItem {
@@ -259,6 +261,14 @@ export interface FindResultPayload {
   finalUpdate: boolean;
 }
 
+/** 会话搜索命中（标题 LIKE + 正文 FTS5） */
+export interface SessionSearchHit {
+  sessionId: string;
+  title: string;
+  updatedAt: number;
+  snippet: string;
+}
+
 /** 目录清单条目（composer @ 文件引用用） */
 export interface DirEntry {
   name: string;
@@ -285,6 +295,8 @@ export interface FundetApi {
   setSessionPinned(id: string, pinned: boolean): Promise<void>;
   /** 持久化置顶段的手动顺序（ids 按从上到下） */
   reorderSessions(ids: string[]): Promise<void>;
+  /** 搜索会话（标题 + 消息正文）；空串返回空 */
+  searchSessions(query: string): Promise<SessionSearchHit[]>;
 
   resolveInteraction(requestId: string, decision: InteractionDecision): Promise<void>;
   getPendingInteractions(): Promise<InteractionRequestPayload[]>;
@@ -361,12 +373,11 @@ export interface FundetApi {
   checkUpdate(): Promise<void>;
   /** Windows：重启并安装已下载的更新；macOS：打开 Release 下载页 */
   installUpdate(): Promise<void>;
-  /** 私有 GitLab 更新源是否已配置令牌 */
-  updateFeedHasToken(): Promise<boolean>;
-  /** 配置/清除更新令牌（scope=api 的个人访问令牌；空串=清除） */
-  setUpdateFeedToken(token: string): Promise<void>;
 
   /** 页内搜索（Electron findInPage，全文高亮） */
+  /** 系统开机自启（打包版；dev 态恒 false 且不可开启） */
+  loginItemEnabled(): Promise<boolean>;
+  setLoginItemEnabled(enabled: boolean): Promise<void>;
   findInPage(text: string, opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean }): Promise<void>;
   /** 停止搜索并清除高亮 */
   stopFindInPage(): Promise<void>;
@@ -390,6 +401,8 @@ export interface FundetApi {
   windowClose(): void;
   copyText(text: string): Promise<void>;
   copyImageRect(rect: { x: number; y: number; width: number; height: number }): Promise<void>;
+  /** 分享卡片：PNG 字节 + 可选纯文本备选，一次写入剪贴板（主进程校验 PNG） */
+  copyPngToClipboard(png: ArrayBuffer, plainText?: string): Promise<void>;
 
   /** push 订阅；均返回解订阅函数 */
   onAgentEvent(cb: (payload: AgentEventPayload) => void): () => void;

@@ -27,6 +27,7 @@ import {
 import { useTheme, type ThemeMode } from '../themes/useTheme';
 import { SearchPanel } from './settings/SearchPanel';
 import { UpdateCard } from '../components/settings/UpdateCard';
+import { LoginItemSection } from '../components/settings/LoginItemSection';
 import { BrowserSection } from '../components/settings/BrowserSection';
 import { UsageHistoryPanel } from './settings/UsageHistoryPanel';
 import { ComputerSection } from '../components/settings/ComputerSection';
@@ -257,6 +258,8 @@ export function SettingsPage(): React.JSX.Element {
                     setCodeFontState('');
                   }}
                 />
+
+                <LoginItemSection />
 
                 <UpdateCard />
               </div>

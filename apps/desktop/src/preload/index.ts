@@ -81,6 +81,7 @@ const api: FundetApi = {
   renameSession: (id, title) => invoke(FUNDET_INVOKE.SESSION_SET_TITLE, id, title),
   setSessionPinned: (id, pinned) => invoke(FUNDET_INVOKE.SESSION_SET_PINNED, id, pinned),
   reorderSessions: (ids) => invoke(FUNDET_INVOKE.SESSION_REORDER, ids),
+  searchSessions: (query) => invoke(FUNDET_INVOKE.SESSION_SEARCH, query),
 
   resolveInteraction: (requestId, decision) =>
     invoke(FUNDET_INVOKE.INTERACTION_RESOLVE, requestId, decision),
@@ -161,8 +162,8 @@ const api: FundetApi = {
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
-  updateFeedHasToken: () => invoke(FUNDET_INVOKE.UPDATE_GET_TOKEN),
-  setUpdateFeedToken: (token) => invoke(FUNDET_INVOKE.UPDATE_SET_TOKEN, token),
+  loginItemEnabled: () => invoke(FUNDET_INVOKE.APP_GET_LOGIN_ITEM),
+  setLoginItemEnabled: (enabled) => invoke(FUNDET_INVOKE.APP_SET_LOGIN_ITEM, enabled),
   findInPage: (text, opts) => invoke(FUNDET_INVOKE.FIND_START, text, opts),
   stopFindInPage: () => invoke(FUNDET_INVOKE.FIND_STOP),
 
@@ -192,6 +193,7 @@ const api: FundetApi = {
   windowClose: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_CLOSE),
   copyText: (text) => invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, text),
   copyImageRect: (rect) => invoke(FUNDET_INVOKE.CLIPBOARD_CAPTURE_RECT, rect),
+  copyPngToClipboard: (png, plainText) => invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_PNG, png, plainText),
 
   onAgentEvent: (cb) => subscribe<AgentEventPayload>(FUNDET_PUSH.AGENT_EVENT, cb),
   onStatusChanged: (cb) => subscribe<StatusChangedPayload>(FUNDET_PUSH.AGENT_STATUS_CHANGED, cb),

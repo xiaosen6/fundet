@@ -8,20 +8,28 @@
  */
 import { randomUUID } from 'node:crypto';
 import { eq, asc, and, gt, lte, ne } from 'drizzle-orm';
-import { getDb } from './client.js';
+import { getDb, getSqlite } from './client.js';
 import { messages } from './schema.js';
+import { upsertMessageFts } from './session-search.js';
 
 export function insertMessage(sessionId: string, role: string, content: unknown): void {
+  const id = randomUUID();
+  const contentJson = JSON.stringify(content ?? null);
   getDb()
     .insert(messages)
     .values({
-      id: randomUUID(),
+      id,
       sessionId,
       role,
-      content: JSON.stringify(content ?? null),
+      content: contentJson,
       createdAt: Date.now(),
     })
     .run();
+  // FTS 同步（搜索用）：user/assistant 文本入索引，其余行清残留
+  const row = getSqlite().prepare('SELECT rowid FROM messages WHERE id = ?').get(id) as
+    | { rowid: number }
+    | undefined;
+  if (row) upsertMessageFts(row.rowid, contentJson);
 }
 
 export function deleteMessagesInRange(sessionId: string, afterCreatedAt: number, untilCreatedAt: number): void {

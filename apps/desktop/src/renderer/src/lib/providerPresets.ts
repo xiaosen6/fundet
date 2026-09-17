@@ -670,5 +670,41 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
         "id": "xai/grok-4.5"
       }
     ]
+  },
+  {
+    "id": "google-vertex",
+    "name": "Google Vertex AI",
+    "docsUrl": "https://cloud.google.com/vertex-ai/generative-ai/docs/openai",
+    "regionHint": "global",
+    "api": "openai-completions",
+    "baseUrl": "https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/endpoints/openapi",
+    "models": [
+      {
+        "id": "google/gemini-3-pro",
+        "input": ["text", "image"]
+      },
+      {
+        "id": "google/gemini-3-flash",
+        "input": ["text", "image"]
+      }
+    ]
+  },
+  {
+    "id": "azure-openai",
+    "name": "Azure OpenAI",
+    "docsUrl": "https://learn.microsoft.com/azure/ai-services/openai/",
+    "regionHint": "global",
+    "api": "openai-completions",
+    "baseUrl": "https://{resource}.openai.azure.com/openai/v1",
+    "models": [
+      {
+        "id": "gpt-5.4",
+        "input": ["text", "image"]
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "input": ["text", "image"]
+      }
+    ]
   }
 ];

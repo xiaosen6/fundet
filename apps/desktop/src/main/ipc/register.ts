@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { brand } from '../../shared/brand.js';
 import os from 'node:os';
 import path from 'node:path';
-import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron';
 import type {
   AgentEvent,
   Effort,
@@ -25,6 +25,7 @@ import { desc, eq } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { sessions } from '../db/schema.js';
 import { copyMessagesUntil, deleteMessagesInRange, insertMessage, listMessages } from '../db/messages.js';
+import { searchSessions } from '../db/session-search.js';
 import {
   createProvider,
   deleteProvider,
@@ -417,14 +418,17 @@ export function registerIpcHandlers(): void {
     async (_e, input: SessionSendInput): Promise<SendResult> => {
       const session = await ensureSession(input);
       const attachments = input.attachments ?? [];
-      insertMessage(session.id, 'user', {
-        text: input.text,
-        ...(attachments.length > 0 ? { attachments } : {}),
-      });
-      autoTitleFromFirstMessage(
-        session.id,
-        input.text.trim() || attachments.map((a) => a.name).join(' ') || '',
-      );
+      // 自动重试重发：user 消息与标题已落库，跳过重复插入
+      if (input.retry !== true) {
+        insertMessage(session.id, 'user', {
+          text: input.text,
+          ...(attachments.length > 0 ? { attachments } : {}),
+        });
+        autoTitleFromFirstMessage(
+          session.id,
+          input.text.trim() || attachments.map((a) => a.name).join(' ') || '',
+        );
+      }
       // ④ 自动 RAG：会话开启「发送前自动检索」且绑定了知识库时，按用户原话
       // 检索 topN 片段拼进消息上下文（库里/DB 仍存用户原话，注入只影响发给
       // 模型的内容）；未命中或未开启时零改动。
@@ -575,6 +579,11 @@ ${input.text}`;
     });
     broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null);
   });
+
+  // 会话搜索（标题 LIKE + 正文 FTS5，复用知识库分词）
+  ipcMain.handle(FUNDET_INVOKE.SESSION_SEARCH, async (_e, query: string) =>
+    searchSessions(String(query ?? '')),
+  );
 
   // ---------- 审批 ----------
   ipcMain.handle(
@@ -912,6 +921,21 @@ ${input.text}`;
     setDefaultSearchEngine(id);
   });
 
+  // ---------- 开机自启（IM 机器人要应用常开，配套系统登录项；dev 态禁写——
+  // 否则会把 node_modules 里的 electron.exe 注册进 Run 键） ----------
+  ipcMain.handle(FUNDET_INVOKE.APP_GET_LOGIN_ITEM, async () => {
+    if (!app.isPackaged) return false;
+    return app.getLoginItemSettings().openAtLogin;
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.APP_SET_LOGIN_ITEM, async (_e, enabled: boolean) => {
+    if (!app.isPackaged) {
+      if (enabled) throw new Error('开发模式下不可开启开机自启（避免注册 electron.exe）');
+      return;
+    }
+    app.setLoginItemSettings({ openAtLogin: Boolean(enabled), path: process.execPath, args: [] });
+  });
+
   ipcMain.handle(
     FUNDET_INVOKE.SEARCH_TEST,
     async (_e, query: string, engine?: SearchEngineId) => {
@@ -1065,6 +1089,36 @@ ${input.text}`;
       const image = await win.webContents.capturePage(bounds);
       if (image.isEmpty()) throw new Error('截图为空');
       clipboard.writeImage(image);
+    },
+  );
+
+  // 分享卡片 PNG → 原生剪贴板（不依赖窗口焦点；校验 PNG 魔数/IHDR 与尺寸预算）
+  ipcMain.handle(
+    FUNDET_INVOKE.CLIPBOARD_WRITE_PNG,
+    async (_e, png: ArrayBuffer, plainText?: string) => {
+      const bytes = Buffer.from(png ?? new ArrayBuffer(0));
+      if (
+        bytes.length < 24
+        || bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a'
+        || bytes.readUInt32BE(8) !== 13
+        || bytes.toString('ascii', 12, 16) !== 'IHDR'
+      ) {
+        throw new Error('剪贴板内容不是有效的 PNG');
+      }
+      const width = bytes.readUInt32BE(16);
+      const height = bytes.readUInt32BE(20);
+      if (
+        !width
+        || !height
+        || width > 16384
+        || height > 16384
+        || width * height > 4096 ** 2 + 16384
+      ) {
+        throw new Error('分享图片尺寸超出上限');
+      }
+      const image = nativeImage.createFromBuffer(bytes);
+      if (image.isEmpty()) throw new Error('PNG 解码失败');
+      clipboard.write({ image, ...(typeof plainText === 'string' && plainText ? { text: plainText } : {}) });
     },
   );
 

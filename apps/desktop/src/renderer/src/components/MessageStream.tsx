@@ -18,7 +18,7 @@
  *   不含「复制当前消息链接」。
  */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Info, Pen, Quote } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Pen, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
 import { AssistantMessage } from './AssistantMessage';
@@ -223,6 +223,25 @@ function lastUserTextBefore(items: DisplayItem[], assistantId: string): string {
   return '';
 }
 
+/** pi 结构化写工具（产出文件卡的判定集；bash 写入路径不可知，不纳入） */
+const WRITE_TOOLS = new Set(['write', 'edit']);
+
+/** 本轮产出文件：assistant 消息回溯到上一条 user 消息之间的 write/edit 目标路径 */
+function generatedFilesFor(items: DisplayItem[], assistantId: string): string[] {
+  const idx = items.findIndex((it) => it.id === assistantId);
+  if (idx < 0) return [];
+  const files: string[] = [];
+  for (let i = idx - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (it.kind === 'user') break;
+    if (it.kind === 'tool' && WRITE_TOOLS.has(it.toolName)) {
+      const p = typeof it.input?.['path'] === 'string' ? (it.input['path'] as string) : '';
+      if (p && !files.includes(p)) files.unshift(p);
+    }
+  }
+  return files.slice(0, 8);
+}
+
 function AssistantTurn({
   item,
   pinned,
@@ -233,6 +252,7 @@ function AssistantTurn({
   onAddToChat,
   onDelete,
   knowledgeSources,
+  turnFiles,
 }: {
   item: AssistantItem;
   pinned: boolean;
@@ -243,6 +263,8 @@ function AssistantTurn({
   onAddToChat?: () => void;
   onDelete?: () => Promise<void>;
   knowledgeSources?: KnowledgeSource[];
+  /** 本轮 write/edit 产出的文件（Cindy GeneratedFilesCard 简化版） */
+  turnFiles?: string[];
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   return (
@@ -258,6 +280,25 @@ function AssistantTurn({
           onOpenFile={onOpenFile}
           knowledgeSources={knowledgeSources}
         />
+        {turnFiles && turnFiles.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="flex shrink-0 items-center gap-1 text-11 text-muted select-none">
+              <FilePlus2 size={12} aria-hidden />
+              产出
+            </span>
+            {turnFiles.map((p) => (
+              <button
+                key={p}
+                type="button"
+                title={p}
+                className="max-w-[220px] truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary transition-colors hover:text-primary"
+                onClick={() => onOpenFile?.(p)}
+              >
+                {p.replace(/\\/g, '/').split('/').pop()}
+              </button>
+            ))}
+          </div>
+        )}
         <MessageActionBar
           createdAt={item.createdAt}
           copyText={item.text}
@@ -334,6 +375,7 @@ function AssistantRow({
       workDir={workDir}
       onOpenFile={onOpenFile}
       knowledgeSources={kbSources}
+      turnFiles={generatedFilesFor(slice.items, item.id)}
       onShare={() =>
         setSharePayload({
           userText,

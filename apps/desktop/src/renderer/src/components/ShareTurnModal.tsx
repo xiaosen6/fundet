@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Check, X } from 'lucide-react';
 import { AssistantMessage } from './AssistantMessage';
 import { BrandMark } from './BrandMark';
+import { copyNodeAsPng } from '../lib/shareRaster';
 
 export interface ShareTurnPayload {
   userText: string;
@@ -46,14 +47,12 @@ export function ShareTurnModal({
         setError('找不到分享卡片');
         return;
       }
-      const rect = el.getBoundingClientRect();
       try {
-        await window.fundet.copyImageRect({
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-        });
+        // DOM 光栅化（不依赖窗口焦点——最小化/遮挡下也能出图）+ 纯文本备选表示
+        await copyNodeAsPng(
+          el,
+          `${payload.userText.trim() ? payload.userText.trim() + '\n\n' : ''}${payload.assistantText}`,
+        );
         if (!cancelled) setStatus('copied');
       } catch (err) {
         if (!cancelled) {
@@ -73,14 +72,10 @@ export function ShareTurnModal({
     if (!el) return;
     setStatus('capturing');
     setError('');
-    const rect = el.getBoundingClientRect();
-    void window.fundet
-      .copyImageRect({
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-      })
+    void copyNodeAsPng(
+      el,
+      `${payload.userText.trim() ? payload.userText.trim() + '\n\n' : ''}${payload.assistantText}`,
+    )
       .then(() => setStatus('copied'))
       .catch((err: unknown) => {
         setStatus('error');

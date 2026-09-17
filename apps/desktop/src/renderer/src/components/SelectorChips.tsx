@@ -14,6 +14,7 @@ import {
   Check,
   ChevronDown,
   Cpu,
+  Gauge,
   Hand,
   Sparkles,
   TriangleAlert,
@@ -280,6 +281,74 @@ export function PermissionSelector({
             toneClass={o.mode === active.mode ? toneOf(o.mode) : undefined}
             onSelect={() => {
               onSelect(o.mode);
+              setOpen(false);
+            }}
+          />
+        ))}
+      </div>
+    </ChipShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EffortSelector：推理模型的思考档位（数据链早已就绪——DB effort 列 /
+// setSessionEffort IPC / pi thinkingLevelMap，这里补上 UI 入口）
+// ---------------------------------------------------------------------------
+
+const EFFORT_LABELS: Record<string, string> = {
+  minimal: '最少',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '最高',
+  ultra: '极高',
+};
+
+interface EffortSelectorProps {
+  /** null = 模型默认档 */
+  current: string | null;
+  /** 当前模型的 thinkingLevelMap（可选档位来源）；无 map 时给全档 */
+  thinkingLevelMap?: Record<string, string | null>;
+  onSelect: (effort: string | null) => void;
+}
+
+export function EffortSelector({
+  current,
+  thinkingLevelMap,
+  onSelect,
+}: EffortSelectorProps): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const levels = Object.keys(EFFORT_LABELS).filter(
+    (k) => !thinkingLevelMap || thinkingLevelMap[k] != null,
+  );
+  if (levels.length === 0) levels.push('high');
+  const label = current ? EFFORT_LABELS[current] ?? current : '默认';
+  return (
+    <ChipShell
+      icon={<Gauge size={14} className="shrink-0 text-current" />}
+      label={`思考：${label}`}
+      panelWidth={240}
+      panelAriaLabel="选择思考档位"
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <div role="listbox" aria-label="选择思考档位" className="flex flex-col gap-0.5">
+        <OptionRow
+          selected={current == null}
+          label="默认"
+          onSelect={() => {
+            onSelect(null);
+            setOpen(false);
+          }}
+        />
+        {levels.map((lv) => (
+          <OptionRow
+            key={lv}
+            selected={current === lv}
+            label={EFFORT_LABELS[lv] ?? lv}
+            onSelect={() => {
+              onSelect(lv);
               setOpen(false);
             }}
           />

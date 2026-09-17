@@ -27,6 +27,7 @@ import {
   markSessionSeen,
   refreshSessionList,
   renameSession,
+  setSessionEffortLevel,
   resolvePermission,
   sendMessage,
   truncateItemsFrom,
@@ -47,7 +48,7 @@ import { SessionRenameInput } from '../components/SessionRenameInput';
 import { MessageStream } from '../components/MessageStream';
 import { PermissionPrompt } from '../components/PermissionPrompt';
 import { RunningStatus } from '../components/RunningStatus';
-import { ModelSelector, PermissionSelector } from '../components/SelectorChips';
+import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
 import { UsageDashboard } from '../components/UsageDashboard';
 import { brand } from '../../../shared/brand.js';
 import { FolderPickerChip } from '../components/FolderPickerChip';
@@ -848,7 +849,7 @@ export function ChatPage(): React.JSX.Element {
                       isRunning={slice.isRunning}
                       sendDisabled={noModel}
                       slashItems={slashItems}
-                      placeholder={noModel ? '先在设置页添加 Provider，再开始对话…' : '输入消息，或拖入文件…'}
+                      placeholder={noModel ? '先在设置页添加 Provider，再开始对话…' : '输入消息；@ 引用文件，或拖入文件…'}
                       attachments={attachments}
                       onRemoveAttachment={(p) =>
                         setAttachments((prev) => prev.filter((a) => a.path !== p))
@@ -870,6 +871,16 @@ export function ChatPage(): React.JSX.Element {
                             current={permissionMode}
                             onSelect={(m) => void selectPermission(m)}
                           />
+                          {(modelSpec?.reasoning || modelSpec?.thinkingLevelMap) && (
+                            <EffortSelector
+                              current={activeMeta?.effort ?? null}
+                              thinkingLevelMap={modelSpec?.thinkingLevelMap}
+                              onSelect={(effort) => {
+                                if (!activeId) return;
+                                void setSessionEffortLevel(activeId, effort);
+                              }}
+                            />
+                          )}
                         </>
                       }
                       trailingControls={
