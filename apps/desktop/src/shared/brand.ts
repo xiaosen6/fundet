@@ -50,14 +50,8 @@ const BRANDS: Record<BrandId, BrandConfig> = {
     name: 'Fundet',
     assistantRole: '一个运行在本地的 AI 助手',
     updater: { owner: 'xiaosen6', repo: 'fundet' },
-    updaterFeed: {
-      // 两跳解析：先 GET releases?per_page=1 拿最新 tag，再指
-      // /releases/<tag>/downloads/ 做 generic feed（latest.yml/安装包按 filepath 挂链）
-      apiBase: 'http://172.16.56.11/api/v4',
-      projectId: '272',
-      releasePage: 'http://172.16.56.11/fundet-harness/fundet-buddy/-/releases',
-      requiresToken: true,
-    },
+    // 2026-09-16 起：GitLab 弃用（持续断连），更新与发版回到 GitHub Releases
+    // （electron-updater 走 app-update.yml 的 github provider，公开仓无需令牌）
     bundledSkills: false,
   },
 };
