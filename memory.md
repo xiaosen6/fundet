@@ -124,7 +124,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
-| 0.2.19 | 09-16 | **预览安全模型对齐 Cindy**（读取侧改 deny-list：工作目录外普通文件可预览，系统/凭据/浏览器 profile 拦截；附件 stage 侧 workDir 硬约束不变，filePathPolicy.ts + 11 用例）；能力入口整屏路由页（/panel/:id，修 drag 层吃点击）+ 页头只留返回箭头；确认弹窗柔和化（缩放淡入淡出 + danger 实底）；粘贴长文本 chip；含 0.2.18 全部内容（v0.2.18 tag 未推，内容并入本版）；**安装包本地出（GitLab 断连，push/Release 待恢复）** |
+| 0.2.19 | 09-16 | **预览安全模型对齐 Cindy**（deny-list）；能力入口主区内嵌面板（三版演进终态，无返回钮）；确认弹窗柔和化；粘贴长文本 chip；**更新源回 GitHub**（GitLab 弃用，gh CLI + xiaosen6/fundet 单线发版）；**已发 GitHub Release**（三资产，冒烟过；0.2.8~0.2.15 存量装机更新通道复活） |
 | 0.2.18 | 09-15 | 粘贴长文本自动收成 chip（≥10 行或 >600 字符；点击预览全文/× 移除；发送按序展开为原文）；含 0.2.17 后的布局修正（编辑入口在消息操作栏/路径按钮在输入卡下方/用户消息完整操作栏）；**tag 本地未推，内容并入 0.2.19** |
 | 0.2.17 | 09-14 | **流畅度对齐 Cindy 批（14 项）**：Tooltip/Toast/ConfirmDialog 反馈基元（删会话有确认）+ 跳底/新消息 chip；划选引用、Ctrl+F 页内搜索、跳上一条提问；Lightbox 全屏查看（图/mermaid）、AgentTaskCard 子任务卡；MessageStream 换 TanStack Virtual 真虚拟化；composer 编辑按钮（真编辑截断重发）+ 路径按钮带边框 pill；另含 Cindy #4353 看门狗活性语义移植；**已发 GitLab Release**（静默装冒烟过，查窗口标题无 Error） |
 | 0.2.16 | 09-11 | **应用内更新源切内网 GitLab**（generic feed 两跳解析：API 查最新 tag → packages 直连；私有项目需用户在 设置→通用 配访问令牌，safeStorage 落盘；真机 E2E 验证过 0.2.14-beta.1 → 检测/下载/暂存 0.2.15 全链）；**已发 GitLab Release**（静默装冒烟过，查窗口标题无 Error 弹框） |
@@ -270,19 +270,24 @@ Fundet/
 
 ---
 
-## 6. 发版流程（GitLab 单线，2026-09-07 起）
+## 6. 发版流程（GitHub 单线，2026-09-16 起）
 
-1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交（确认 logo 等资产已在 tag 里）。
-2. `git tag vX.Y.Z && git push origin main vX.Y.Z`（源码 + tag 同步 GitLab）。
-3. **PowerShell** `pnpm dist:win` 本地出包 → `apps/desktop/dist/Fundet-Setup-<version>-x64.exe`，**出包后把安装包直接拷一份到 `D:\` 根目录**（2026-09-10 起的固定存放处，不建子文件夹）。pre 钩子自动跑 pack-browser-deps；**extraResources 的 cua-driver 缺失只警告不报错**，出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在，当前 0.22.1）。**本地出包同样撞 §5 的 Defender EBUSY 坑（cua-driver/pi/rg 被 signtool 拷贝时锁住）**：先对三个 bin 目录做 Get-FileHash 预热，EBUSY 就整体重跑 `pnpm dist:win`——实测预热后第 3 次过，别只修单个文件。
-4. 静默安装冒烟：`Fundet-Setup-<version>-x64.exe /S /D=<临时目录>` → 启动 → **查 MainWindowTitle ≠ "Error"（Error 弹框也 alive，见 §5 坑表）** → 杀进程 → 清理临时目录 **+ HKCU 安装痕迹：`HKCU\Software\<卸载GUID>`（InstallDir 记忆）、`HKCU\...\Uninstall\<GUID>`（幽灵卸载项）、开始菜单/桌面 Fundet 快捷方式（指向临时目录的死链）。不清的话安装器会把冒烟临时路径当「已装位置」，下次真装默认目录变成 Temp（2026-09-11 踩过）**。
-5. 安装包（连同 `latest.yml`、`.blockmap`）挂 GitLab Release。已验证的 API 模式（2026-09-07，本 GitLab 版本资产链接用 `filepath` 属性，`direct_asset_path` 会报 invalid format）：①`PUT /api/v4/projects/272/packages/generic/fundet/<版本>/<文件名>`（curl --upload-file，PRIVATE-TOKEN 头）；②`POST /api/v4/projects/272/releases`，`assets.links[].url` 指向包文件。Token 用项目/个人 access token（scope=api），由发版人自持，**不进仓**。
+> **GitLab（172.16.56.11）已弃用**（2026-09-16：持续断连不可依赖，remote 改名 `origin`→保留但不再使用）。**主远端 = GitHub `xiaosen6/fundet`**（remote 名 `github`，gh CLI 已登录 xiaosen6）。该仓原是发布分发存根（main 曾只有一个 init 提交），2026-09-16 起 main 强推为完整源码历史 + 全部 tag（v0.2.11 tag 因挂有已发布 Release 刻意未覆盖，避「转 draft」坑）。**更新源自 0.2.19 起回 GitHub Releases**（brand.ts 已删 GitLab updaterFeed；公开仓免令牌——0.2.8~0.2.15 存量装机的更新通道直接复活；0.2.16~0.2.18 内置 GitLab feed 的版本是死端，需手动装一次 0.2.19+）。
+
+1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交。
+2. `git tag vX.Y.Z && git push github main vX.Y.Z`。
+3. **PowerShell** `pnpm dist:win` 本地出包 → 拷一份到 `D:\` 根目录。pre 钩子自动跑 pack-browser-deps；**出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在**。Defender 慢日构建超 10 分钟属正常，斩死后无孤儿进程直接重跑；EBUSY 同理整体重跑。
+4. 静默安装冒烟：`/S /D=<临时目录>` → 启动 → **查 MainWindowTitle ≠ "Error"** → 杀进程 → 清理临时目录 + HKCU 安装痕迹（`HKCU\Software\<卸载GUID>`、Uninstall\<GUID>、开始菜单/桌面 Fundet 快捷方式——不清会把冒烟临时路径写进安装器记忆）。
+5. `gh release create vX.Y.Z -R xiaosen6/fundet --title vX.Y.Z --notes "<说明>" <exe> <blockmap> <latest.yml>`——三资产挂 Release，electron-updater 读最新 Release 的 latest.yml。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。
+
+> mac 包暂无产出路径，需要时再定。
+> 网络注意：GitHub 直连不稳时资产**上传**只能重试（gh-proxy 只代理下载）；push 源码一般可过。
 
 > **应用内更新已切 GitLab（0.2.16 起，产品决策 2026-09-11）**：updater.ts generic feed 两跳解析——GET `releases?per_page=1` 拿最新 tag → setFeedURL 指 `packages/generic/fundet/<版本>/` 直连（不走 downloads API：它 302 到包文件，重定向上自定义头不受控）。项目 272 私有——**用户须在 设置→通用「版本与更新」配 GitLab 访问令牌（scope=api；safeStorage 落盘 `keys/gitlab-updater.bin`；`FUNDET_UPDATER_TOKEN` 环境变量可覆盖，部署/测试用）**，未配时中文指引。**存量过渡**：0.2.15 及以前的安装仍指 GitHub、永远收不到新版本——须手动装一次 0.2.16（Release 页或 `D:\Fundet-Setup-0.2.16-x64.exe`），此后自动更新走 GitLab。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
-> **在途事项（2026-09-16 交接快照）**：GitLab 持续断连中——本地 `main` 领先远端 **15 个提交** + 未推 tag `v0.2.18`/`v0.2.19`（内容上 0.2.18 已并入 0.2.19，恢复后可只发 0.2.19）。**v0.2.19 安装包已出**：`D:\Fundet-Setup-0.2.19-x64.exe`（静默装冒烟过，窗口标题 [Fundet]）。**恢复后动作**（用户明示不急，等口令）：`git push origin main v0.2.18 v0.2.19` → 按 §6.5 上传 0.2.19 三资产 → 建 Release（0.2.18 可只推 tag 不建 Release，或同样发）→ memory.md §3.5 两行补「已发」。注意 v0.2.15 曾有一次 tag 重指（BOM 坏 package.json）——**改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)**。**Defender 活跃日出包与静默装都会被实时扫描拖慢**：dist:win 可能超 10 分钟（超时预算放宽到 20-25 分钟，斩死后无孤儿进程直接重跑即可）、冒烟安装 300s 不够（分步执行：先装验完整性，再启动验窗口标题）。
+> **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
 
 ---
 
