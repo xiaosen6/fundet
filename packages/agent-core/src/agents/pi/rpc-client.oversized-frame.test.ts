@@ -112,3 +112,43 @@ describe('PiRpcProcess oversized JSONL frame (#4518)', () => {
     expect(onEvent).toHaveBeenCalledWith({ type: 'agent_start' });
   });
 });
+
+describe('PiRpcProcess startup stderr diagnostics (#4626)', () => {
+  it('exit error carries redacted, path-masked stderr from the startup window', async () => {
+    const { proc } = createProcess();
+    const pending = proc.request({ type: 'get_entries' });
+    (proc as unknown as { child: { stderr: EventEmitter } }).child.stderr.emit(
+      'data',
+      Buffer.from('Error: Cannot find module C:\\Users\\secret\\AppData\\theme.css\n'),
+    );
+    (proc as unknown as { child: { stderr: EventEmitter } }).child.stderr.emit(
+      'data',
+      Buffer.from('    at internal/main/run_main_module:23:47:mod\n'),
+    );
+    // 触发 exit → close（close 清排水定时器并立即 finishExit）
+    const child = (proc as unknown as { child: EventEmitter }).child;
+    const expectation = expect(pending).rejects.toThrow(/Pi startup stderr:[\s\S]+<path:theme\.css>/);
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+    await expectation;
+  });
+
+  it('stderr after the first RPC response is not retained', async () => {
+    const { proc } = createProcess();
+    const pending = proc.request({ type: 'get_entries' });
+    // 先让 RPC 通（收到响应），再给 stderr，exit 错误不应带摘要
+    (proc as unknown as { child: { stdout: EventEmitter } }).child.stdout.emit(
+      'data',
+      Buffer.from(`${JSON.stringify({ type: 'response', id: 'c1', command: 'get_entries', success: true })}\n`),
+    );
+    await pending;
+    (proc as unknown as { child: { stderr: EventEmitter } }).child.stderr.emit(
+      'data',
+      Buffer.from('late runtime noise\n'),
+    );
+    const child = (proc as unknown as { child: EventEmitter }).child;
+    child.emit('exit', 0, null);
+    await new Promise((r) => setTimeout(r, 300));
+    child.emit('close', 0, null);
+  });
+});

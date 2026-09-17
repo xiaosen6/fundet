@@ -12,6 +12,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 
 import type { Logger } from '../../interfaces/logger.js';
+import { redactSensitiveText } from '@fundet/shared/error-redaction';
 
 /** pi RPC 响应帧。 */
 export interface PiRpcResponse {
@@ -66,6 +67,22 @@ function sanitizeFrameLabel(value: unknown): string {
   return FRAME_LABEL_RE.test(value) ? value : '(other)';
 }
 
+/** 启动期 stderr 摘要上限（只留尾部；上游 #4626 同值） */
+const MAX_STARTUP_STDERR_CHARS = 2000;
+/** 错误面只要失败模块名，不要机器路径/堆栈（上游 #4626 sanitizeStartupDiagnostic） */
+function sanitizeStartupDiagnostic(line: string): string {
+  if (/^\s*at(?:\s|$)/.test(line)) return '';
+  const pathLabel = (value: string): string => {
+    const name = value.split(/[\\/]/).filter(Boolean).pop() ?? '';
+    return `<path:${name}>`;
+  };
+  return line
+    .replace(/(["'])((?:file:\/\/\/|[A-Za-z]:[\\/]|\/|\\)[^"'\r\n]*)\1/g,
+      (_match, quote: string, value: string) => `${quote}${pathLabel(value)}${quote}`)
+    .replace(/(?<![\w:/\\])(?:file:\/\/\/|[A-Za-z]:[\\/]|\/|\\)[^\r\n"'<>]+?(?=:\s|["'<>\r\n]|$)/g,
+      (value) => pathLabel(value));
+}
+
 export class PiRpcProcess {
   private child: ChildProcessWithoutNullStreams;
   private nextRequestId = 1;
@@ -78,6 +95,10 @@ export class PiRpcProcess {
   }>();
   private closed = false;
   private readonly logger: Logger;
+  // 启动期（首个 RPC 响应前）的脱敏 stderr 尾部；RPC 通了就清（不存运行期输出）
+  private startupStderr = '';
+  private receivedRpcResponse = false;
+  private exitError: Error | null = null;
   private disposeProcessRegistration: (() => void) | undefined;
   /** #3696 帧诊断:本轮按事件类型计数,agent_settled 落直方图(只记元数据)。 */
   private readonly eventFrameCounts = new Map<string, number>();
@@ -113,8 +134,18 @@ export class PiRpcProcess {
     });
     attachJsonlReader(this.child.stderr, (line) => {
       if (line.trim().length === 0) return;
-      this.logger.warn('pi stderr', { line: line.slice(0, 2000) });
-      opts.onStderrLine?.(line);
+      // stderr 可能含 env 凭证（崩溃 dump/依赖 debug 输出），进日志前先脱敏。
+      // 顺序：先遮蔽绝对路径（redactSensitiveText 会吃反斜杠，Windows 路径
+      // 先被搅碎就认不出了），再做敏感值脱敏。
+      const redacted = redactSensitiveText(sanitizeStartupDiagnostic(line));
+      this.logger.warn('pi stderr', { line: redacted.slice(0, 2000) });
+      if (!this.receivedRpcResponse && !this.closed) {
+        if (redacted) {
+          this.startupStderr = `${this.startupStderr}${this.startupStderr ? '\n' : ''}${redacted}`
+            .slice(-MAX_STARTUP_STDERR_CHARS);
+        }
+      }
+      opts.onStderrLine?.(redacted);
     });
 
     this.child.on('error', (err) => {
@@ -154,9 +185,18 @@ export class PiRpcProcess {
     try { this.child.stdout.destroy(); } catch { /* already gone */ }
     try { this.child.stderr.destroy(); } catch { /* already gone */ }
     try { this.child.stdin.destroy(); } catch { /* already gone */ }
-    this.failAllPending(new Error(`pi process exited (code=${info.code}, signal=${info.signal})`));
+    this.exitError = this.createExitError(`pi process exited (code=${info.code}, signal=${info.signal})`);
+    this.startupStderr = '';
+    this.failAllPending(this.exitError);
     this.opts.onExit({ code: info.code, signal: info.signal });
     for (const waiter of this.exitWaiters.splice(0)) waiter();
+  }
+
+  /** exit 错误带上启动期 stderr 摘要（脱敏+路径遮蔽）：code=1 的崩溃从此可排查 */
+  private createExitError(message: string): Error {
+    return new Error(this.startupStderr
+      ? `${message}\nPi startup stderr:\n${this.startupStderr}`
+      : message);
   }
 
   private disposeRegistration(): void {
@@ -178,7 +218,7 @@ export class PiRpcProcess {
     command: Record<string, unknown>,
     { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }: { timeoutMs?: number } = {},
   ): Promise<PiRpcResponse> {
-    if (this.closed) throw new Error('pi process already exited');
+    if (this.closed) throw this.exitError ?? this.createExitError('pi process already exited');
     const id = `c${this.nextRequestId++}`;
     const payload = JSON.stringify({ ...command, id });
 
@@ -253,6 +293,8 @@ export class PiRpcProcess {
         const entry = this.pending.get(id)!;
         clearTimeout(entry.timer);
         this.pending.delete(id);
+        this.receivedRpcResponse = true;
+        this.startupStderr = '';
         entry.resolve(resp);
       } else {
         // 无 id 的响应(如 parse error)或迟到响应 —— 记日志不丢语义。
