@@ -2,24 +2,14 @@
  * 品牌配置：LongMa（主品牌）/ Fundet（双品牌变体）。
  * 构建期由环境变量 BRAND 选择（electron.vite.config.ts 注入 __BRAND__），
  * 两品牌功能完全一致，只有名称、自我介绍口径、logo 与更新源不同。
+ * 更新源自 0.2.19 起统一 GitHub Releases（公开仓免令牌；GitLab generic
+ * feed 已于 2026-09 清理移除）。
  *
  * 注意：productName 由 electron-builder 配置决定（决定安装目录与
  * userData 隔离，%APPDATA%\LongMa vs %APPDATA%\Fundet），渲染层/main
  * 运行时展示统一走这里。
  */
 export type BrandId = 'longma' | 'fundet';
-
-/** 内网 GitLab generic 更新源（electron-updater generic provider） */
-export interface UpdaterFeed {
-  /** GitLab API 基址（http://…/api/v4） */
-  apiBase: string;
-  /** 项目数字 id */
-  projectId: string;
-  /** 手动下载的 Release 页（macOS / 兜底） */
-  releasePage: string;
-  /** 私有项目须配置个人访问令牌（scope=api）才能检查更新 */
-  requiresToken: boolean;
-}
 
 export interface BrandConfig {
   id: BrandId;
@@ -29,8 +19,6 @@ export interface BrandConfig {
   assistantRole: string;
   /** 应用内更新源（GitHub owner/repo；fundet 独立 Releases） */
   updater: { owner: string; repo: string };
-  /** GitLab generic 更新源；设置后覆盖 updater 的 GitHub 语义（longma 不设） */
-  updaterFeed?: UpdaterFeed;
   /** 是否预装内置技能（Fundet 不预装） */
   bundledSkills: boolean;
 }
@@ -50,8 +38,6 @@ const BRANDS: Record<BrandId, BrandConfig> = {
     name: 'Fundet',
     assistantRole: '一个运行在本地的 AI 助手',
     updater: { owner: 'xiaosen6', repo: 'fundet' },
-    // 2026-09-16 起：GitLab 弃用（持续断连），更新与发版回到 GitHub Releases
-    // （electron-updater 走 app-update.yml 的 github provider，公开仓无需令牌）
     bundledSkills: false,
   },
 };
