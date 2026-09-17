@@ -291,7 +291,7 @@ Fundet/
 
 > **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
 
-> **在途事项（2026-09-17）**：**UI 高级感批已完成、未发版**——三批全量落地（详见 §4.2「动效体系与状态可感知批」条目）。新增 IPC ×3（`fs:list-dir` / `session:set-pinned` / `session:reorder`，四件套齐）；sessions 表幂等补列 pinned/sort_order（老库启动自动升级，已实测）。验证：typecheck 5 包过、全仓单测 1149 全过、dev:win 真机冒烟（启动日志净 + 窗口标题正常 + CDP 截图核验渲染 + listDir IPC 实测）；**发版前真机人工过一遍新交互**（置顶/拖拽、@ 引用、标题 marquee hover、切会话/面板淡入、后台会话跑完的绿点+settle 闪烁），认可后按 §6 流程发 0.2.20。
+> **在途事项（2026-09-17）**：**无**——0.2.20（体验高级感批，见 §3.5/§4.2）已发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过（窗口标题正常，HKCU/快捷方式痕迹已清）；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`。老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列在冒烟机自动生效）。
 
 ---
 
