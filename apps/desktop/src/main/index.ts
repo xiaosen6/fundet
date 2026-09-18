@@ -264,8 +264,12 @@ function bootstrap(): void {
 // 冲突）。单实例锁：后起的实例直接退（app.quit 不拦截 ready 后的初始化，所以
 // 整个 bootstrap 只在持锁实例里注册），由已有实例把隐藏窗口唤出来。
 // userData 显式按品牌隔离（Electron 默认按 package.json name 取，Fundet 构建
-// 会落到 fundet-desktop；且必须在 single-instance lock 之前设置才生效）
-const brandUserData = path.join(app.getPath('appData'), brand.name);
+// 会落到 fundet-desktop；且必须在 single-instance lock 之前设置才生效）。
+// FUNDET_USER_DATA 环境变量可整体覆盖（冒烟/测试隔离用——Windows 上 Electron
+// 的 appData 走系统 API 不吃 %APPDATA% 环境变量，锁隔离只能从这里做）。
+const brandUserData = process.env.FUNDET_USER_DATA
+  ? path.resolve(process.env.FUNDET_USER_DATA)
+  : path.join(app.getPath('appData'), brand.name);
 fs.mkdirSync(brandUserData, { recursive: true }); // 锁文件需要目录先存在，否则单实例锁失败 → 静默退出
 app.setPath('userData', brandUserData);
 

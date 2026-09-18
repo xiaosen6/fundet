@@ -28,6 +28,13 @@ describe('parseDwsVersion', () => {
     assert.deepEqual(parseDwsVersion('不是 json'), {});
     assert.deepEqual(parseDwsVersion('{"version": 62}'), {});
   });
+
+  it('stdout 混入 cmd AutoRun 回显（doskey 宏）仍能截取 JSON 段', () => {
+    const polluted =
+      '\r\nD:\\Go\\fundet-buddy>doskey python3.11=C:\\Users\\16086\\AppData\\Local\\Programs\\Python\\Python311\\python.exe $*  \r\n\r\n' +
+      '{"version": "v1.0.62", "build": "2026-09-16T08:35:04Z"}\r\n';
+    assert.deepEqual(parseDwsVersion(polluted), { version: 'v1.0.62', build: '2026-09-16T08:35:04Z' });
+  });
 });
 
 describe('parseProfileList', () => {
@@ -58,6 +65,13 @@ describe('parseProfileList', () => {
   it('空对象条目被过滤；有任一身份字段的保留', () => {
     const raw = JSON.stringify({ profiles: [{}, { profile: 'x:y' }, 'junk'] });
     assert.deepEqual(parseProfileList(raw), [{ id: 'x:y', org: undefined, user: undefined, isCurrent: false }]);
+  });
+
+  it('stdout 混横幅时截取 JSON 段（本机 cmd AutoRun 实捕形状）', () => {
+    const polluted = 'some banner line\r\n{"success":true,"profiles":[{"profile":"a:b","corpName":"X","userName":"Y","isOrgCurrent":true}]}\r\n';
+    assert.deepEqual(parseProfileList(polluted), [
+      { id: 'a:b', org: 'X', user: 'Y', isCurrent: true },
+    ]);
   });
 });
 

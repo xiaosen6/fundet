@@ -55,16 +55,26 @@ export interface DwsActionResult {
 
 /* ---------------- 纯解析（单测覆盖） ---------------- */
 
-export function parseDwsVersion(stdout: string): { version?: string; build?: string } {
+/** 从混有横幅/回显的输出里截取 JSON 段再解析（cmd AutoRun 宏、首次运行提示等都可能污染 stdout） */
+function extractJson(stdout: string): unknown {
+  const start = stdout.indexOf('{');
+  if (start < 0) return null;
+  const end = stdout.lastIndexOf('}');
+  if (end <= start) return null;
   try {
-    const j = JSON.parse(stdout) as { version?: unknown; build?: unknown };
-    const out: { version?: string; build?: string } = {};
-    if (typeof j.version === 'string') out.version = j.version;
-    if (typeof j.build === 'string') out.build = j.build;
-    return out;
+    return JSON.parse(stdout.slice(start, end + 1));
   } catch {
-    return {};
+    return null;
   }
+}
+
+export function parseDwsVersion(stdout: string): { version?: string; build?: string } {
+  const j = extractJson(stdout) as { version?: unknown; build?: unknown } | null;
+  if (!j) return {};
+  const out: { version?: string; build?: string } = {};
+  if (typeof j.version === 'string') out.version = j.version;
+  if (typeof j.build === 'string') out.build = j.build;
+  return out;
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -74,13 +84,8 @@ function firstString(...values: unknown[]): string | undefined {
 
 /** profile list 的 profiles[] 字段名随版本可能变化，宽容提取 + 稳定 id 兜底 */
 export function parseProfileList(stdout: string): DwsProfileView[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout);
-  } catch {
-    return [];
-  }
-  const arr = (parsed as { profiles?: unknown } | null)?.profiles;
+  const parsed = extractJson(stdout) as { profiles?: unknown } | null;
+  const arr = parsed?.profiles;
   if (!Array.isArray(arr)) return [];
   const out: DwsProfileView[] = [];
   for (const item of arr) {
@@ -207,7 +212,8 @@ async function resolveDws(): Promise<DwsInvocation | null> {
   const candidates: DwsInvocation[] =
     process.platform === 'win32'
       ? [
-          { command: 'cmd.exe', args: ['/c', 'dws'], psCommand: 'dws' },
+          // /d 禁 cmd AutoRun（doskey 宏回显会污染 stdout）
+          { command: 'cmd.exe', args: ['/d', '/c', 'dws'], psCommand: 'dws' },
           {
             command: path.join(home, '.local', 'bin', 'dws.exe'),
             args: [],
