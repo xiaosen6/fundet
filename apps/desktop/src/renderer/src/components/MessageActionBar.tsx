@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Ellipsis, History, MessageSquarePlus, Pen, Share, Split, Trash2 } from 'lucide-react';
+import { Check, Copy, Ellipsis, MessageSquarePlus, Pen, Share, Split, Trash2, Undo2 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Tooltip } from './ui/Tooltip';
 
@@ -44,6 +44,7 @@ export function MessageActionBar({
   onDelete,
   onEdit,
   onRewind,
+  align = 'right',
 }: {
   createdAt?: number;
   copyText: string;
@@ -57,8 +58,10 @@ export function MessageActionBar({
   onDelete?: () => Promise<void>;
   /** 编辑该条消息（用户消息用：进 composer 编辑态，发送截断重发） */
   onEdit?: () => void;
-  /** 回滚工作目录文件（用户消息用：打开回滚对话框） */
+  /** 回滚工作目录文件（用户消息用：收进「更多」菜单，对齐 Cindy） */
   onRewind?: () => void;
+  /** 对齐侧：right=user（时间在最前）/ left=assistant（时间与用量靠后）——Cindy 双序 */
+  align?: 'left' | 'right';
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -114,7 +117,15 @@ export function MessageActionBar({
         .join('\n')
     : '';
 
-  const hasMore = Boolean(onAddToChat || onDelete);
+  const timeEl = createdAt ? (
+    <Tooltip label={new Date(createdAt).toLocaleString('zh-CN')} side="top">
+      <span className="mr-1 text-12 text-muted">{formatRelative(createdAt)}</span>
+    </Tooltip>
+  ) : null;
+
+  // Rewind 只在 user 侧（align right）收进菜单（Cindy：canRewind = align === 'right'）
+  const canRewind = Boolean(onRewind && align === 'right');
+  const hasMore = Boolean(onAddToChat || canRewind || onDelete);
 
   return (
     <div
@@ -124,12 +135,8 @@ export function MessageActionBar({
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
     >
-      {/* 时间在最前（对齐 Cindy：先时间后操作钮） */}
-      {createdAt ? (
-        <Tooltip label={new Date(createdAt).toLocaleString('zh-CN')} side="top">
-          <span className="mr-1 text-12 text-muted">{formatRelative(createdAt)}</span>
-        </Tooltip>
-      ) : null}
+      {/* 时间位置按对齐侧（Cindy 双序）：user 在最前 / assistant 靠后 */}
+      {align === 'right' && createdAt ? timeEl : null}
       <Tooltip label={copyError ? '复制失败' : copied ? '已复制' : '复制'} side="top">
         <button
           type="button"
@@ -171,13 +178,6 @@ export function MessageActionBar({
           </button>
         </Tooltip>
       ) : null}
-      {onRewind ? (
-        <Tooltip label="回滚文件到此轮之前" side="top">
-          <button type="button" className={ICON_BTN} aria-label="回滚文件" onClick={onRewind}>
-            <History size={14} />
-          </button>
-        </Tooltip>
-      ) : null}
       {hasMore ? (
         <div className="relative">
           <Tooltip label="更多" side="top">
@@ -192,37 +192,59 @@ export function MessageActionBar({
             </button>
           </Tooltip>
           {menuOpen && (
-            <div className="absolute bottom-full left-0 z-20 mb-1 w-[180px] rounded-xl border border-board bg-card p-1 shadow-[var(--shadow-menu)]">
+            <div
+              className={cn(
+                'absolute bottom-full z-20 mb-1 min-w-[184px] rounded-xl border border-board bg-card p-1 shadow-[var(--shadow-menu)]',
+                align === 'right' ? 'right-0' : 'left-0',
+              )}
+            >
               {onAddToChat ? (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-inner px-2 py-1.5 text-left text-13 text-primary hover:bg-hover"
+                  className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-primary hover:bg-hover"
                   onClick={() => {
                     onAddToChat();
                     setMenuOpen(false);
                   }}
                 >
-                  <MessageSquarePlus size={14} />
+                  <MessageSquarePlus size={14} className="mr-2 shrink-0" />
                   添加到对话
                 </button>
               ) : null}
-              {onDelete ? (
+              {canRewind ? (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-inner px-2 py-1.5 text-left text-13 text-error hover:bg-hover"
+                  className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-primary hover:bg-hover"
                   onClick={() => {
                     setMenuOpen(false);
-                    void onDelete();
+                    onRewind?.();
                   }}
                 >
-                  <Trash2 size={14} />
-                  删除本条消息
+                  <Undo2 size={14} className="mr-2 shrink-0" />
+                  回滚
                 </button>
+              ) : null}
+              {onDelete ? (
+                <>
+                  {(onAddToChat || canRewind) && <div className="my-1 h-px bg-board" />}
+                  <button
+                    type="button"
+                    className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-error hover:bg-hover"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void onDelete();
+                    }}
+                  >
+                    <Trash2 size={14} className="mr-2 shrink-0" />
+                    删除本条消息
+                  </button>
+                </>
               ) : null}
             </div>
           )}
         </div>
       ) : null}
+      {align === 'left' && timeEl}
       {tokens > 0 ? (
         <Tooltip label={tooltip} side="top">
           <span className="ml-1.5 cursor-default text-12 text-muted">

@@ -60,7 +60,6 @@ import { collectArtifacts, type Artifact } from '../lib/artifacts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { dataTransferHasFiles, filesFromDataTransfer } from '../lib/file-drop';
 import { CanvasPane } from '../components/CanvasPane';
-import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { hasFramelessControls } from '../components/WindowControls';
 import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
@@ -69,7 +68,6 @@ import { FindBar } from '../components/FindBar';
 import { RewindDialog } from '../components/RewindDialog';
 import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
-import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
 
 export function ChatPage(): React.JSX.Element {
@@ -173,9 +171,6 @@ export function ChatPage(): React.JSX.Element {
     }
     return undefined;
   }, [providers, activeMeta?.model]);
-  const shownWindow = activeMeta?.model
-    ? preferScannedContextWindow(activeMeta.model, modelSpec?.contextWindow) ?? 0
-    : 0;
 
   useEffect(() => {
     setCanvasOpen(false);
@@ -959,10 +954,6 @@ export function ChatPage(): React.JSX.Element {
                       {activeId.slice(0, 8)}
                     </span>
                   )}
-                  <ContextCapacityRing
-                    contextTokens={slice.usage.contextTokens}
-                    contextWindow={shownWindow}
-                  />
                   </div>
                 </div>
               </div>

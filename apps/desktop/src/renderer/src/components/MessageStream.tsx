@@ -265,6 +265,7 @@ function UserTurn({
               : undefined
           }
           onRewind={onRewind}
+          align="right"
           onDelete={onDeleteUserMessage ? async () => onDeleteUserMessage() : undefined}
         />
       </div>
@@ -429,6 +430,7 @@ function AssistantTurn({
           onFork={onFork}
           onAddToChat={onAddToChat}
           onDelete={onDelete}
+          align="left"
         />
       </div>
     </div>
