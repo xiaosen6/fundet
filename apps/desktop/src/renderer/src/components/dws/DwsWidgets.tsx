@@ -132,8 +132,8 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
     <div
       data-widget-card
       className={cn(
-        // 定高：板面恒定，任何交互都不改变主页布局
-        'group animate-fundet-rise-in fundet-surface flex h-[258px] min-w-0 flex-col rounded-container border border-board bg-card p-5 select-none',
+        // 高度随网格行弹性分配（高屏舒展/矮屏收缩，主页永不滚动），150px 地板（窗口最小高 640 也放得下）
+        'group animate-fundet-rise-in fundet-surface flex h-full min-h-[150px] min-w-0 flex-col rounded-container border border-board bg-card p-5 select-none',
         'hover:border-[var(--input-focus-border)]',
       )}
       style={{ animationDelay: `${index * 60}ms` }}
@@ -590,8 +590,8 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
   };
 
   return (
-    <div className="w-full">
-      <div className="mb-2.5 flex items-center gap-2 select-none">
+    <div className="flex h-full w-full flex-col">
+      <div className="mb-2.5 flex shrink-0 items-center gap-2 select-none">
         <span className="text-12 font-medium text-secondary">钉钉 · 今日</span>
         <span className="text-11 text-muted">更新于 {fmtAgo(s.fetchedAt)}</span>
         {onRefresh && (
@@ -606,7 +606,9 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           </button>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* 板区弹性：网格吃满剩余高度（行 1fr 对分、660px 封顶防高屏过空），居中兜底 */}
+      <div className="flex min-h-0 flex-1 flex-col justify-center">
+        <div className="grid max-h-[660px] min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-[repeat(2,minmax(0,1fr))]">
         <CardShell
           title="今日日程"
           Icon={CalendarDays}
@@ -636,6 +638,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
         >
           <UnreadBody s={s} ctx={boardCtx} />
         </CardShell>
+        </div>
       </div>
 
       {/* 弹出浮层：锚在被点卡片下方，内容可滚（板面零变化） */}

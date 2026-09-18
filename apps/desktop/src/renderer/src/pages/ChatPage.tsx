@@ -646,13 +646,14 @@ export function ChatPage(): React.JSX.Element {
           </div>
         ) : !activeId ? (
           // 空态（对齐 cindy-02 首页解剖）：品牌 wordmark 居中 + 引导卡
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             {/* 拖拽条在窗口按钮左侧截止（mr 而非 pr：app-region 按元素矩形算，
                 padding 缩不掉；悬浮 no-drag 挖洞在 Electron 37/Windows 上不可靠） */}
             <div className={cn('drag-region h-[46px] shrink-0', hasFramelessControls() && 'mr-[150px]')} />
+          {/* 整列撑满可用高度（h-full + 板区 flex-1）：右侧主区永不因内容超高出滚动条 */}
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
-            <div className="flex w-full max-w-[720px] flex-col items-stretch gap-4 px-6 py-3">
-              <div className="flex flex-col items-center gap-2 select-none">
+            <div className="flex h-full w-full max-w-[720px] flex-col items-stretch gap-2.5 px-6 py-2">
+              <div className="flex shrink-0 flex-col items-center gap-1.5 select-none">
                 <BrandMark size={40} />
                 <div className="text-[30px] leading-none font-medium tracking-tight text-primary">
                   {brand.name}
@@ -660,7 +661,7 @@ export function ChatPage(): React.JSX.Element {
               </div>
               {providers.length === 0 ? (
                 // 无 provider：内联「连接模型提供商」引导面板（cindy-02 的 Connect 面板）
-                <div className="rounded-container border border-board bg-card p-6">
+                <div className="shrink-0 rounded-container border border-board bg-card p-6">
                   <p className="text-18 font-medium text-primary select-none">
                     连接模型提供商以开始
                   </p>
@@ -683,9 +684,9 @@ export function ChatPage(): React.JSX.Element {
                   {notice && <p className="mt-2 text-13 text-error">{notice}</p>}
                 </div>
               ) : (
-                <div className="rounded-container border border-board bg-card px-8 py-5 text-center select-none">
+                <div className="flex shrink-0 flex-col rounded-container border border-board bg-card px-8 py-3.5 text-center select-none">
                   <p className="text-14 text-secondary">选择文件夹，再开启新对话</p>
-                  <div className="mt-4 flex flex-col items-center gap-3">
+                  <div className="mt-2.5 flex flex-col items-center gap-2.5">
                     <FolderPickerChip cwd={workDir} onSelect={applyWorkDir} size="big" />
                     <button
                       type="button"
@@ -698,7 +699,7 @@ export function ChatPage(): React.JSX.Element {
                   {notice && <p className="mt-2 text-13 text-error">{notice}</p>}
                 </div>
               )}
-              <div className="w-full">
+              <div className="flex w-full min-h-0 flex-1 flex-col">
                 <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} expandMode="popover" />
               </div>
             </div>
