@@ -18,9 +18,10 @@
  *   不含「复制当前消息链接」。
  */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Pen, Quote } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Loader2, Pen, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
+import type { SessionAttachment } from '../../../shared/fundet-api.js';
 import { AssistantMessage } from './AssistantMessage';
 import { AttachmentThumb } from './AttachmentThumb';
 import { MessageActionBar } from './MessageActionBar';
@@ -106,31 +107,140 @@ function UserTurn({
   item,
   canFork,
   onFork,
-  onEditUserMessage,
   onShare,
   onDeleteUserMessage,
   workDir,
   onOpenFile,
   onRewind,
+  canEdit,
+  onEditStart,
+  onEditSubmit,
+  isTurnRunning,
 }: {
   item: Extract<DisplayItem, { kind: 'user' }>;
   canFork?: boolean;
   onFork?: (createdAt: number) => Promise<void>;
-  onEditUserMessage?: (text: string, createdAt: number) => void;
   onShare?: () => void;
   onDeleteUserMessage?: () => void;
   workDir?: string;
   onOpenFile?: (path: string) => void;
   onRewind?: () => void;
+  /** 仅最后一条 user 消息可编辑（Cindy edit-last-message） */
+  canEdit?: boolean;
+  /** 点编辑瞬间（外部据此中断运行中的 turn，Cindy：点编辑=停下要改） */
+  onEditStart?: () => void;
+  /** 提交编辑：截断该消息及之后全部内容并按新文本重发 */
+  onEditSubmit?: (text: string, createdAt: number | undefined, attachments: SessionAttachment[] | undefined) => Promise<void>;
+  isTurnRunning?: boolean;
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
+  // ── inline 编辑态（Cindy UserMessageEditBox 同款交互）：气泡原位替换成
+  // textarea 预填原文；运行中点编辑由外部立即中断；提交才截断重发，取消零副作用。
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.text);
+  const [submitting, setSubmitting] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    setDraft(item.text);
+    const id = requestAnimationFrame(() => {
+      const el = editRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing, item.text]);
+
+  const cancelEdit = (): void => {
+    setEditing(false);
+    setDraft(item.text);
+  };
+
+  const submitEdit = (): void => {
+    if (submitting || !onEditSubmit) return;
+    const text = draft.trim() ? draft : item.text;
+    setSubmitting(true);
+    void onEditSubmit(text, item.createdAt, item.attachments)
+      .then(() => setEditing(false))
+      .finally(() => setSubmitting(false));
+  };
+
   return (
     <div
       className="flex flex-col"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <UserBubble text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
+      {editing ? (
+        <div className="flex justify-end">
+          <div className="flex max-w-[488px] flex-col rounded-container border border-[var(--focus-ring)] bg-composer-pill px-3.5 py-3">
+            {item.attachments && item.attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {item.attachments.map((a) => (
+                  <span
+                    key={a.path}
+                    title={a.path}
+                    className="max-w-full truncate rounded-full border border-board bg-card px-2 py-0.5 text-11 text-muted"
+                  >
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={editRef}
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                const el = e.target;
+                el.style.height = 'auto';
+                el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelEdit();
+                  return;
+                }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  submitEdit();
+                }
+              }}
+              rows={1}
+              className="w-full resize-none bg-transparent text-15 leading-[1.6] text-primary outline-none"
+            />
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <span className="mr-auto text-11 text-muted">
+                发送后将替换此消息及其后的回复
+              </span>
+              <button
+                type="button"
+                className="h-7 rounded-full border border-board px-3 text-12 text-secondary hover:bg-hover"
+                onClick={cancelEdit}
+                disabled={submitting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg disabled:opacity-50"
+                onClick={submitEdit}
+                disabled={submitting}
+              >
+                {submitting && <Loader2 size={12} className="animate-fundet-spin" aria-hidden />}
+                {submitting ? '等待中断…' : '发送'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <UserBubble text={item.text} attachments={item.attachments} onOpenFile={onOpenFile} />
+      )}
       <div className="flex justify-end">
         <MessageActionBar
           createdAt={item.createdAt}
@@ -147,10 +257,10 @@ function UserTurn({
               : undefined
           }
           onEdit={
-            onEditUserMessage && item.createdAt
+            canEdit && onEditSubmit
               ? () => {
-                  const ts = item.createdAt;
-                  if (ts !== undefined) onEditUserMessage(item.text, ts);
+                  onEditStart?.();
+                  setEditing(true);
                 }
               : undefined
           }
@@ -176,8 +286,14 @@ interface MessageStreamProps {
   onRewind?: () => void;
   /** 终态错误卡的「重新发送」：重发本轮最后一条用户消息 */
   onRetryError?: () => void;
-  /** 编辑某条用户消息（消息操作栏 Pen）：文本进 composer + 截断重发流 */
-  onEditUserMessage?: (text: string, createdAt: number) => void;
+  /** 编辑入口（仅最后一条 user 消息显示）：点击瞬间回调（外部据此中断运行中 turn） */
+  onEditStart?: () => void;
+  /** 提交编辑：截断该消息及之后全部内容并按新文本重发 */
+  onEditSubmit?: (
+    text: string,
+    createdAt: number | undefined,
+    attachments: SessionAttachment[] | undefined,
+  ) => Promise<void>;
   /** 删除某条用户消息及其后全部内容（confirm 在调用方） */
   onDeleteUserMessage?: (createdAt: number) => void;
 }
@@ -449,7 +565,8 @@ export function MessageStream({
   onDelete,
   onRewind,
   onRetryError,
-  onEditUserMessage,
+  onEditStart,
+  onEditSubmit,
   onDeleteUserMessage,
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -463,6 +580,9 @@ export function MessageStream({
     [slice.items, slice.isRunning],
   );
   const hasStreaming = Boolean(slice.streamingText);
+  // 编辑入口只给最后一条 user 消息（Cindy edit-last-message）
+  let lastUserId = '';
+  for (const it of slice.items) if (it.kind === 'user') lastUserId = it.id;
   // 虚拟化行 = 分组行 + 流式未封口伪行（永远最后一行）
   const rows = useMemo<Array<GroupedRow | { kind: 'streaming'; id: string }>>(
     () => (slice.streamingText ? [...grouped, { kind: 'streaming', id: '__streaming__' }] : grouped),
@@ -767,7 +887,10 @@ export function MessageStream({
                     item={item}
                     canFork={canFork}
                     onFork={onFork}
-                    onEditUserMessage={onEditUserMessage}
+                    canEdit={item.id === lastUserId && Boolean(onEditSubmit)}
+                    onEditStart={onEditStart}
+                    onEditSubmit={onEditSubmit}
+                    isTurnRunning={slice.isRunning}
                     onRewind={onRewind}
                     onShare={
                       userShareReply !== undefined

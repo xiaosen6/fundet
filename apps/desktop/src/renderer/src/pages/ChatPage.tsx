@@ -119,7 +119,6 @@ export function ChatPage(): React.JSX.Element {
   // 主区面板（IM/技能/MCP/知识库）：右侧就地显示，替代会话视图；侧栏保持可见
   const [activePanel, setActivePanel] = useState<SidebarPanelId | null>(null);
   // 编辑上一条用户消息：记录原消息时间戳，发送时截断其后重发（Cindy 同款 Pen）
-  const [editingFrom, setEditingFrom] = useState<number | null>(null);
   // 粘贴长文本 chip：发送时按序展开为原文追加
   const [pastedTexts, setPastedTexts] = useState<Array<{ id: number; text: string; lines: number }>>([]);
   const [rewindOpen, setRewindOpen] = useState(false);
@@ -145,7 +144,6 @@ export function ChatPage(): React.JSX.Element {
   useEffect(() => {
     setRenamingHeader(false);
     headerRenameCommitted.current = false;
-    setEditingFrom(null);
     setPastedTexts([]);
     // 切进即视为已看：清侧栏关注点，此后该会话完成不再打未读标
     markSessionSeen(activeId);
@@ -424,19 +422,31 @@ export function ChatPage(): React.JSX.Element {
     if (picked && picked.length > 0) await stagePaths(picked);
   }, [stagePaths]);
 
-  // 「编辑」入口在用户消息 hover 操作栏（Cindy 同款）；文本进 composer 编辑态，发送即截断重发
-  const editUserMessage = useCallback(
-    (text: string, createdAt: number): void => {
-      if (!activeId) return;
-      if (slice.isRunning) {
-        toast.info('等本轮回复结束后再编辑');
-        return;
-      }
-      setInput(text);
-      setEditingFrom(createdAt);
+  // 编辑（Cindy edit-last-message 同款）：入口只在最后一条 user 消息；点编辑瞬间
+  // 若 turn 还在跑立即中断（点编辑的意图就是"停下来我要改"）；提交 = 截断重发
+  const handleEditStart = useCallback((): void => {
+    if (activeId && slice.isRunning) void abortSession(activeId);
+  }, [activeId, slice.isRunning]);
+
+  const submitUserEdit = useCallback(
+    async (text: string, createdAt: number | undefined, attachments?: SessionAttachment[]): Promise<void> => {
+      if (!activeId || createdAt === undefined) return;
       setNotice('');
+      // 运行中（刚点编辑触发的中断还在收尾）：等 abort 收口再截断，防重发被拒
+      if (slice.isRunning) await abortSession(activeId);
+      if (!isDraftSession(activeId)) {
+        try {
+          await window.fundet.deleteTurn(activeId, createdAt - 1, Date.now() + 60_000);
+        } catch (err) {
+          setNotice(`编辑发送失败：${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+      }
+      truncateItemsFrom(activeId, createdAt);
+      setQueuedTexts([]);
+      await sendMessage(activeId, text, buildCreateParam(), attachments && attachments.length > 0 ? attachments : undefined);
     },
-    [activeId, slice.isRunning],
+    [activeId, slice.isRunning, buildCreateParam],
   );
 
   // 删除某条用户消息及其后全部内容（composer 卡下方「⋯」/消息操作栏入口）
@@ -478,20 +488,6 @@ export function ChatPage(): React.JSX.Element {
     setInput('');
     setAttachments([]);
     setNotice('');
-    // 编辑态：先删原消息及其后全部内容（DB + 本地），再按正常发送走
-    if (editingFrom !== null) {
-      const from = editingFrom;
-      setEditingFrom(null);
-      if (!isDraftSession(activeId)) {
-        try {
-          await window.fundet.deleteTurn(activeId, from - 1, Date.now() + 60_000);
-        } catch (err) {
-          setNotice(`编辑发送失败：${err instanceof Error ? err.message : String(err)}`);
-          return;
-        }
-      }
-      truncateItemsFrom(activeId, from);
-    }
     // 粘贴 chip 展开：正文 = 输入框文本 + 各 chip 原文（按粘贴顺序追加）
     let fullText = text;
     if (pastedTexts.length > 0) {
@@ -501,7 +497,7 @@ export function ChatPage(): React.JSX.Element {
     // 重启后旧会话 / 本地草稿都不在 main 内存：带 create 让 main lazy-create。
     const create = buildCreateParam();
     await sendMessage(activeId, fullText, create, pending.length > 0 ? pending : undefined);
-  }, [activeId, attachments, buildCreateParam, editingFrom, input, pastedTexts]);
+  }, [activeId, attachments, buildCreateParam, input, pastedTexts]);
 
   const abort = useCallback(async (): Promise<void> => {
     if (activeId) await abortSession(activeId);
@@ -842,7 +838,8 @@ export function ChatPage(): React.JSX.Element {
                 }
               }}
               onRetryError={resendLast}
-              onEditUserMessage={editUserMessage}
+              onEditStart={handleEditStart}
+              onEditSubmit={submitUserEdit}
               onDeleteUserMessage={(createdAt) => void deleteUserMessage(createdAt)}
               onRewind={
                 activeId && !isDraftSession(activeId) && slice.items.length > 0
@@ -910,8 +907,6 @@ export function ChatPage(): React.JSX.Element {
                       onAddFiles={(files) => void addDroppedFiles(files)}
                       onPickFiles={() => void pickFiles()}
                       dragOver={dragOver}
-                      editing={editingFrom !== null}
-                      onCancelEditing={() => setEditingFrom(null)}
                       pastedTexts={pastedTexts}
                       onPasteLongText={pasteLongText}
                       onRemovePastedText={removePastedText}

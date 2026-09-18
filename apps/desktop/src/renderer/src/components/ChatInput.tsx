@@ -10,7 +10,7 @@
  * @ 引用：输入 @ 唤出工作目录文件候选（FileMentionPanel），选中 stage 成附件。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Paperclip, Pen, X } from 'lucide-react';
+import { FileText, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { SendButton } from './SendButton';
@@ -49,9 +49,6 @@ interface ChatInputProps {
   onAddFiles?: (files: File[]) => void;
   onPickFiles?: () => void;
   dragOver?: boolean;
-  /** 编辑态：横幅提示 + 聚焦全选（编辑入口在消息操作栏的 Pen，不在本工具行） */
-  editing?: boolean;
-  onCancelEditing?: () => void;
   /** 粘贴长文本收成的 chip（Cindy 同款：不糊输入框，发送时展开为原文） */
   pastedTexts?: PastedTextChip[];
   onPasteLongText?: (text: string, lines: number) => void;
@@ -80,8 +77,6 @@ export function ChatInput({
   onAddFiles,
   onPickFiles,
   dragOver,
-  editing,
-  onCancelEditing,
   pastedTexts = [],
   onPasteLongText,
   onRemovePastedText,
@@ -94,18 +89,6 @@ export function ChatInput({
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
-
-  // 进入编辑态：聚焦并全选原文本，改起来顺手
-  useEffect(() => {
-    if (!editing) return;
-    const id = requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.select();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [editing]);
 
   const autoResize = (): void => {
     const el = textareaRef.current;
@@ -246,23 +229,6 @@ export function ChatInput({
         </div>
       )}
       <div className="relative flex max-h-[300px] min-h-[86px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]">
-        {editing && (
-          <div className="mb-2 flex items-center gap-2 rounded-inner border border-board bg-chip px-3 py-1.5 select-none">
-            <Pen size={12} className="shrink-0 text-muted" />
-            <span className="min-w-0 flex-1 text-12 text-secondary">
-              正在编辑上一条消息，发送后将替换原消息及其后的回复
-            </span>
-            {onCancelEditing && (
-              <button
-                type="button"
-                className="shrink-0 text-12 text-muted hover:text-primary"
-                onClick={onCancelEditing}
-              >
-                取消
-              </button>
-            )}
-          </div>
-        )}
         {/* 粘贴长文本 chip：点击预览全文，× 移除（Cindy「粘贴的文本(N 行)」同款） */}
         {pastedTexts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -419,12 +385,6 @@ export function ChatInput({
                 onChange('');
                 return;
               }
-            }
-            // 编辑态 Esc = 取消编辑（slash 面板开着时优先给面板）
-            if (editing && e.key === 'Escape' && !slashQuery) {
-              e.preventDefault();
-              onCancelEditing?.();
-              return;
             }
             // Enter 发送 / Shift+Enter 换行；IME 组词期间的 Enter 不算发送（§14.3）
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

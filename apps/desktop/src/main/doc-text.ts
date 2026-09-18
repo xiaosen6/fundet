@@ -21,12 +21,26 @@ export function documentExtractSupport(
   return null;
 }
 
+/**
+ * PDF 文本层清洗：剥掉图片文件名占位符（pdf.js 形态 `p14_img0.png`，Word 导出
+ * PDF 常见——正文里只有文件名没有图像本体，留着会进知识库/模型回复当噪声），
+ * 顺带压掉因此产生的连续空行。
+ */
+export function sanitizePdfText(text: string): string {
+  return text
+    // 独占一行的占位符：整行连行尾换行一起吃掉（避免剥离后留空行）
+    .replace(/^[ \t]*p\d+_img\d+\.(?:png|jpe?g|gif)[ \t]*\r?\n?/gim, '')
+    // 行内混排的残余占位符
+    .replace(/\bp\d+_img\d+\.(?:png|jpe?g|gif)\b/gi, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 async function extractPdf(filePath: string): Promise<string> {
   // unpdf = pdfjs 的 Node 封装，自带 DOMMatrix 等浏览器 API polyfill
   // （裸 pdfjs 在 Node 里提文本会炸 DOMMatrix is not defined）
   const { extractText } = await import('unpdf');
   const result = await extractText(new Uint8Array(fs.readFileSync(filePath)));
-  return result.text.join('\n\n');
+  return sanitizePdfText(result.text.join('\n\n'));
 }
 
 async function extractDocx(filePath: string): Promise<string> {

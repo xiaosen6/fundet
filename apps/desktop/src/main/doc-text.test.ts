@@ -89,3 +89,12 @@ describe('extractDocumentText', () => {
     assert.match(await extractDocumentText(bad), /提取失败/);
   });
 });
+
+// PDF 文本层图片占位符清洗（p14_img0.png 类，Word 导出 PDF 常见）
+describe('sanitizePdfText', () => {
+  it('剥图片占位符并压空行', async () => {
+    const { sanitizePdfText } = await import('./doc-text.ts');
+    const out = sanitizePdfText('标题\np14_img0.png\n正文一段。\n\n\np15_img1.PNG\n结尾');
+    assert.equal(out, '标题\n正文一段。\n\n结尾');
+  });
+});
