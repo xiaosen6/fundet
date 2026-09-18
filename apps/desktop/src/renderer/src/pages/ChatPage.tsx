@@ -699,7 +699,7 @@ export function ChatPage(): React.JSX.Element {
                 </div>
               )}
               <div className="w-full">
-                <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
+                <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} expandMode="popover" />
               </div>
             </div>
           </div>
