@@ -49,6 +49,7 @@ import { MessageStream } from '../components/MessageStream';
 import { PermissionPrompt } from '../components/PermissionPrompt';
 import { RunningStatus } from '../components/RunningStatus';
 import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
+import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { UsageDashboard } from '../components/UsageDashboard';
 import { brand } from '../../../shared/brand.js';
 import { FolderPickerChip } from '../components/FolderPickerChip';
@@ -66,6 +67,7 @@ import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
 import { RewindDialog } from '../components/RewindDialog';
+import { preferScannedContextWindow } from '../../../shared/context-window.js';
 import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { cn } from '../lib/cn';
@@ -377,6 +379,10 @@ export function ChatPage(): React.JSX.Element {
       ...(activeMeta.effort ? { effort: activeMeta.effort as Effort } : {}),
     };
   }, [activeId, activeMeta, providers]);
+
+  const shownWindow = activeMeta?.model
+    ? preferScannedContextWindow(activeMeta.model, modelSpec?.contextWindow) ?? 0
+    : 0;
 
   // 队列派发：本轮空闲（非运行/无审批）且队列有货 → 按序发下一条
   useEffect(() => {
@@ -954,6 +960,10 @@ export function ChatPage(): React.JSX.Element {
                       {activeId.slice(0, 8)}
                     </span>
                   )}
+                  <ContextCapacityRing
+                    contextTokens={slice.usage.contextTokens}
+                    contextWindow={shownWindow}
+                  />
                   </div>
                 </div>
               </div>

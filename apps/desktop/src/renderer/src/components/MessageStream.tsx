@@ -215,9 +215,6 @@ function UserTurn({
               className="w-full resize-none bg-transparent text-15 leading-[1.6] text-primary outline-none"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
-              <span className="mr-auto text-11 text-muted">
-                发送后将替换此消息及其后的回复
-              </span>
               <button
                 type="button"
                 className="h-7 rounded-full border border-board px-3 text-12 text-secondary hover:bg-hover"
