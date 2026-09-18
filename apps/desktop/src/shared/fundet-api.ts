@@ -134,6 +134,31 @@ export interface StatusChangedPayload {
   status: string;
 }
 
+/** 钉钉工作台（dws CLI）：已登录身份 */
+export interface DwsProfileView {
+  /** 稳定身份 corpId:userId */
+  id: string;
+  org?: string;
+  user?: string;
+  isCurrent?: boolean;
+}
+
+/** 钉钉工作台状态（主进程 host/dws.ts 是唯一真源） */
+export interface DwsStatusView {
+  installed: boolean;
+  version?: string;
+  loggedIn: boolean;
+  profiles: DwsProfileView[];
+  /** 已装配的 dingtalk-* 技能目录名（用户技能根下） */
+  skills: string[];
+}
+
+/** 钉钉工作台动作结果（安装 / 登录引导 / 技能装配） */
+export interface DwsActionResult {
+  ok: boolean;
+  output: string;
+}
+
 /** 应用更新状态（主进程 updater.ts 是唯一真源） */
 export interface UpdateState {
   currentVersion: string;
@@ -387,6 +412,15 @@ export interface FundetApi {
   imWechatQrStart(): Promise<string>;
   imWechatQrCancel(): Promise<void>;
   imSetDefaults(patch: { workDir?: string; providerId?: string; model?: string }): Promise<void>;
+
+  /** 钉钉工作台（dws）：探测安装/登录/技能装配状态 */
+  dwsStatus(): Promise<DwsStatusView>;
+  /** 安装官方 dws CLI（默认 Gitee 镜像；github 走官方仓 raw） */
+  dwsInstall(source: 'gitee' | 'github'): Promise<DwsActionResult>;
+  /** 拉起可见终端窗口跑 dws auth login（浏览器自动开） */
+  dwsLogin(): Promise<DwsActionResult>;
+  /** 装配官方技能包到用户技能根（dingtalk-* 前缀目录） */
+  dwsSkillSetup(): Promise<DwsActionResult>;
 
   updateStatus(): Promise<UpdateState>;
   checkUpdate(): Promise<void>;

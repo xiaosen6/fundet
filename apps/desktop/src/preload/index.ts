@@ -162,6 +162,11 @@ const api: FundetApi = {
   imWechatQrCancel: () => invoke(FUNDET_INVOKE.IM_WECHAT_QR_CANCEL),
   imSetDefaults: (patch) => invoke(FUNDET_INVOKE.IM_SET_DEFAULTS, patch),
 
+  dwsStatus: () => invoke(FUNDET_INVOKE.DWS_STATUS),
+  dwsInstall: (source) => invoke(FUNDET_INVOKE.DWS_INSTALL, source),
+  dwsLogin: () => invoke(FUNDET_INVOKE.DWS_LOGIN),
+  dwsSkillSetup: () => invoke(FUNDET_INVOKE.DWS_SKILL_SETUP),
+
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),

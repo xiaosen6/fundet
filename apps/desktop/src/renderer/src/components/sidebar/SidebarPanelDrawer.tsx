@@ -10,14 +10,16 @@ import { ImBotPanel } from '../../pages/settings/ImBotPanel';
 import { SkillsPanel } from '../../pages/settings/SkillsPanel';
 import { McpPanel } from '../../pages/settings/McpPanel';
 import { KnowledgePanel } from '../../pages/settings/KnowledgePanel';
+import { DwsPanel } from '../../pages/settings/DwsPanel';
 
-export type SidebarPanelId = 'im' | 'skills' | 'mcp' | 'knowledge';
+export type SidebarPanelId = 'im' | 'skills' | 'mcp' | 'knowledge' | 'dws';
 
 const PANELS: Record<SidebarPanelId, () => React.JSX.Element> = {
   im: ImBotPanel,
   skills: SkillsPanel,
   mcp: McpPanel,
   knowledge: KnowledgePanel,
+  dws: DwsPanel,
 };
 
 export function PanelView({

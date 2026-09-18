@@ -11,6 +11,7 @@ import { resolvePiBinaryPath } from './host/pi-binary.js';
 import { ensureBundledSkills } from './host/skills.js';
 import { registerIpcHandlers } from './ipc/register.js';
 import { registerImIpc, startSavedImBots, stopAllImBots } from './im/host.ts';
+import { registerDwsIpc } from './host/dws.ts';
 import { disposeBrowserHost } from './browser/host.js';
 import { initUpdater } from './updater.js';
 import {
@@ -233,6 +234,7 @@ function bootstrap(): void {
   // 3) IPC + 本地文件预览协议（视频 / 网页 / PDF）
   registerIpcHandlers();
   registerImIpc();
+  registerDwsIpc();
   registerFileProtocolHandler();
   void startSavedImBots();
   // 4) 应用更新（仅打包版启用，Windows 自动下载、macOS 手动引导）
