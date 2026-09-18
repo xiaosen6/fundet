@@ -125,6 +125,7 @@ Fundet/
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
 | 0.2.23 | 09-18 | **钉钉完整集成**（图片收发/审批问答桥/per-bot 目录/Cindy lizi-im 同机制）+ PDF 图片占位符清洗 + 原位编辑框 + 更多菜单对齐 + 按钮双序 |
+| 0.2.24 | 09-18 | **钉钉工作台**（官方 dws CLI 四步引导：安装[Gitee 镜像默认]/OAuth 登录/官方技能包装配/状态探测；侧栏新能力面板；与 IM 机器人互补=Fundet 以用户身份操作钉钉 180+ 命令）+ FUNDET_USER_DATA 冒烟隔离通道 |
 | 0.2.22 | 09-18 | **追平批**：会话快照/文件回滚（bare 快照仓 + RewindDialog，含 HEAD 对齐坑修复，真实 git 集成测）；消息排队；RunningStatus tok/s；任务栏运行角标；图片 hover 预览 |
 | 0.2.21 | 09-18 | **上游安全/诊断批 + 优化批**：#4493 空 stop、#4518 桥控制面写守卫（完全放行档也强制确认）+ RPC 超限帧、#4626 启动 stderr 诊断；思考档位 UI、会话搜索（FTS5）、错误分类自动重试、开机自启、分享卡片 DOM 光栅化、产出文件卡、Vertex/Azure 预设；updater GitLab 死代码清理；发版冒烟脚本化（tools/smoke-installer.mjs） |
 | 0.2.20 | 09-17 | **体验高级感批（对齐 Cindy §14.4）**：Motion token 全组件落地；FadeSwitcher 切换淡入（路由/面板/会话）；侧栏 settle 闪烁 + attention 关注点（完成未读绿/错误红）+ 运行扫动条 + 标题 marquee；消息行软入场 + done 收束弹跳；启动 Splash；composer @ 文件引用（fs:list-dir）+ 图片附件缩略图；会话置顶/拖拽排序（sessions 补列）+ FLIP 重排 |
@@ -302,7 +303,9 @@ Fundet/
 >
 > 0.2.20（体验高级感批）已于同日发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`；老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列自动生效）。
 
-> **在途事项（2026-09-18 晚，0.2.23 发）**：**无**——0.2.23（钉钉完整集成 + 六项修复：PDF 占位符清洗/原位编辑框/用量环保留/提示语删除/更多菜单对齐/操作栏双序）已发 GitHub Release：tag=commit d7a18d8（含 ae88ed2 移植、c9dc10f 记录），三资产齐、非 draft（gh api 复核过）；安装包备份 `D:\Fundet-Setup-0.2.23-x64.exe`。**冒烟方式变更**：本机装有真实 Fundet 0.2.22，install-smoke 被 smoke-installer.mjs 自家 clean-machine 守卫正确拒绝（守卫按设计工作，防误伤用户装机）——改用 **win-unpacked/Fundet.exe 启动冒烟**替代：4 进程正确路径、1280x800 窗口可见、Win32 CopyFromScreen 截图确认侧栏+空态渲染正常。经验：无框窗下 PowerShell 读 MainWindowTitle 为空属正常（此前冒烟读到 "Fundet" 的都是安装版），别再拿空标题当故障信号；**本机有真装时发版一律 unpacked 启动冒烟**。
+> **在途事项（2026-09-18 晚，0.2.23 发）**：**无**——0.2.23（钉钉完整集成 + 六项修复：PDF 占位符清洗/原位编辑框/用量环保留/提示语删除/更多菜单对齐/操作栏双序）已发 GitHub Release：tag=commit d7a18d8（含 ae88ed2 移植、c9dc10f 记录），三资产齐、非 draft（gh api 复核过）；安装包备份 `D:\Fundet-Setup-0.2.23-x64.exe`。**冒烟方式变更**：本机装有真实 Fundet 0.2.22，install-smoke 被 smoke-installer.mjs 自家 clean-machine 守卫正确拒绝（守卫按设计工作，防误伤用户装机）——改用 **win-unpacked/Fundet.exe 启动冒烟**替代：4 进程正确路径、1280x800 窗口可见、Win32 CopyFromScreen 截图确认侧栏+空态渲染正常。经验：无框窗下 PowerShell 读 MainWindowTitle 为空属正常（此前冒烟读到 "Fundet" 的都是安装版），别再拿空标题当故障信号。
+
+> **在途事项（2026-09-18 晚，0.2.24 发）**：**无**——0.2.24（钉钉工作台：dws 官方 CLI 引导面板）已发 GitHub Release：feat 6b307fa + fix 88518df + 发版提交，三资产齐、非 draft；安装包备份 `D:\Fundet-Setup-0.2.24-x64.exe`。**dws 集成事实**：钉钉官方 CLI = `DingTalk-Real-AI/dingtalk-workspace-cli`（Apache-2.0，npm 名 dingtalk-workspace-cli，命令 dws），21 服务域 180+ 命令，用户 OAuth 身份；`dws skill setup --mode multi --target all --yes` 落 `~/.agents/skills/dingtalk-*`（与本仓技能系统同目录，Agent 核心零改动，14 个技能）；登录硬门槛=企业管理员开放平台开「CLI 访问管理」（共创期）。官方 MCP（open-dingtalk/dingtalk-mcp）**裁决不集成**：无 oa 模块（请假/外出做不了）+ 应用身份非用户身份 + 仓库无 license。**新坑两条**：① 本机 cmd.exe AutoRun 注入 doskey 宏回显，`cmd /c <cli>` 的 stdout 前混两行非 JSON——凡 cmd.exe 转发 CLI 输出必须 `cmd /d /c` + 解析截 JSON 段（host/dws.ts extractJson）；② **用户真装在跑时 unpacked 冒烟法**：Windows 上 Electron appData 走系统 API 不吃 %APPDATA% 环境变量，单实例锁只能用 `FUNDET_USER_DATA` 环境变量覆盖（main/index.ts 已支持）+ `--remote-debugging-port` + CDP 脚本点击验证（本次 5/5 PASS）。另：bash 后台跑 GUI 应用活不过调用边界，要用 cmd `start` 脱附且非沙箱执行。
 
 ---
 
