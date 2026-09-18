@@ -124,6 +124,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.2.22 | 09-18 | **追平批**：会话快照/文件回滚（bare 快照仓 + RewindDialog，含 HEAD 对齐坑修复，真实 git 集成测）；消息排队；RunningStatus tok/s；任务栏运行角标；图片 hover 预览 |
 | 0.2.21 | 09-18 | **上游安全/诊断批 + 优化批**：#4493 空 stop、#4518 桥控制面写守卫（完全放行档也强制确认）+ RPC 超限帧、#4626 启动 stderr 诊断；思考档位 UI、会话搜索（FTS5）、错误分类自动重试、开机自启、分享卡片 DOM 光栅化、产出文件卡、Vertex/Azure 预设；updater GitLab 死代码清理；发版冒烟脚本化（tools/smoke-installer.mjs） |
 | 0.2.20 | 09-17 | **体验高级感批（对齐 Cindy §14.4）**：Motion token 全组件落地；FadeSwitcher 切换淡入（路由/面板/会话）；侧栏 settle 闪烁 + attention 关注点（完成未读绿/错误红）+ 运行扫动条 + 标题 marquee；消息行软入场 + done 收束弹跳；启动 Splash；composer @ 文件引用（fs:list-dir）+ 图片附件缩略图；会话置顶/拖拽排序（sessions 补列）+ FLIP 重排 |
 | 0.2.19 | 09-16 | **预览安全模型对齐 Cindy**（deny-list）；能力入口主区内嵌面板（三版演进终态，无返回钮）；确认弹窗柔和化；粘贴长文本 chip；**更新源回 GitHub**（GitLab 弃用，gh CLI + xiaosen6/fundet 单线发版）；**已发 GitHub Release**（三资产，冒烟过；0.2.8~0.2.15 存量装机更新通道复活） |
