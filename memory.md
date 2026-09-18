@@ -313,6 +313,8 @@ Fundet/
 
 > **在途事项（2026-09-18 晚，0.2.24 发）**：**无**——0.2.24（钉钉工作台：dws 官方 CLI 引导面板）已发 GitHub Release：feat 6b307fa + fix 88518df + 发版提交 c8f3b29，三资产齐、非 draft；安装包备份 `D:\Fundet-Setup-0.2.24-x64.exe`。**dws 集成事实**：钉钉官方 CLI = `DingTalk-Real-AI/dingtalk-workspace-cli`（Apache-2.0，npm 名 dingtalk-workspace-cli，命令 dws），21 服务域 180+ 命令，用户 OAuth 身份；`dws skill setup --mode multi --target all --yes` 落 `~/.agents/skills/dingtalk-*`（与本仓技能系统同目录，Agent 核心零改动，14 个技能）；登录硬门槛=企业管理员开放平台开「CLI 访问管理」（共创期）。官方 MCP（open-dingtalk/dingtalk-mcp）**裁决不集成**：无 oa 模块（请假/外出做不了）+ 应用身份非用户身份 + 仓库无 license。**新坑两条**：① 本机 cmd.exe AutoRun 注入 doskey 宏回显，`cmd /c <cli>` 的 stdout 前混两行非 JSON——凡 cmd.exe 转发 CLI 输出必须 `cmd /d /c` + 解析截 JSON 段（host/dws.ts extractJson）；② **用户真装在跑时 unpacked 冒烟法**：Windows 上 Electron appData 走系统 API 不吃 %APPDATA% 环境变量，单实例锁只能用 `FUNDET_USER_DATA` 环境变量覆盖（main/index.ts 已支持）+ `--remote-debugging-port` + CDP 脚本点击验证（本次 5/5 PASS）。另：bash 后台跑 GUI 应用活不过调用边界，要用 cmd `start` 脱附且非沙箱执行。
 
+> **在途事项（2026-09-18 深夜后，0.2.27 待批）**：**有**——0.2.27 已出包未发（`apps/desktop/dist/Fundet-Setup-0.2.27-x64.exe`），内容=欢迎页撤用量盘（4990079）+ 组件板可下钻/零溢出（a904d4d）+ 灵动岛驻会话头深度融合（5839761）+ **知识库面板卡片化**（本次 commit）。用户指令「先不要发版，一直调整到满意为止」——**满意说发再走发版流**。KB 卡片形态：2 列网格（sm），卡=icon chip 头+名称+空库徽标+hero「N 份文档」大数字+meta 行（片段/建于/点击管理）；Reveal 展开内嵌卡内（导入 pill 行/进度条/笔记编辑/URL 快照/结果重试/发丝文档行 divide-board/60+悬停浮现编辑删除）；网格尾**虚线幽灵新建卡**（self-start 展开邻卡时不拉伸、单卡时右半不空旷、点击聚焦顶部输入框）；交错入场 60ms。功能全量保留（CRUD/导入/笔记/快照/进度/重试），typecheck 0 + 151/151 + 打包 CDP 冒烟 8/8。**方法论教训**：视觉模型幻觉本会话第三例——KB 收起态评审断言「无幽灵卡、hero 旧排版」，DOM 实测全在（dashedCount=1、hero="2份文档"）——**截图评审结论必须 DOM 仲裁再信**；CDP 复拍两态要单脚本一次完成（两次调用中间再点侧栏=关面板，第二张必拍错）；mjs 断言正则别写 `\\d`（字面反斜杠假失败）。
+
 ---
 
 ## 7. 待办 / 已知债
