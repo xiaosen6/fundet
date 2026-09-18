@@ -128,8 +128,8 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
     <div
       className={cn(
         'group animate-fundet-rise-in flex min-h-[170px] min-w-0 flex-col rounded-container border border-board bg-card p-5 select-none',
-        'transition-[border-color,box-shadow] duration-[var(--motion-fast)]',
-        'hover:border-[var(--input-focus-border)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.05)]',
+        'transition-colors duration-[var(--motion-fast)]',
+        'hover:border-[var(--input-focus-border)]',
       )}
       style={{ animationDelay: `${index * 60}ms` }}
     >
@@ -169,8 +169,10 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
 
 function EmptyState({ Icon, text }: { Icon: typeof CalendarDays; text: string }): React.JSX.Element {
   return (
-    <div className="flex flex-1 items-center gap-2 py-5 text-12 text-muted">
-      <Icon size={14} strokeWidth={1.8} />
+    <div className="flex flex-1 items-center gap-2.5 py-5 text-12 text-muted">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chip">
+        <Icon size={13} strokeWidth={1.8} className="text-muted" />
+      </span>
       {text}
     </div>
   );
@@ -191,9 +193,9 @@ function RowButton({
       type="button"
       aria-expanded={open}
       className={cn(
-        'flex w-full min-w-0 items-center gap-2 rounded-inner px-1 py-1 text-left',
-        'transition-[background-color,transform] duration-[var(--motion-fast)]',
-        'hover:bg-hover-soft hover:translate-x-0.5',
+        'group/row flex w-full min-w-0 items-center gap-2 rounded-inner px-1 py-1 text-left',
+        'transition-colors duration-[var(--motion-fast)]',
+        'hover:bg-hover-soft',
       )}
       onClick={onClick}
     >
@@ -201,8 +203,8 @@ function RowButton({
       <ChevronRight
         size={12}
         className={cn(
-          'ml-auto shrink-0 text-muted transition-transform duration-[var(--motion-fast)]',
-          open && 'rotate-90',
+          'ml-auto shrink-0 text-muted opacity-0 transition-[opacity,transform] duration-[var(--motion-fast)] group-hover/row:opacity-100 focus-visible:opacity-100',
+          open && 'rotate-90 opacity-100',
         )}
       />
     </button>
@@ -228,7 +230,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
     <div className="w-full">
       <div className="mb-2.5 flex items-center gap-2 select-none">
         <span className="text-12 font-medium text-secondary">钉钉 · 今日</span>
-        <span className="text-11 text-muted">更新于 {fmtAgo(s.fetchedAt)} · 点条目可展开</span>
+        <span className="text-11 text-muted">更新于 {fmtAgo(s.fetchedAt)}</span>
         {onRefresh && (
           <button
             type="button"
@@ -288,7 +290,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                   </p>
                 )}
               </div>
-              <div className="mt-1.5 flex flex-col">
+              <div className="mt-1.5 flex flex-col divide-y divide-board/60">
                 {s.calendar.map((e) => {
                   const key = `cal:${e.id}`;
                   const open = expandedKey === key;
@@ -349,7 +351,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                 <span className="text-3xl font-medium leading-none tabular-nums text-primary">{s.approvals.length}</span>
                 <span className="text-12 leading-none text-muted">条等你处理</span>
               </p>
-              <div className="mt-2.5 flex flex-col">
+              <div className="mt-2 flex flex-col divide-y divide-board/60">
                 {s.approvals.map((a) => {
                   const key = `oa:${a.id}`;
                   const open = expandedKey === key;
@@ -408,7 +410,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                   <span className="ml-1 rounded-full bg-hover-soft px-1.5 py-px text-11 leading-4 text-error">{overdueCount} 项逾期</span>
                 )}
               </p>
-              <div className="mt-2.5 flex flex-col">
+              <div className="mt-2 flex flex-col divide-y divide-board/60">
                 {s.todos.slice(0, 3).map((t) => {
                   const key = `todo:${t.taskId}`;
                   const open = expandedKey === key;
@@ -487,7 +489,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                 <span className="text-3xl font-medium leading-none tabular-nums text-primary">{s.unreadTotal}</span>
                 <span className="text-12 leading-none text-muted">条未读 · 来自 {s.unread.length} 个会话</span>
               </p>
-              <div className="mt-2.5 flex flex-col">
+              <div className="mt-2 flex flex-col divide-y divide-board/60">
                 {s.unread.slice(0, 3).map((c) => {
                   const key = `unread:${c.id}`;
                   const open = expandedKey === key;

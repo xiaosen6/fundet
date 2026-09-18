@@ -1,14 +1,13 @@
 /**
- * 灵动岛：会话视图顶部的钉钉状态悬浮条。
- * 收起 = 一粒胶囊（下一会议倒计时 + 待办/审批/未读角标）；点击展开 = 组件板。
- * 动效走 --motion-morph（220ms 容器变换例外档），compositor-only；reduced-motion 直切。
- * 组件板数据面（DwsWidgets）复用，本组件只负责胶囊形态与展开交互。
+ * 灵动岛（深度融合版）：不再是悬浮异物，而是会话头部（46px slim header）的
+ * 尾部状态簇——安静常驻（muted 文字 + 计数，hover 才浮出胶囊底），点击向下
+ * 弹出组件板（float-in 150ms，与菜单/弹层同语言；Esc/点外部收起）。
+ * 数据面与欢迎页组件板（DwsWidgets）完全复用。
  */
 import { useEffect, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown, X } from 'lucide-react';
+import { CalendarDays, ChevronDown } from 'lucide-react';
 import type { DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
-import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { DwsWidgets } from './DwsWidgets';
 
 function fmtCountdown(ms: number): string {
@@ -18,18 +17,19 @@ function fmtCountdown(ms: number): string {
   return `${Math.floor(diff / 3600_000)} 小时后`;
 }
 
+function badge(n: number): string {
+  return n > 99 ? '99+' : String(n);
+}
+
 export interface DynamicIslandProps {
   snapshot: DwsWidgetsSnapshot | null;
   onAskAgent?: (prompt: string) => void;
   onRefresh?: () => void;
-  /** 岛只挂在会话视图；欢迎页组件板直接可见时外层传 false 隐藏 */
-  visible: boolean;
 }
 
-export function DynamicIsland({ snapshot, onAskAgent, onRefresh, visible }: DynamicIslandProps): React.JSX.Element | null {
+export function DynamicIsland({ snapshot, onAskAgent, onRefresh }: DynamicIslandProps): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const reducedMotion = useReducedMotion();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // 倒计时每 30s 自更新
@@ -38,99 +38,83 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, visible }: Dyna
     return () => clearInterval(t);
   }, []);
 
-  // 展开态点外部收起
+  // 展开态：点外部 / Esc 收起
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent): void => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false);
     };
+    document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
-  if (!visible || !snapshot || snapshot.state !== 'ready') return null;
+  if (!snapshot || snapshot.state !== 'ready') return null;
   const s = snapshot;
-  const nextEvent = s.calendar.find((e) => (e.startMs ?? 0) > now) ?? s.calendar[0];
+  const nextEvent = s.calendar.find((e) => (e.startMs ?? Infinity) > now) ?? s.calendar[0];
   const todoCount = s.todos.length;
   const approvalCount = s.approvals.length;
   const hasSignal = Boolean(nextEvent) || todoCount > 0 || approvalCount > 0 || s.unreadTotal > 0;
-  if (!hasSignal && !open) return null;
-
-  const badge = (n: number): string => (n > 99 ? '99+' : String(n));
+  if (!hasSignal) return null;
 
   return (
-    <div ref={rootRef} className="pointer-events-none absolute inset-x-0 top-1 z-30 flex justify-center print:hidden">
-      <div
+    <div ref={rootRef} className="no-drag relative flex shrink-0 items-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        title="钉钉 · 今日（点击展开）"
         className={cn(
-          'pointer-events-auto flex min-w-0 flex-col items-stretch border border-board bg-card/95 shadow-sm backdrop-blur',
-          open ? 'rounded-container' : 'rounded-full',
-          !reducedMotion && 'transition-[width,max-height,padding] duration-[var(--motion-morph)] ease-[cubic-bezier(0.2,0,0,1)]',
+          'flex h-7 max-w-[420px] items-center gap-2 rounded-full px-2.5 text-12 select-none',
+          'text-muted transition-colors duration-[var(--motion-fast)]',
+          'hover:bg-hover hover:text-primary',
+          open && 'bg-hover text-primary',
         )}
+        onClick={() => setOpen((v) => !v)}
       >
-        <button
-          type="button"
-          aria-expanded={open}
-          className="flex h-8 min-w-0 items-center gap-2 px-3 text-12 select-none"
-          onClick={() => setOpen((v) => !v)}
-        >
-          {nextEvent ? (
-            <>
-              <CalendarDays size={13} className="shrink-0 text-secondary" />
-              <span className="min-w-0 truncate font-medium text-primary" title={nextEvent.title}>
-                {nextEvent.title}
-              </span>
-              <span className="shrink-0 tabular-nums text-11 text-secondary">
-                {nextEvent.startMs !== null ? fmtCountdown(nextEvent.startMs) : ''}
-              </span>
-            </>
-          ) : (
-            <span className="font-medium text-primary">钉钉</span>
-          )}
+        {nextEvent ? (
+          <>
+            <CalendarDays size={13} className="shrink-0 text-secondary" />
+            <span className="min-w-0 truncate font-medium text-primary" title={nextEvent.title}>
+              {nextEvent.title}
+            </span>
+            <span className="shrink-0 tabular-nums text-secondary">
+              {nextEvent.startMs !== null ? fmtCountdown(nextEvent.startMs) : ''}
+            </span>
+          </>
+        ) : (
+          <span className="font-medium text-primary">钉钉</span>
+        )}
+        <span className="flex shrink-0 items-center gap-1.5 text-11 tabular-nums">
           {todoCount > 0 && (
-            <span className="shrink-0 rounded-full bg-chip px-1.5 text-11 tabular-nums text-secondary" title="待办">
+            <span className="text-secondary" title="待办">
               待办 {badge(todoCount)}
             </span>
           )}
           {approvalCount > 0 && (
-            <span className="shrink-0 rounded-full bg-chip px-1.5 text-11 tabular-nums text-secondary" title="待审批">
+            <span className="text-secondary" title="待审批">
               审批 {badge(approvalCount)}
             </span>
           )}
           {s.unreadTotal > 0 && (
-            <span className="shrink-0 rounded-full bg-accent px-1.5 text-11 tabular-nums text-accent-fg" title="未读">
+            <span className="rounded-full bg-accent px-1.5 leading-4 text-accent-fg" title="未读">
               {badge(s.unreadTotal)}
             </span>
           )}
-          {open ? (
-            <ChevronDown size={13} className="shrink-0 text-muted" />
-          ) : (
-            <ChevronDown size={13} className="shrink-0 -rotate-90 text-muted" />
-          )}
-        </button>
-        {open && (
-          <div className="w-[min(680px,calc(100vw-180px))] px-3 pb-3">
-            <DwsWidgets snapshot={s} onAskAgent={onAskAgent} onRefresh={onRefresh} />
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                className="flex h-6 items-center gap-1 rounded-full px-2 text-11 text-muted hover:text-primary"
-                onClick={() => setOpen(false)}
-              >
-                <X size={11} />
-                收起
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+        </span>
+        <ChevronDown size={12} className={cn('shrink-0 transition-transform duration-[var(--motion-fast)]', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="animate-float-in absolute top-full right-0 z-30 mt-1.5 w-[min(700px,calc(100vw-220px))] rounded-container border border-board bg-card p-4 shadow-sm print:hidden">
+          <DwsWidgets snapshot={s} onAskAgent={onAskAgent} onRefresh={onRefresh} />
+        </div>
+      )}
     </div>
   );
 }

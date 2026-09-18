@@ -634,13 +634,6 @@ export function ChatPage(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
-        {/* 灵动岛：会话视图顶部悬浮（欢迎页组件板直接可见；能力面板打开时让位） */}
-        <DynamicIsland
-          snapshot={dwsWidgets}
-          onAskAgent={askDwsAgent}
-          onRefresh={refreshDwsWidgets}
-          visible={Boolean(activeId) && !activePanel}
-        />
         {rewindOpen && activeId && (
           <RewindDialog sessionId={activeId} onClose={() => setRewindOpen(false)} />
         )}
@@ -828,6 +821,8 @@ export function ChatPage(): React.JSX.Element {
                   </>
                 )}
               </div>
+              {/* 灵动岛：驻进会话头部尾部（与标题同层，不再是悬浮异物） */}
+              <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
             </header>
 
             {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留） */}
