@@ -658,10 +658,10 @@ export function ChatPage(): React.JSX.Element {
                 padding 缩不掉；悬浮 no-drag 挖洞在 Electron 37/Windows 上不可靠） */}
             <div className={cn('drag-region h-[46px] shrink-0', hasFramelessControls() && 'mr-[150px]')} />
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
-            <div className="flex w-full max-w-[720px] flex-col items-stretch gap-6 px-6 py-6">
-              <div className="flex flex-col items-center gap-3 select-none">
-                <BrandMark size={48} />
-                <div className="text-[34px] leading-none font-medium tracking-tight text-primary">
+            <div className="flex w-full max-w-[720px] flex-col items-stretch gap-4 px-6 py-3">
+              <div className="flex flex-col items-center gap-2 select-none">
+                <BrandMark size={40} />
+                <div className="text-[30px] leading-none font-medium tracking-tight text-primary">
                   {brand.name}
                 </div>
               </div>

@@ -15,6 +15,7 @@ import { execDws, extractJson, resolveDws } from './dws.ts';
 import type {
   DwsApprovalPendingView,
   DwsCalendarEventView,
+  DwsChatMessageView,
   DwsTodoView,
   DwsUnreadConversationView,
   DwsWidgetsSnapshot,
@@ -84,6 +85,16 @@ export function parseCalendarEvents(stdout: string, nowMs: number = Date.now()):
           (e.organizer as Record<string, unknown> | undefined)?.displayName,
           e.organizer as unknown as string,
         ),
+      // 参会人不含自己（自己的接受状态无信息量）；点开详情展示
+      attendees: Array.isArray(e.attendees)
+        ? (e.attendees as unknown[])
+            .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
+            .filter((a) => a.self !== true)
+            .map((a) => firstString(a.displayName) ?? '')
+            .filter(Boolean)
+            .slice(0, 8)
+        : [],
+      description: firstString(e.description)?.replace(/\s+/g, ' ').slice(0, 120),
     }))
     .filter((e) => e.id || e.title !== '（无标题）')
     // 已结束超过 1 小时的不占版面
@@ -144,8 +155,7 @@ export interface UnreadParseResult {
   total: number;
 }
 
-export function parseUnread(stdout: string): UnreadParseResult {
-  const parsed = extractJson(stdout) as { result?: { conversations?: unknown } } | null;
+export function parseUnread(stdout: string): UnreadParseResult {  const parsed = extractJson(stdout) as { result?: { conversations?: unknown } } | null;
   const conversations = parsed?.result?.conversations;
   if (!Array.isArray(conversations)) return { conversations: [], total: 0 };
   const views = conversations
@@ -295,10 +305,52 @@ export function getDwsWidgetsSnapshot(): DwsWidgetsSnapshot {
   return snapshot();
 }
 
+/* ---------------- 条目详情（点开查看，按需拉取） ---------------- */
+
+/** 群消息正文摘要上限：日报类机器人消息很长，卡片详情里只留头部 */
+const CHAT_SNIPPET_MAX = 140;
+
+export function parseChatMessages(stdout: string): DwsChatMessageView[] {
+  const parsed = extractJson(stdout) as { messages?: unknown } | null;
+  const messages = parsed?.messages;
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
+    .map((m) => ({
+      id: firstString(m.messageId, m.openMessageId) ?? '',
+      sender: firstString(m.sender),
+      text: (firstString(m.text, m.content) ?? '').replace(/\s+/g, ' ').trim().slice(0, CHAT_SNIPPET_MAX),
+      timeMs: toMs(firstString(m.createTime) ?? ''),
+    }))
+    .filter((m) => m.id && m.text)
+    .slice(0, 8);
+}
+
+/** conversationId 进入 spawn 参数前先过白名单（本就只来自快照，双保险） */
+const SAFE_CONV_ID = /^[A-Za-z0-9+/=_.-]{1,128}$/;
+
+export async function fetchUnreadDetail(conversationId: string): Promise<DwsChatMessageView[]> {
+  if (!SAFE_CONV_ID.test(conversationId)) return [];
+  const dws = await resolveDws();
+  if (!dws) return [];
+  const res = await execDws(
+    dws,
+    ['chat', 'message', 'list', '--conversation-id', conversationId, '--limit', '8', '--format', 'json'],
+    QUERY_TIMEOUT_MS,
+  );
+  if (res.code !== 0) return [];
+  return parseChatMessages(res.stdout);
+}
+
 export function registerDwsWidgetsIpc(): void {
   const { ipcMain } = requireElectron('electron') as typeof import('electron');
   ipcMain.handle(
     FUNDET_INVOKE.DWS_WIDGETS,
     async (_e: unknown, force: unknown) => runCycle(force === true),
+  );
+  ipcMain.handle(
+    FUNDET_INVOKE.DWS_WIDGETS_DETAIL,
+    async (_e: unknown, kind: unknown, id: unknown) =>
+      kind === 'unread' && typeof id === 'string' ? fetchUnreadDetail(id) : [],
   );
 }

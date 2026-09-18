@@ -103,6 +103,7 @@ export const FUNDET_INVOKE = {
   DWS_LOGIN: 'dws:login',
   DWS_SKILL_SETUP: 'dws:skill-setup',
   DWS_WIDGETS: 'dws:widgets',
+  DWS_WIDGETS_DETAIL: 'dws:widgets-detail',
   UPDATE_STATUS: 'update:status',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',

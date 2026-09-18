@@ -167,6 +167,7 @@ const api: FundetApi = {
   dwsLogin: () => invoke(FUNDET_INVOKE.DWS_LOGIN),
   dwsSkillSetup: () => invoke(FUNDET_INVOKE.DWS_SKILL_SETUP),
   dwsWidgets: (force) => invoke(FUNDET_INVOKE.DWS_WIDGETS, force),
+  dwsWidgetsDetail: (kind, id) => invoke(FUNDET_INVOKE.DWS_WIDGETS_DETAIL, kind, id),
 
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),

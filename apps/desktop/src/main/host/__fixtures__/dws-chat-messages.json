@@ -1,0 +1,139 @@
+{
+  "arguments": [],
+  "complete": false,
+  "contractVersion": "im.message-list.v1",
+  "count": 3,
+  "decryptAllowedCount": 0,
+  "decryptCandidateCount": 0,
+  "decryptFailedCount": 0,
+  "decryptedCount": 0,
+  "enrichedCount": 0,
+  "errorCode": null,
+  "errorMsg": null,
+  "failedCount": 0,
+  "failures": [],
+  "hasMore": true,
+  "messages": [
+    {
+      "content": "🗞️ 魔搭日报 | 9.18\n\n1️⃣【最新模型】\nQwen-2.5-1B-RLCD：面向 Apple Silicon 的并行约束解码项目，通过并行处理多个字段，加速结构化信息提取、分类与决策路由。\n🔗查看模型：https://modelscope.cn/models/harshatheg/Qwen-2.5-1B-RLCD?ms\n\nPhysBrain1.5-8B：DeepCybo 推出的具身视觉语言模型，融合环境理解、动作生成与未来状态预测，支持空间推理、目标定位和运动规划。\n🔗查看模型：https://modelscope.cn/models/DeepCybo/PhysBrain1.5-8B?ms\n\n2️⃣【社区动态】\n魔搭紫皮书上线：覆盖开源模型选型、运行、微调与应用，帮助开发者梳理实践路径，从跑通模型走向实际应用。\n🔗查看详情：https://modelscope.cn/headlines?ms\n\n3️⃣【社区活动】\nGOAI 开源周：9 月 20-24 日在杭州云谷中心举行，涵盖主赛事、开源市集、黑客松、技术交流及创投对接等七大板块，邀请开发者交流技术、展示项目。\n🔗立即参与：https://modelscope.cn/headlines/detail/346?ms\n\n4️⃣【应用推荐】\nMinerU：支持 PDF、图片及 Office 等文档解析，转换为 Markdown 或 JSON，方便资料整理与知识库内容准备，可在线体验。\n🔗立即体验：https://modelscope.cn/studios/OpenDataLab/MinerU?ms\n━━━━━━━━\n\n💬 今日讨论：你最希望用 AI 简化哪一项日常工作？\n\n👉查看更多精彩内容：https://modelscope.cn/learn/1716?ms",
+      "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "createTime": "2026-09-18 17:43:42",
+      "messageId": "msgnsFizZzOKoUNPgVfg0vFIA==",
+      "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "openMessageId": "msgnsFizZzOKoUNPgVfg0vFIA==",
+      "sender": "张倪",
+      "senderId": "DMTuQKMzEnPFFjxiP8s4n50Kg4iiECf1r0G",
+      "senderOpenDingTalkId": "DMTuQKMzEnPFFjxiP8s4n50Kg4iiECf1r0G",
+      "text": "🗞️ 魔搭日报 | 9.18\n\n1️⃣【最新模型】\nQwen-2.5-1B-RLCD：面向 Apple Silicon 的并行约束解码项目，通过并行处理多个字段，加速结构化信息提取、分类与决策路由。\n🔗查看模型：https://modelscope.cn/models/harshatheg/Qwen-2.5-1B-RLCD?ms\n\nPhysBrain1.5-8B：DeepCybo 推出的具身视觉语言模型，融合环境理解、动作生成与未来状态预测，支持空间推理、目标定位和运动规划。\n🔗查看模型：https://modelscope.cn/models/DeepCybo/PhysBrain1.5-8B?ms\n\n2️⃣【社区动态】\n魔搭紫皮书上线：覆盖开源模型选型、运行、微调与应用，帮助开发者梳理实践路径，从跑通模型走向实际应用。\n🔗查看详情：https://modelscope.cn/headlines?ms\n\n3️⃣【社区活动】\nGOAI 开源周：9 月 20-24 日在杭州云谷中心举行，涵盖主赛事、开源市集、黑客松、技术交流及创投对接等七大板块，邀请开发者交流技术、展示项目。\n🔗立即参与：https://modelscope.cn/headlines/detail/346?ms\n\n4️⃣【应用推荐】\nMinerU：支持 PDF、图片及 Office 等文档解析，转换为 Markdown 或 JSON，方便资料整理与知识库内容准备，可在线体验。\n🔗立即体验：https://modelscope.cn/studios/OpenDataLab/MinerU?ms\n━━━━━━━━\n\n💬 今日讨论：你最希望用 AI 简化哪一项日常工作？\n\n👉查看更多精彩内容：https://modelscope.cn/learn/1716?ms"
+    },
+    {
+      "content": "@王 再试试看",
+      "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "createTime": "2026-09-18 17:13:26",
+      "messageId": "msgynbCabfdNZbdpCWfA5LcWA==",
+      "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "openMessageId": "msgynbCabfdNZbdpCWfA5LcWA==",
+      "quotedMessage": {
+        "content": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871",
+        "createTime": "2026-09-18 16:39:05",
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "openMessageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+        "sender": "王",
+        "senderOpenDingTalkId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1"
+      },
+      "sender": "禺初",
+      "senderId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr",
+      "senderOpenDingTalkId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr",
+      "text": "@王 再试试看"
+    },
+    {
+      "content": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871",
+      "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "createTime": "2026-09-18 16:39:05",
+      "messageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+      "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+      "openMessageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+      "quotedMessage": {
+        "content": "@王 报错的requestId发一下",
+        "createTime": "2026-09-18 16:24:30",
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "openMessageId": "msgdi1HwM1HggR/z/dS495tAA==",
+        "sender": "禺初",
+        "senderOpenDingTalkId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr"
+      },
+      "sender": "王",
+      "senderId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1",
+      "senderOpenDingTalkId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1",
+      "text": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871"
+    }
+  ],
+  "nextPage": {
+    "direction": "older",
+    "nextCursor": 1789719870770,
+    "time": "2026-09-18T08:24:30.77Z"
+  },
+  "pagesFetched": 1,
+  "paginationKnown": true,
+  "partial": false,
+  "result": {
+    "hasMore": true,
+    "messages": [
+      {
+        "content": "🗞️ 魔搭日报 | 9.18\n\n1️⃣【最新模型】\nQwen-2.5-1B-RLCD：面向 Apple Silicon 的并行约束解码项目，通过并行处理多个字段，加速结构化信息提取、分类与决策路由。\n🔗查看模型：https://modelscope.cn/models/harshatheg/Qwen-2.5-1B-RLCD?ms\n\nPhysBrain1.5-8B：DeepCybo 推出的具身视觉语言模型，融合环境理解、动作生成与未来状态预测，支持空间推理、目标定位和运动规划。\n🔗查看模型：https://modelscope.cn/models/DeepCybo/PhysBrain1.5-8B?ms\n\n2️⃣【社区动态】\n魔搭紫皮书上线：覆盖开源模型选型、运行、微调与应用，帮助开发者梳理实践路径，从跑通模型走向实际应用。\n🔗查看详情：https://modelscope.cn/headlines?ms\n\n3️⃣【社区活动】\nGOAI 开源周：9 月 20-24 日在杭州云谷中心举行，涵盖主赛事、开源市集、黑客松、技术交流及创投对接等七大板块，邀请开发者交流技术、展示项目。\n🔗立即参与：https://modelscope.cn/headlines/detail/346?ms\n\n4️⃣【应用推荐】\nMinerU：支持 PDF、图片及 Office 等文档解析，转换为 Markdown 或 JSON，方便资料整理与知识库内容准备，可在线体验。\n🔗立即体验：https://modelscope.cn/studios/OpenDataLab/MinerU?ms\n━━━━━━━━\n\n💬 今日讨论：你最希望用 AI 简化哪一项日常工作？\n\n👉查看更多精彩内容：https://modelscope.cn/learn/1716?ms",
+        "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "createTime": "2026-09-18 17:43:42",
+        "messageId": "msgnsFizZzOKoUNPgVfg0vFIA==",
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "openMessageId": "msgnsFizZzOKoUNPgVfg0vFIA==",
+        "sender": "张倪",
+        "senderId": "DMTuQKMzEnPFFjxiP8s4n50Kg4iiECf1r0G",
+        "senderOpenDingTalkId": "DMTuQKMzEnPFFjxiP8s4n50Kg4iiECf1r0G",
+        "text": "🗞️ 魔搭日报 | 9.18\n\n1️⃣【最新模型】\nQwen-2.5-1B-RLCD：面向 Apple Silicon 的并行约束解码项目，通过并行处理多个字段，加速结构化信息提取、分类与决策路由。\n🔗查看模型：https://modelscope.cn/models/harshatheg/Qwen-2.5-1B-RLCD?ms\n\nPhysBrain1.5-8B：DeepCybo 推出的具身视觉语言模型，融合环境理解、动作生成与未来状态预测，支持空间推理、目标定位和运动规划。\n🔗查看模型：https://modelscope.cn/models/DeepCybo/PhysBrain1.5-8B?ms\n\n2️⃣【社区动态】\n魔搭紫皮书上线：覆盖开源模型选型、运行、微调与应用，帮助开发者梳理实践路径，从跑通模型走向实际应用。\n🔗查看详情：https://modelscope.cn/headlines?ms\n\n3️⃣【社区活动】\nGOAI 开源周：9 月 20-24 日在杭州云谷中心举行，涵盖主赛事、开源市集、黑客松、技术交流及创投对接等七大板块，邀请开发者交流技术、展示项目。\n🔗立即参与：https://modelscope.cn/headlines/detail/346?ms\n\n4️⃣【应用推荐】\nMinerU：支持 PDF、图片及 Office 等文档解析，转换为 Markdown 或 JSON，方便资料整理与知识库内容准备，可在线体验。\n🔗立即体验：https://modelscope.cn/studios/OpenDataLab/MinerU?ms\n━━━━━━━━\n\n💬 今日讨论：你最希望用 AI 简化哪一项日常工作？\n\n👉查看更多精彩内容：https://modelscope.cn/learn/1716?ms"
+      },
+      {
+        "content": "@王 再试试看",
+        "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "createTime": "2026-09-18 17:13:26",
+        "messageId": "msgynbCabfdNZbdpCWfA5LcWA==",
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "openMessageId": "msgynbCabfdNZbdpCWfA5LcWA==",
+        "quotedMessage": {
+          "content": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871",
+          "createTime": "2026-09-18 16:39:05",
+          "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+          "openMessageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+          "sender": "王",
+          "senderOpenDingTalkId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1"
+        },
+        "sender": "禺初",
+        "senderId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr",
+        "senderOpenDingTalkId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr",
+        "text": "@王 再试试看"
+      },
+      {
+        "content": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871",
+        "conversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "createTime": "2026-09-18 16:39:05",
+        "messageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "openMessageId": "msgf5AiST6PIs7pE4UYji4xlA==",
+        "quotedMessage": {
+          "content": "@王 报错的requestId发一下",
+          "createTime": "2026-09-18 16:24:30",
+          "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+          "openMessageId": "msgdi1HwM1HggR/z/dS495tAA==",
+          "sender": "禺初",
+          "senderOpenDingTalkId": "DRUHTiSy6U2iSThrqmznGvba4LRqmnVYsCr"
+        },
+        "sender": "王",
+        "senderId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1",
+        "senderOpenDingTalkId": "D9JKVlTHGWaePQiPdtJaXiSecmm7zEJUsv1",
+        "text": "@禺初 42cb0b3a-1149-40f0-995a-88491cf70871"
+      }
+    ],
+    "nextCursor": 1789719870770
+  },
+  "stopReason": "single_page",
+  "success": true,
+  "truncated": false
+}

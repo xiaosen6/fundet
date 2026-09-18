@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseApprovalsPending,
   parseCalendarEvents,
+  parseChatMessages,
   parseTodos,
   parseUnread,
 } from './dws-widgets.ts';
@@ -35,6 +36,14 @@ describe('parseCalendarEvents（真机 fixture：今日两会）', () => {
     assert.ok(events[0].startMs !== null && events[0].startMs < (events[1].startMs ?? 0));
     // dateTime 带时区正确解析为 ms
     assert.equal(events[0].startMs, Date.parse('2026-09-18T14:30:00+08:00'));
+  });
+
+  it('参会人提取且不含自己（点开详情用）', () => {
+    const events = parseCalendarEvents(load('dws-calendar-full.json'), FIXTURE_NOW);
+    // fixture：第一场 attendees = 张章/孙记森(self)/刘成旭 → 去掉自己剩 张章、刘成旭
+    assert.deepEqual(events[0].attendees, ['张章', '刘成旭']);
+    // 第二场组织者是孙记森本人：fixture 中 self 标记在其自己条目上
+    assert.ok(Array.isArray(events[1].attendees));
   });
 
   it('已结束超 1 小时的事件被过滤（时钟后移到晚上）', () => {
@@ -109,5 +118,22 @@ describe('parseUnread（真机 fixture）', () => {
 
   it('垃圾输入返回空', () => {
     assert.deepEqual(parseUnread('{"result": {}}'), { conversations: [], total: 0 });
+  });
+});
+
+describe('parseChatMessages（真机 fixture：会话最近消息）', () => {
+  it('归一化 sender/text 摘要/createTime；正文压空白并截断', () => {
+    const msgs = parseChatMessages(load('dws-chat-messages.json'));
+    assert.ok(msgs.length >= 2);
+    assert.equal(msgs[0].sender, '张倪');
+    assert.ok(msgs[0].text.length <= 140);
+    assert.ok(!msgs[0].text.includes('\n'));
+    // createTime '2026-09-18 17:43:42' 无时区 → Date.parse 按本地时区，非空即可
+    assert.ok(msgs[0].timeMs === null || Number.isFinite(msgs[0].timeMs));
+    assert.ok(msgs.every((m) => m.id && m.text));
+  });
+
+  it('垃圾输入返回空', () => {
+    assert.deepEqual(parseChatMessages('{"foo": 1}'), []);
   });
 });

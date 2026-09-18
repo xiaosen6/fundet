@@ -174,6 +174,10 @@ export interface DwsCalendarEventView {
   /** 已订会议室名（meetingRooms[0].roomName） */
   roomName?: string;
   organizer?: string;
+  /** 参会人名（不含自己；点开详情用） */
+  attendees: string[];
+  /** 描述前若干字（点开详情用） */
+  description?: string;
 }
 
 /** 我的待办（dws todo task list 归一化） */
@@ -215,6 +219,15 @@ export interface DwsWidgetsSnapshot {
   unreadTotal: number;
   /** 单组件刷新失败（保留上次好数据，卡片角标提示重试） */
   errors: { calendar?: string; todos?: string; approvals?: string; unread?: string };
+}
+
+/** 未读会话点开查看的最近消息（按需拉取，不进快照轮询） */
+export interface DwsChatMessageView {
+  id: string;
+  sender?: string;
+  /** 正文摘要（主进程截断） */
+  text: string;
+  timeMs: number | null;
 }
 
 /** 应用更新状态（主进程 updater.ts 是唯一真源） */
@@ -483,6 +496,8 @@ export interface FundetApi {
   /** 钉钉组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
   dwsWidgets(force?: boolean): Promise<DwsWidgetsSnapshot>;
   onDwsWidgetsChanged(cb: (snapshot: DwsWidgetsSnapshot) => void): () => void;
+  /** 组件卡条目点开查看（v1 仅 unread：最近消息） */
+  dwsWidgetsDetail(kind: 'unread', id: string): Promise<DwsChatMessageView[]>;
 
   updateStatus(): Promise<UpdateState>;
   checkUpdate(): Promise<void>;
