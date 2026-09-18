@@ -50,7 +50,6 @@ import { PermissionPrompt } from '../components/PermissionPrompt';
 import { RunningStatus } from '../components/RunningStatus';
 import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
-import { UsageDashboard } from '../components/UsageDashboard';
 import { DwsWidgets } from '../components/dws/DwsWidgets';
 import { DynamicIsland } from '../components/dws/DynamicIsland';
 import type { DwsWidgetsSnapshot } from '../../../shared/fundet-api.js';
@@ -659,10 +658,10 @@ export function ChatPage(): React.JSX.Element {
                 padding 缩不掉；悬浮 no-drag 挖洞在 Electron 37/Windows 上不可靠） */}
             <div className={cn('drag-region h-[46px] shrink-0', hasFramelessControls() && 'mr-[150px]')} />
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
-            <div className="flex w-full max-w-[720px] flex-col items-stretch gap-8 px-6">
+            <div className="flex w-full max-w-[720px] flex-col items-stretch gap-6 px-6 py-6">
               <div className="flex flex-col items-center gap-3 select-none">
-                <BrandMark size={56} />
-                <div className="text-[40px] leading-none font-medium tracking-tight text-primary">
+                <BrandMark size={48} />
+                <div className="text-[34px] leading-none font-medium tracking-tight text-primary">
                   {brand.name}
                 </div>
               </div>
@@ -691,7 +690,7 @@ export function ChatPage(): React.JSX.Element {
                   {notice && <p className="mt-2 text-13 text-error">{notice}</p>}
                 </div>
               ) : (
-                <div className="rounded-container border border-board bg-card px-8 py-8 text-center select-none">
+                <div className="rounded-container border border-board bg-card px-8 py-5 text-center select-none">
                   <p className="text-14 text-secondary">选择文件夹，再开启新对话</p>
                   <div className="mt-4 flex flex-col items-center gap-3">
                     <FolderPickerChip cwd={workDir} onSelect={applyWorkDir} size="big" />
@@ -708,9 +707,6 @@ export function ChatPage(): React.JSX.Element {
               )}
               <div className="w-full">
                 <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
-              </div>
-              <div className="w-full">
-                <UsageDashboard />
               </div>
             </div>
           </div>

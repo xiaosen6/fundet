@@ -70,8 +70,8 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, visible }: Dyna
     <div ref={rootRef} className="pointer-events-none absolute inset-x-0 top-1 z-30 flex justify-center print:hidden">
       <div
         className={cn(
-          'pointer-events-auto flex min-w-0 flex-col items-stretch rounded-full border border-board bg-card/95 shadow-sm backdrop-blur',
-          open && 'rounded-container',
+          'pointer-events-auto flex min-w-0 flex-col items-stretch border border-board bg-card/95 shadow-sm backdrop-blur',
+          open ? 'rounded-container' : 'rounded-full',
           !reducedMotion && 'transition-[width,max-height,padding] duration-[var(--motion-morph)] ease-[cubic-bezier(0.2,0,0,1)]',
         )}
       >
