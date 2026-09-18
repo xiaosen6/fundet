@@ -354,16 +354,23 @@ pnpm -r --if-present run test
 - **外网中继（服务器完全不通外网）**：外网机器 clone 上游（国内用 gh-proxy.com 镜像前缀，如 `https://gh-proxy.com/https://github.com/makecindy/cindy.git`），加内网镜像为 remote 定期 `git push`。
 - **按需 patch（最轻）**：不建镜像，需要某功能时由外网侧（跟踪 AI / 有外网的同事）`git format-patch` 出 patch 文件 + 移植说明，经内网交换渠道带进去，`git apply` 或照 diff 手工移植。
 
-**第二段：移植四步（与上游对照后手工落地）**
+**第二段：四步闭环（先评估后动手；不移植也是裁决）**
 
-1. **发现**：`git log --oneline <上次同步点>..origin/main [-- <目录>]`（上次同步点记在本节末尾）。
-2. **评估**：目录映射 maker-core→`packages/agent-core`、maker-shared→`packages/shared`、browser-control-runtime→`packages/browser-runtime`、lizi-mcps→`packages/browser-mcp`/`src/main/search`、renderer↔renderer；产品红线（账号云/Ghost/Office/官方 IM）永不搬；`git show <commit>` 读透再动手。
-3. **手工移植**：**永不 merge/cherry-pick 上游**。四处必须本地化：文案走 `brand.name`、IPC 四件套（channels/fundet-api/preload/register）、内部路径常量（`MANAGED_PROFILE`/`.fundet-uploads`/`Fundet-IM` 勿照抄上游命名）、Git 主线用 rebase 保持线性。
-4. **验证沉淀**：`pnpm typecheck` + `pnpm --filter fundet-desktop test` + `pnpm dev:win` 真机；更新本节「上次同步点」；新增衍生文件补 NOTICE derived 列表；随版发布。
+1. **发现——固定节奏**：每周一次全量对照 + 每次发版前一次增量（Cindy 日均 30+ 提交，隔天增量约 20-30 个、半小时可审完）。`git fetch origin main && git log --oneline <上次同步点>..origin/main` 再按目录维度归纳。红线域（mobile / remote-desktop / codex / bots / teammates / device-link / Ghost / 账号云 / 订阅 / scheduler / skillhub / IM 云 / 项目管理 MCP）标题直接跳过。
+
+2. **评估——git show 读透，三问**：①机制是什么；②**本仓同构吗——必须核对我们本地代码，不能信提交说明**（实证过：同源文件我们可能缺得更狠[#4518 桥控制面守卫]，也可能结构上已免疫[#4180 直插 DB / #4365 单端模型]）；③代价多大。产出四档：**P0** 安全欠账（立即移植）/ **P1** 小通用件（随下版）/ **P2** 条件触发（写明触发条件）/ **不适用**（结构不同构）。
+
+3. **裁决——「不做」也要留案**：每项拒绝写明是**永不**（红线）还是**等触发条件**（例：MCP 网关化=用户自配外部 server 多了再做；媒体消息卡=出现真实音视频消息再做；TipTap 富文本=等用户反馈），连同理由记进下方核查段落，防重复评估。
+
+4. **移植沉淀**：手工移植（**永不 merge/cherry-pick**）；**测试连着搬——Cindy 的测试即规格书**；**上游注释里的实测结论当规范继承**（最高价值情报，如 0.2.21 那次：本仓 redactSensitiveText 会吃反斜杠，遮蔽必须在脱敏前）；本地化四处必改：文案 `brand.name`、IPC 四件套、内部路径常量、git 主线 rebase 线性；验证走完整闸门（typecheck + 全量单测 + pi 集成 + dev:win 冒烟）后更新同步点。
+
+**目录映射**（评估用）：maker-core→`packages/agent-core`、maker-shared→`packages/shared`、browser-control-runtime→`packages/browser-runtime`、lizi-mcps→`packages/browser-mcp`/`src/main/search`、desktop renderer↔renderer。
 
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
 **上次同步点：c3fcefd49（feat(navigation) #4590，2026-09-18；窗口 f4422f816..c3fcefd49 已全部核查，裁决见下）**。
+
+**节奏锚点**：下次 = 发版前增量 或 2026-09-25 周全量（先到者）。
 
 **2026-09-18 核查（a15a240bf..c3fcefd49，23 提交）**：**已移植 1 项**——`2848dbf97` #4626 pi 启动失败诊断（pending 拒绝带脱敏+路径遮蔽的 stderr 尾部摘要；**本仓改造点**：sanitizeStartupDiagnostic 必须在 redactSensitiveText **之前**跑——本仓脱敏函数会吃反斜杠，顺序反了 Windows 路径先被搅碎；首个 RPC 响应到达即停收集；同日落地 efd9c70）。红线/不适用：navigation/teammates、remote-desktop 防窥屏、bots 伙伴通信、mobile、winget 入口（本仓 GitHub Releases+NSIS 无 winget 清单）、slider 家族统一（本仓 EffortSelector 是菜单形态非 slider）、「Cindy 项目管理工具」MCP 十连（任务/项目体系本仓无）。
 
