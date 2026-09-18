@@ -26,6 +26,7 @@ export function DwsPanel(): React.JSX.Element {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [output, setOutput] = useState('');
+  const [authUrl, setAuthUrl] = useState('');
   const busyRef = useRef(false);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -34,14 +35,14 @@ export function DwsPanel(): React.JSX.Element {
 
   useEffect(() => {
     void refresh();
-    // 登录发生在独立终端窗：面板开着就轮询，登完自动跳到下一状态
+    // 登录在后台进程跑：面板开着就轮询，登完自动跳到下一状态
     const timer = setInterval(() => {
       if (!busyRef.current) void refresh();
     }, 5000);
     return () => clearInterval(timer);
   }, [refresh]);
 
-  const run = async (key: string, action: () => Promise<{ ok: boolean; output: string }>): Promise<void> => {
+  const run = async (key: string, action: () => Promise<{ ok: boolean; output: string; url?: string }>): Promise<void> => {
     setBusy(key);
     busyRef.current = true;
     setError('');
@@ -49,6 +50,7 @@ export function DwsPanel(): React.JSX.Element {
     try {
       const res = await action();
       setOutput(res.output);
+      setAuthUrl(res.url ?? '');
       if (res.ok) setNotice('完成。');
       else setError('没成功，看下方输出定位。');
       await refresh();
@@ -120,9 +122,9 @@ export function DwsPanel(): React.JSX.Element {
         ) : !status.loggedIn ? (
           <>
             <p className="mt-2 text-12 text-secondary">
-              已安装，还没登录。点下面按钮会弹出一个终端窗口并自动打开浏览器钉钉授权页；
-              选企业 → 授权即可。如果提示企业未开启 CLI 访问，需要管理员在
-              开放平台「CLI 访问管理」里开通（点右侧链接去找管理员）。
+              已安装，还没登录。点「开始登录」会在后台启动钉钉授权——浏览器应自动打开授权页；
+              没弹的话点「打开授权页」。选企业 → 授权，完成后这里自动刷新。如果提示企业未开启
+              CLI 访问，需要管理员在开放平台「CLI 访问管理」里开通（点右侧链接去找管理员）。
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -131,8 +133,17 @@ export function DwsPanel(): React.JSX.Element {
                 className={PRIMARY_BTN}
                 onClick={() => void run('login', () => window.fundet.dwsLogin())}
               >
-                打开登录
+                {busy === 'login' ? '等待授权链接…' : '开始登录'}
               </button>
+              {authUrl && (
+                <button
+                  type="button"
+                  className={SECONDARY_BTN}
+                  onClick={() => void window.fundet.openExternal(authUrl)}
+                >
+                  打开授权页
+                </button>
+              )}
               <button
                 type="button"
                 className="h-8 px-1 text-12 text-secondary underline decoration-board underline-offset-2 hover:text-primary"

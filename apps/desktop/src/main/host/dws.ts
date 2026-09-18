@@ -14,7 +14,7 @@
  *
  * electron 依赖全部惰性 require（node --test 导入纯解析函数不能拉起 electron）。
  */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -51,6 +51,8 @@ export interface DwsActionResult {
   ok: boolean;
   /** 命令输出尾部（安装/装配日志可能很长，只留尾巴给面板展示） */
   output: string;
+  /** 登录输出里的授权 URL（浏览器没自动弹时手动打开） */
+  url?: string;
 }
 
 /* ---------------- 纯解析（单测覆盖） ---------------- */
@@ -286,22 +288,59 @@ export async function installDws(source: DwsInstallSource): Promise<DwsActionRes
   };
 }
 
-/** 拉起可见 PowerShell 窗口跑 dws auth login（浏览器自动开；共创期无浏览器环境可改 --device）。 */
+/** 从登录输出里抓授权 URL（浏览器没自动弹时的手动兜底入口） */
+export function extractAuthUrl(text: string): string | undefined {
+  const urls = text.match(/https?:\/\/[^\s"'<>（）)]+/g) ?? [];
+  // 授权链接通常含 login/dingtalk/oauth 字样；没有就取最后一个（流程提示在输出尾部）
+  const hit =
+    urls.find((u) => /login|dingtalk|oauth/i.test(u)) ?? urls[urls.length - 1];
+  return hit;
+}
+
+let loginProc: ChildProcess | null = null;
+let loginOutput = '';
+
+/**
+ * 后台跑 dws auth login：不弹终端窗（打包环境 detached 控制台静默失败，实测
+ * 0.2.24「打开登录」没反应的根因），改抓输出里的授权 URL 给面板做「打开授权页」
+ * 按钮。登录完成由面板的 5s 状态轮询自动发现。
+ */
 export async function openDwsLogin(): Promise<DwsActionResult> {
   const dws = await resolveDws();
   if (!dws) throw new Error('还没安装 dws');
-  const script = `${dws.psCommand} auth login`;
-  try {
-    const child = spawn('powershell.exe', ['-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: false,
-    });
-    child.unref();
-    return { ok: true, output: '已打开登录窗口（PowerShell）。浏览器会自动弹出钉钉授权页；登录后回到这里刷新状态。' };
-  } catch (err) {
-    return { ok: false, output: err instanceof Error ? err.message : String(err) };
+  if (loginProc && loginProc.exitCode === null) {
+    return { ok: true, output: tail(loginOutput) || '登录已在进行中，浏览器授权完成后这里会自动刷新。', url: extractAuthUrl(loginOutput) };
   }
+  loginOutput = '';
+  let child: ChildProcess;
+  try {
+    child = spawn(dws.command, [...dws.args, 'auth', 'login'], { windowsHide: true });
+  } catch (err) {
+    return { ok: false, output: `登录进程没起来：${err instanceof Error ? err.message : String(err)}` };
+  }
+  loginProc = child;
+  child.stdout?.on('data', (d: Buffer) => {
+    loginOutput += d.toString();
+  });
+  child.stderr?.on('data', (d: Buffer) => {
+    loginOutput += d.toString();
+  });
+  child.on('error', (err) => {
+    loginOutput += `\n[进程错误] ${err.message}`;
+  });
+  // 等输出里出现授权 URL（或 8s 超时，登录可能已在浏览器里等着）
+  for (let i = 0; i < 40; i++) {
+    if (child.exitCode !== null) break;
+    if (extractAuthUrl(loginOutput)) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  const url = extractAuthUrl(loginOutput);
+  const out = tail(loginOutput);
+  return {
+    ok: child.exitCode === null || /登录|授权|success/i.test(loginOutput),
+    output: out || '登录流程已启动，浏览器应自动打开钉钉授权页。',
+    url,
+  };
 }
 
 /** 装配官方技能包：平铺到 ~/.agents/skills/dingtalk-*（与本仓技能系统同目录）。 */

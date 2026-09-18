@@ -157,6 +157,8 @@ export interface DwsStatusView {
 export interface DwsActionResult {
   ok: boolean;
   output: string;
+  /** 登录输出里的授权 URL（浏览器没自动弹时手动打开） */
+  url?: string;
 }
 
 /** 应用更新状态（主进程 updater.ts 是唯一真源） */

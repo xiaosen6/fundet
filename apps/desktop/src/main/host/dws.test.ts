@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listDingtalkSkills, parseDwsVersion, parseProfileList } from './dws.ts';
+import { extractAuthUrl, listDingtalkSkills, parseDwsVersion, parseProfileList } from './dws.ts';
 
 describe('parseDwsVersion', () => {
   it('解析本机实测形状', () => {
@@ -72,6 +72,22 @@ describe('parseProfileList', () => {
     assert.deepEqual(parseProfileList(polluted), [
       { id: 'a:b', org: 'X', user: 'Y', isCurrent: true },
     ]);
+  });
+});
+
+describe('extractAuthUrl', () => {
+  it('从登录输出里抓授权链接（优先 login/dingtalk/oauth 字样）', () => {
+    const out =
+      '正在启动登录…\n若浏览器没有自动打开，请手动访问:\nhttps://login.dingtalk.com/oauth2/auth?clientId=xx&redirect_uri=http://127.0.0.1:52312/cb\n完成授权后自动继续。';
+    assert.equal(
+      extractAuthUrl(out),
+      'https://login.dingtalk.com/oauth2/auth?clientId=xx&redirect_uri=http://127.0.0.1:52312/cb',
+    );
+  });
+
+  it('多个链接时优先带授权字样的；无匹配返回 undefined', () => {
+    assert.equal(extractAuthUrl('文档 https://open-dev.dingtalk.com/docs 与 https://example.com/a'), 'https://open-dev.dingtalk.com/docs');
+    assert.equal(extractAuthUrl('没有任何链接'), undefined);
   });
 });
 
