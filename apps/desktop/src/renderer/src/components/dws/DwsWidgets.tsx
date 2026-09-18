@@ -101,7 +101,8 @@ function UnreadDetail({ convId }: { convId: string }): React.JSX.Element {
   if (msgs === null) return <p className="py-2 text-11 text-muted">拉取最近消息…</p>;
   if (msgs.length === 0) return <p className="py-2 text-11 text-muted">没拉到消息（可能无查看权限）</p>;
   return (
-    <div className="flex max-h-44 flex-col gap-2 overflow-y-auto py-1">
+    // 卡体已定高滚动，这里不再嵌套滚动（双层滚动手感差）
+    <div className="flex flex-col gap-2 py-1">
       {msgs.map((m) => (
         <div key={m.id} className="text-12">
           <span className="font-medium text-secondary">{m.sender ?? '未知'}</span>
@@ -127,8 +128,8 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
   return (
     <div
       className={cn(
-        'group animate-fundet-rise-in flex min-h-[170px] min-w-0 flex-col rounded-container border border-board bg-card p-5 select-none',
-        'transition-colors duration-[var(--motion-fast)]',
+        // 定高：条目展开只撑卡内滚动，板面/页面零位移（外层高度恒定）
+        'group animate-fundet-rise-in fundet-surface flex h-[258px] min-w-0 flex-col rounded-container border border-board bg-card p-5 select-none',
         'hover:border-[var(--input-focus-border)]',
       )}
       style={{ animationDelay: `${index * 60}ms` }}
@@ -162,7 +163,7 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
           </button>
         )}
       </div>
-      <div className="mt-3 flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto pr-0.5">{children}</div>
     </div>
   );
 }
@@ -291,7 +292,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                 )}
               </div>
               <div className="mt-1.5 flex flex-col divide-y divide-board/60">
-                {s.calendar.map((e) => {
+                {s.calendar.slice(0, 3).map((e) => {
                   const key = `cal:${e.id}`;
                   const open = expandedKey === key;
                   const isNext = e.id === nextEvent.id;
@@ -336,6 +337,9 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh }: DwsWidgetsProps)
                     </div>
                   );
                 })}
+                {s.calendar.length > 3 && (
+                  <p className="px-1 pt-1 text-11 text-muted">还有 {s.calendar.length - 3} 场…</p>
+                )}
               </div>
             </>
           ) : (

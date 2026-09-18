@@ -134,6 +134,16 @@
   /* 浮层（token 收口的阴影/遮罩例外） */
   --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.15);
   --overlay-modal: rgba(0, 0, 0, 0.5);
+  /* 卡片材质（0.2.27「有质感」批）：暖黑低强度环境影 + 顶缘 1px 高光内描边，
+     静置/悬停两档；沿用浮层同款 token 收口纪律（二层影：近距贴身 + 大范围弥散） */
+  --card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(61, 56, 50, 0.06),
+    0 6px 20px rgba(61, 56, 50, 0.06);
+  --card-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 2px 6px rgba(61, 56, 50, 0.08),
+    0 12px 32px rgba(61, 56, 50, 0.1);
   /* 选中文本底色 */
   --text-selection-bg: var(--focus-ring-soft);
 }
@@ -182,6 +192,9 @@
   --input-focus-border: rgba(191, 193, 196, 0.3);
   --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.5);
   --overlay-modal: rgba(0, 0, 0, 0.7);
+  /* 卡片材质·暗色：深底无高光内描边（白线会脏），只留二层环境影 */
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
+  --card-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.38);
 }
 
 /* ---------- 动效 token（DESIGN.md §14.4，双模式同值） ---------- */
@@ -444,6 +457,19 @@ textarea:focus-visible {
 }
 .animate-fundet-rise-in {
   animation: fundet-rise-in var(--motion-base) var(--motion-ease-out) both;
+}
+
+/* 卡片材质（0.2.27「有质感」批）：钉钉组件卡/知识库卡共用。
+   静置两影 + 顶缘高光，悬停加深——只动 box-shadow，不动布局 */
+.fundet-surface {
+  box-shadow: var(--card-shadow);
+  transition:
+    box-shadow var(--motion-fast) var(--motion-ease-out),
+    border-color var(--motion-fast) var(--motion-ease-out);
+}
+.fundet-surface:hover,
+.fundet-surface:focus-within {
+  box-shadow: var(--card-shadow-hover);
 }
 
 /* 运行状态行：事件驱动的一次呼吸（1→0.45→1，steps 低帧率；cadenced，

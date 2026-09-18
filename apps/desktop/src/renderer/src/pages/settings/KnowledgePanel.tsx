@@ -257,8 +257,7 @@ export function KnowledgePanel(): React.JSX.Element {
               <div
                 key={kb.id}
                 className={cn(
-                  'group animate-fundet-rise-in flex min-w-0 flex-col rounded-container border border-board bg-card px-5 py-4 select-none',
-                  'transition-colors duration-[var(--motion-fast)]',
+                  'group animate-fundet-rise-in fundet-surface flex min-w-0 flex-col rounded-container border border-board bg-card px-5 py-4 select-none',
                   open ? 'border-[var(--input-focus-border)]' : 'hover:border-[var(--input-focus-border)]',
                 )}
                 style={{ animationDelay: `${Math.min(idx, 6) * 60}ms` }}
