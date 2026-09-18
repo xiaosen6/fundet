@@ -293,7 +293,7 @@ Fundet/
 
 > **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
 
-> **在途事项（2026-09-18）**：**无**——0.2.21 已发 GitHub Release（tag/commit a54e079 merge-base 验证过，三资产齐、非 draft；含上游安全批 dd5ffe6/#4626 efd9c70 + 优化批 63ce971/03f0c0f/d00ef68）。冒烟走新脚本 `tools/smoke-installer.mjs` 首役 PASS（安装/窗口标题/痕迹清理全过，比手工快约一半）；安装包备份 `D:\Fundet-Setup-0.2.21-x64.exe`。出包遇一次 EBUSY（Defender 锁 cua-driver，已知坑）无孤儿进程直接重跑即过。**剩余待做（§7 大件，需单独排期）**：checkpoint/文件回滚、消息排队、Goal 托管、Ollama。
+> **在途事项（2026-09-18）**：**无**——0.2.22（追平批：快照/文件回滚 + 消息排队 + tok/s + 任务栏角标 + hover 预览，commit 37da546/66502ef）已发 GitHub Release：三资产齐、非 draft、冒烟脚本 PASS；安装包备份 `D:\Fundet-Setup-0.2.22-x64.exe`。出包又遇一次 EBUSY（Defender 锁 cua-driver，同 0.2.21，重跑即过——**两天连撞，此坑已成高频项**）。**与 Cindy 共同功能面追平收尾**：剩 TipTap 富文本 composer（大工程，等产品反馈再定）与 Goal/Ollama（产品级）。快照回滚注意：rewind 后必须落「回滚态」提交对齐 HEAD（checkout 不动 HEAD，不落则 diff 预览/后续快照全失配——已在 store.ts 注释与集成测覆盖）。
 >
 > 0.2.20（体验高级感批）已于同日发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`；老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列自动生效）。
 
