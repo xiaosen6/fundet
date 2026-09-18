@@ -293,7 +293,7 @@ Fundet/
 > mac 包暂无产出路径，需要时再定。
 > 网络注意：GitHub 直连不稳时资产**上传**只能重试（gh-proxy 只代理下载）；push 源码一般可过。
 
-> **应用内更新已切 GitLab（0.2.16 起，产品决策 2026-09-11）**：updater.ts generic feed 两跳解析——GET `releases?per_page=1` 拿最新 tag → setFeedURL 指 `packages/generic/fundet/<版本>/` 直连（不走 downloads API：它 302 到包文件，重定向上自定义头不受控）。项目 272 私有——**用户须在 设置→通用「版本与更新」配 GitLab 访问令牌（scope=api；safeStorage 落盘 `keys/gitlab-updater.bin`；`FUNDET_UPDATER_TOKEN` 环境变量可覆盖，部署/测试用）**，未配时中文指引。**存量过渡**：0.2.15 及以前的安装仍指 GitHub、永远收不到新版本——须手动装一次 0.2.16（Release 页或 `D:\Fundet-Setup-0.2.16-x64.exe`），此后自动更新走 GitLab。
+> **【已废止——0.2.19 起更新源回 GitHub Releases，见上文 §发版；0.2.16~0.2.18 内置 GitLab feed 的版本是更新死端】应用内更新曾切 GitLab（0.2.16 起，产品决策 2026-09-11）**：updater.ts generic feed 两跳解析——GET `releases?per_page=1` 拿最新 tag → setFeedURL 指 `packages/generic/fundet/<版本>/` 直连（不走 downloads API：它 302 到包文件，重定向上自定义头不受控）。项目 272 私有——**用户须在 设置→通用「版本与更新」配 GitLab 访问令牌（scope=api；safeStorage 落盘 `keys/gitlab-updater.bin`；`FUNDET_UPDATER_TOKEN` 环境变量可覆盖，部署/测试用）**，未配时中文指引。**存量过渡**：0.2.15 及以前的安装仍指 GitHub、永远收不到新版本——须手动装一次 0.2.16（Release 页或 `D:\Fundet-Setup-0.2.16-x64.exe`），此后自动更新走 GitLab。
 > mac 包暂无产出路径（无 CI mac job、本地无 mac 机），需要时再定。
 
 > **在途事项（2026-09-16）**：**无**——0.2.19 已发 GitHub Release（xiaosen6/fundet，三资产齐、非 draft、冒烟过），源码 + v0.2.12~v0.2.19 tag 已全部推 GitHub；主远端切 `github`（https://github.com/xiaosen6/fundet.git），GitLab remote `origin` 保留但不再使用（服务持续断连已弃用）。v0.2.11 tag 在 GitHub 指向旧分发存根历史（挂已发布 Release），刻意未覆盖。改 package.json 禁用 PowerShell `Set-Content -Encoding utf8`（带 BOM），用 [IO.File]::WriteAllText + UTF8Encoding($false)。Defender 慢日出包超时预算 20-25 分钟，斩死后直接重跑。
@@ -301,6 +301,8 @@ Fundet/
 > **在途事项（2026-09-18）**：**无**——0.2.22（追平批：快照/文件回滚 + 消息排队 + tok/s + 任务栏角标 + hover 预览，commit 37da546/66502ef）已发 GitHub Release：三资产齐、非 draft、冒烟脚本 PASS；安装包备份 `D:\Fundet-Setup-0.2.22-x64.exe`。出包又遇一次 EBUSY（Defender 锁 cua-driver，同 0.2.21，重跑即过——**两天连撞，此坑已成高频项**）。**与 Cindy 共同功能面追平收尾**：剩 TipTap 富文本 composer（大工程，等产品反馈再定）与 Goal/Ollama（产品级）。快照回滚注意：rewind 后必须落「回滚态」提交对齐 HEAD（checkout 不动 HEAD，不落则 diff 预览/后续快照全失配——已在 store.ts 注释与集成测覆盖）。
 >
 > 0.2.20（体验高级感批）已于同日发 GitHub Release：tag/commit 5befa77（merge-base 验证过）、三资产齐、非 draft、静默装冒烟过；安装包备份 `D:\Fundet-Setup-0.2.20-x64.exe`；老库升级路径已实测（sessions 表 pinned/sort_order 幂等补列自动生效）。
+
+> **在途事项（2026-09-18 晚，0.2.23 发）**：**无**——0.2.23（钉钉完整集成 + 六项修复：PDF 占位符清洗/原位编辑框/用量环保留/提示语删除/更多菜单对齐/操作栏双序）已发 GitHub Release：tag=commit d7a18d8（含 ae88ed2 移植、c9dc10f 记录），三资产齐、非 draft（gh api 复核过）；安装包备份 `D:\Fundet-Setup-0.2.23-x64.exe`。**冒烟方式变更**：本机装有真实 Fundet 0.2.22，install-smoke 被 smoke-installer.mjs 自家 clean-machine 守卫正确拒绝（守卫按设计工作，防误伤用户装机）——改用 **win-unpacked/Fundet.exe 启动冒烟**替代：4 进程正确路径、1280x800 窗口可见、Win32 CopyFromScreen 截图确认侧栏+空态渲染正常。经验：无框窗下 PowerShell 读 MainWindowTitle 为空属正常（此前冒烟读到 "Fundet" 的都是安装版），别再拿空标题当故障信号；**本机有真装时发版一律 unpacked 启动冒烟**。
 
 ---
 
