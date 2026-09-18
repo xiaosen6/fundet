@@ -59,6 +59,8 @@ interface ChatInputProps {
   /** @ 文件引用：工作目录 + 选中路径的 stage 回调（两者都给才启用） */
   workDir?: string;
   onStagePaths?: (paths: string[]) => void;
+  /** 运行中按 Enter：把纯文本排队（本轮结束后自动发送）；带附件时不排队 */
+  onQueue?: (text: string) => void;
 }
 
 export function ChatInput({
@@ -85,6 +87,7 @@ export function ChatInput({
   onRemovePastedText,
   workDir,
   onStagePaths,
+  onQueue,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -426,7 +429,22 @@ export function ChatInput({
             // Enter 发送 / Shift+Enter 换行；IME 组词期间的 Enter 不算发送（§14.3）
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (canSend) onSend();
+              if (canSend) {
+                onSend();
+                return;
+              }
+              // 运行中：纯文本排队（本轮结束后自动发送）；附件/粘贴场景维持原状
+              if (
+                isRunning
+                && onQueue
+                && value.trim()
+                && attachments.length === 0
+                && pastedTexts.length === 0
+                && !sendDisabled
+                && !disabled
+              ) {
+                onQueue(value.trim());
+              }
             }
           }}
           className={cn(

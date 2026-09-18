@@ -269,6 +269,22 @@ export interface SessionSearchHit {
   snippet: string;
 }
 
+/** 会话快照（每轮发送前对工作目录的 git 快照；git 不可用则列表恒空） */
+export interface CheckpointInfo {
+  sha: string;
+  createdAt: number;
+  label: string;
+}
+
+export interface RewindPreview {
+  restore: string[];
+  remove: string[];
+}
+
+export interface RewindResult extends RewindPreview {
+  preRollbackSha: string | null;
+}
+
 /** 目录清单条目（composer @ 文件引用用） */
 export interface DirEntry {
   name: string;
@@ -297,6 +313,9 @@ export interface FundetApi {
   reorderSessions(ids: string[]): Promise<void>;
   /** 搜索会话（标题 + 消息正文）；空串返回空 */
   searchSessions(query: string): Promise<SessionSearchHit[]>;
+  listCheckpoints(sessionId: string): Promise<CheckpointInfo[]>;
+  previewRewind(sessionId: string, sha: string): Promise<RewindPreview>;
+  rewindTo(sessionId: string, sha: string): Promise<RewindResult>;
 
   resolveInteraction(requestId: string, decision: InteractionDecision): Promise<void>;
   getPendingInteractions(): Promise<InteractionRequestPayload[]>;
@@ -399,6 +418,8 @@ export interface FundetApi {
   windowMinimize(): void;
   windowMaximize(): void;
   windowClose(): void;
+  /** 任务栏/Dock 徽标：正在跑 turn 的会话数（0 清除） */
+  setRunningBadge(count: number): void;
   copyText(text: string): Promise<void>;
   copyImageRect(rect: { x: number; y: number; width: number; height: number }): Promise<void>;
   /** 分享卡片：PNG 字节 + 可选纯文本备选，一次写入剪贴板（主进程校验 PNG） */

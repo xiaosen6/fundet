@@ -21,6 +21,7 @@ import 'katex/dist/katex.min.css';
 import { normalizeMathDelimiters } from '../lib/mathMarkdown';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { isImagePath } from '../lib/artifacts';
+import { cancelScheduledHoverPreview, scheduleHoverPreview } from './ui/HoverImgPreview';
 import { createStreamFadeState, rehypeStreamWordFade, type StreamFadeState } from '../lib/streamWordFade';
 import { repairStreamingMarkdown, splitStreamingMarkdownChunks } from '../lib/streamingMarkdown';
 import { rehypeKnowledgeCite, type KnowledgeSource } from '../lib/knowledgeCite';
@@ -293,6 +294,11 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
           onClick={() => {
             if (src) showLightbox({ kind: 'image', src, alt });
           }}
+          onMouseEnter={(e) => {
+            if (src) scheduleHoverPreview(src, e.clientX, e.clientY);
+          }}
+          onMouseLeave={cancelScheduledHoverPreview}
+          onMouseDown={cancelScheduledHoverPreview}
         />
       );
     },

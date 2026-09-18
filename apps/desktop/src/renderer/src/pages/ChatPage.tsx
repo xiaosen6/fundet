@@ -9,7 +9,7 @@
  * model 在 providers 里反查 providerId，带 create 参数重发让 main lazy-create。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight as ChevronRightIcon, KeyRound, PanelRight, Pencil } from 'lucide-react';
+import { ChevronRight as ChevronRightIcon, Clock, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Effort, PermissionMode } from '@fundet/agent-core';
 import type { ProviderView, SessionAttachment, SkillView } from '../../../shared/fundet-api.ts';
@@ -66,6 +66,7 @@ import { Tooltip } from '../components/ui/Tooltip';
 import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
+import { RewindDialog } from '../components/RewindDialog';
 import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { preferScannedContextWindow } from '../../../shared/context-window.js';
@@ -121,6 +122,14 @@ export function ChatPage(): React.JSX.Element {
   const [editingFrom, setEditingFrom] = useState<number | null>(null);
   // 粘贴长文本 chip：发送时按序展开为原文追加
   const [pastedTexts, setPastedTexts] = useState<Array<{ id: number; text: string; lines: number }>>([]);
+  const [rewindOpen, setRewindOpen] = useState(false);
+  // 消息排队：运行中 Enter 入队，本轮结束后自动按序发送（Cindy PendingQueue 简化版）
+  const [queuedTexts, setQueuedTexts] = useState<string[]>([]);
+  const queueDispatching = useRef(false);
+  const queueText = useCallback((t: string): void => {
+    setQueuedTexts((q) => [...q, t]);
+    setInput('');
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
@@ -376,6 +385,18 @@ export function ChatPage(): React.JSX.Element {
     };
   }, [activeId, activeMeta, providers]);
 
+  // 队列派发：本轮空闲（非运行/无审批）且队列有货 → 按序发下一条
+  useEffect(() => {
+    if (slice.isRunning || slice.pendingInteraction || queueDispatching.current) return;
+    if (queuedTexts.length === 0 || !activeId) return;
+    queueDispatching.current = true;
+    const [first, ...rest] = queuedTexts;
+    setQueuedTexts(rest);
+    void sendMessage(activeId, first ?? '', buildCreateParam(), undefined).finally(() => {
+      queueDispatching.current = false;
+    });
+  }, [slice.isRunning, slice.pendingInteraction, queuedTexts, activeId, buildCreateParam]);
+
   // 终态错误卡的「重新发送」：重发本轮最后一条用户消息（含附件路径引用）
   const resendLast = useCallback((): void => {
     if (!activeId) return;
@@ -586,6 +607,9 @@ export function ChatPage(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
+        {rewindOpen && activeId && (
+          <RewindDialog sessionId={activeId} onClose={() => setRewindOpen(false)} />
+        )}
         {/* 面板 ↔ 会话切换整块淡入（不重挂子树，输入草稿保留） */}
         <FadeSwitcher trigger={activePanel ?? 'chat'} className="min-h-0 min-w-0 flex-1">
         {activePanel ? (
@@ -820,6 +844,11 @@ export function ChatPage(): React.JSX.Element {
               onRetryError={resendLast}
               onEditUserMessage={editUserMessage}
               onDeleteUserMessage={(createdAt) => void deleteUserMessage(createdAt)}
+              onRewind={
+                activeId && !isDraftSession(activeId) && slice.items.length > 0
+                  ? () => setRewindOpen(true)
+                  : undefined
+              }
             />
             </FadeSwitcher>
 
@@ -836,6 +865,30 @@ export function ChatPage(): React.JSX.Element {
                   />
                 ) : (
                   <>
+                    {queuedTexts.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {queuedTexts.map((t, i) => (
+                          <span
+                            key={`${i}-${t.slice(0, 8)}`}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-board bg-card py-1 pl-2.5 pr-1.5 text-12 text-secondary"
+                            title={t.slice(0, 200)}
+                          >
+                            <Clock size={12} className="shrink-0 text-muted" aria-hidden />
+                            <span className="min-w-0 max-w-[280px] truncate">
+                              排队 {i + 1}：{t.replace(/\s+/g, ' ').slice(0, 30) || '（空）'}
+                            </span>
+                            <button
+                              type="button"
+                              title="移除"
+                              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-hover hover:text-primary"
+                              onClick={() => setQueuedTexts((q) => q.filter((_, j) => j !== i))}
+                            >
+                              <X size={10} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <RunningStatus
                       visible={slice.isRunning}
                       status={slice.statusText}
@@ -864,6 +917,7 @@ export function ChatPage(): React.JSX.Element {
                       onRemovePastedText={removePastedText}
                       workDir={sessionWorkDir}
                       onStagePaths={(paths) => void stagePaths(paths)}
+                      onQueue={queueText}
                       leadingControls={
                         <>
                           <KnowledgeChip sessionId={activeId} />

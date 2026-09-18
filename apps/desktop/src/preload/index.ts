@@ -82,6 +82,9 @@ const api: FundetApi = {
   setSessionPinned: (id, pinned) => invoke(FUNDET_INVOKE.SESSION_SET_PINNED, id, pinned),
   reorderSessions: (ids) => invoke(FUNDET_INVOKE.SESSION_REORDER, ids),
   searchSessions: (query) => invoke(FUNDET_INVOKE.SESSION_SEARCH, query),
+  listCheckpoints: (sessionId) => invoke(FUNDET_INVOKE.CHECKPOINT_LIST, sessionId),
+  previewRewind: (sessionId, sha) => invoke(FUNDET_INVOKE.CHECKPOINT_PREVIEW, sessionId, sha),
+  rewindTo: (sessionId, sha) => invoke(FUNDET_INVOKE.CHECKPOINT_REWIND, sessionId, sha),
 
   resolveInteraction: (requestId, decision) =>
     invoke(FUNDET_INVOKE.INTERACTION_RESOLVE, requestId, decision),
@@ -191,6 +194,7 @@ const api: FundetApi = {
   windowMinimize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MINIMIZE),
   windowMaximize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MAXIMIZE),
   windowClose: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_CLOSE),
+  setRunningBadge: (count) => ipcRenderer.send(FUNDET_INVOKE.WINDOW_SET_RUNNING_BADGE, count),
   copyText: (text) => invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, text),
   copyImageRect: (rect) => invoke(FUNDET_INVOKE.CLIPBOARD_CAPTURE_RECT, rect),
   copyPngToClipboard: (png, plainText) => invoke(FUNDET_INVOKE.CLIPBOARD_WRITE_PNG, png, plainText),

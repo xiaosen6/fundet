@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Ellipsis, MessageSquarePlus, Pen, Share, Split, Trash2 } from 'lucide-react';
+import { Check, Copy, Ellipsis, History, MessageSquarePlus, Pen, Share, Split, Trash2 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Tooltip } from './ui/Tooltip';
 
@@ -43,6 +43,7 @@ export function MessageActionBar({
   onAddToChat,
   onDelete,
   onEdit,
+  onRewind,
 }: {
   createdAt?: number;
   copyText: string;
@@ -56,6 +57,8 @@ export function MessageActionBar({
   onDelete?: () => Promise<void>;
   /** 编辑该条消息（用户消息用：进 composer 编辑态，发送截断重发） */
   onEdit?: () => void;
+  /** 回滚工作目录文件（用户消息用：打开回滚对话框） */
+  onRewind?: () => void;
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -165,6 +168,13 @@ export function MessageActionBar({
         <Tooltip label="编辑" side="top">
           <button type="button" className={ICON_BTN} aria-label="编辑" onClick={onEdit}>
             <Pen size={14} />
+          </button>
+        </Tooltip>
+      ) : null}
+      {onRewind ? (
+        <Tooltip label="回滚文件到此轮之前" side="top">
+          <button type="button" className={ICON_BTN} aria-label="回滚文件" onClick={onRewind}>
+            <History size={14} />
           </button>
         </Tooltip>
       ) : null}

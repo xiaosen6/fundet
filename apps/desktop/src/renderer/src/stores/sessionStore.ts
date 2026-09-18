@@ -266,6 +266,7 @@ function notifyAny(): void {
   }
   runningSnapshot = nextRunning;
   attentionSnapshot = nextAttention;
+  window.fundet?.setRunningBadge?.(nextRunning.size);
   for (const l of anyListeners) l();
 }
 

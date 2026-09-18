@@ -111,6 +111,7 @@ function UserTurn({
   onDeleteUserMessage,
   workDir,
   onOpenFile,
+  onRewind,
 }: {
   item: Extract<DisplayItem, { kind: 'user' }>;
   canFork?: boolean;
@@ -120,6 +121,7 @@ function UserTurn({
   onDeleteUserMessage?: () => void;
   workDir?: string;
   onOpenFile?: (path: string) => void;
+  onRewind?: () => void;
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   return (
@@ -152,6 +154,7 @@ function UserTurn({
                 }
               : undefined
           }
+          onRewind={onRewind}
           onDelete={onDeleteUserMessage ? async () => onDeleteUserMessage() : undefined}
         />
       </div>
@@ -170,6 +173,7 @@ interface MessageStreamProps {
   onFork?: (createdAt: number) => Promise<void>;
   onAddToChat?: (text: string) => void;
   onDelete?: (assistantId: string) => Promise<void>;
+  onRewind?: () => void;
   /** 终态错误卡的「重新发送」：重发本轮最后一条用户消息 */
   onRetryError?: () => void;
   /** 编辑某条用户消息（消息操作栏 Pen）：文本进 composer + 截断重发流 */
@@ -443,6 +447,7 @@ export function MessageStream({
   onFork,
   onAddToChat,
   onDelete,
+  onRewind,
   onRetryError,
   onEditUserMessage,
   onDeleteUserMessage,
@@ -763,6 +768,7 @@ export function MessageStream({
                     canFork={canFork}
                     onFork={onFork}
                     onEditUserMessage={onEditUserMessage}
+                    onRewind={onRewind}
                     onShare={
                       userShareReply !== undefined
                         ? () =>

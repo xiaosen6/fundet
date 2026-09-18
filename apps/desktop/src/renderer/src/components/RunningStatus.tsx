@@ -59,6 +59,26 @@ export function RunningStatus({ visible, status, tokenUsage }: RunningStatusProp
     return () => clearInterval(interval);
   }, [visible]);
 
+  // 即时速度：tokenUsage 差分 / 时间差分的 EWMA（只在本轮运行期间累计）
+  const [tokPerSec, setTokPerSec] = useState<number | null>(null);
+  const lastUsageRef = useRef<{ tokens: number; at: number } | null>(null);
+  useEffect(() => {
+    const now = Date.now();
+    if (!visible) {
+      lastUsageRef.current = null;
+      setTokPerSec(null);
+      return;
+    }
+    const prev = lastUsageRef.current;
+    lastUsageRef.current = { tokens: tokenUsage, at: now };
+    if (!prev || now - prev.at < 400) return;
+    const dTokens = tokenUsage - prev.tokens;
+    const dt = (now - prev.at) / 1000;
+    if (dTokens <= 0 || dt <= 0) return;
+    const rate = dTokens / dt;
+    setTokPerSec((v) => (v == null ? rate : v * 0.6 + rate * 0.4));
+  }, [tokenUsage, visible]);
+
   // cadenced shimmer：每次真实动静（状态文案 / token 变化）重播一次呼吸；
   // 播放期间到达的动静置 pending，动画结束再连播一次
   const [shimmerCycle, setShimmerCycle] = useState(0);
@@ -136,6 +156,11 @@ export function RunningStatus({ visible, status, tokenUsage }: RunningStatusProp
         <span className="text-13 font-medium text-secondary">&middot;</span>
         <ArrowDown size={13} className="shrink-0 text-secondary" />
         <span className="text-13 font-medium text-secondary">{tokenText}</span>
+        {tokPerSec != null && (
+          <span className="text-13 text-muted tabular-nums">
+            · {tokPerSec >= 100 ? Math.round(tokPerSec) : tokPerSec.toFixed(1)} tok/s
+          </span>
+        )}
       </div>
     </div>
   );

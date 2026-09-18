@@ -3,6 +3,7 @@ import { basename, isImagePath } from '../lib/artifacts';
 import { cn } from '../lib/cn';
 import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
 import { showLightbox } from './ui/Lightbox';
+import { useHoverPreview } from './ui/HoverImgPreview';
 
 export function looksLikeFilePath(text: string): boolean {
   const t = text.trim();
@@ -68,12 +69,17 @@ export function LocalImagePreview({
     if (url) showLightbox({ kind: 'image', src: url, alt: alt || basename(path) });
   };
 
+  const hover = useHoverPreview(() => url);
+
   return (
     <span className={cn('my-2 block', className)}>
       <button
         type="button"
         onClick={open}
         title="点击查看大图"
+        onMouseEnter={hover.onMouseEnter}
+        onMouseLeave={hover.onMouseLeave}
+        onMouseDown={hover.onMouseDown}
         className="block max-w-full cursor-zoom-in rounded-inner border border-board bg-card p-1 text-left"
       >
         {url ? (

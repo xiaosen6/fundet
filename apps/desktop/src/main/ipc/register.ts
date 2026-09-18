@@ -27,6 +27,14 @@ import { sessions } from '../db/schema.js';
 import { copyMessagesUntil, deleteMessagesInRange, insertMessage, listMessages } from '../db/messages.js';
 import { searchSessions } from '../db/session-search.js';
 import {
+  createSnapshot,
+  deleteCheckpoints,
+  isCheckpointAvailable,
+  listCheckpoints,
+  previewRewind,
+  rewindTo,
+} from '../checkpoint/store.js';
+import {
   createProvider,
   deleteProvider,
   listProviders,
@@ -411,6 +419,7 @@ export function registerIpcHandlers(): void {
     const { maker } = getHost();
     if (maker.isSessionAlive(id)) await maker.closeSession(id, 'requested');
     getDb().delete(sessions).where(eq(sessions.id, id)).run();
+    deleteCheckpoints(id);
   });
 
   ipcMain.handle(
@@ -418,6 +427,18 @@ export function registerIpcHandlers(): void {
     async (_e, input: SessionSendInput): Promise<SendResult> => {
       const session = await ensureSession(input);
       const attachments = input.attachments ?? [];
+      // 每轮发送前快照工作目录（回滚锚点）。失败只记日志，绝不阻断发送。
+      if (input.retry !== true && isCheckpointAvailable()) {
+        const workDir = input.create?.workDir
+          ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
+        if (workDir) {
+          try {
+            await createSnapshot(session.id, workDir, input.text);
+          } catch (err) {
+            console.warn('[fundet:checkpoint] 快照失败（不阻断发送）', err);
+          }
+        }
+      }
       // 自动重试重发：user 消息与标题已落库，跳过重复插入
       if (input.retry !== true) {
         insertMessage(session.id, 'user', {
@@ -584,6 +605,22 @@ ${input.text}`;
   ipcMain.handle(FUNDET_INVOKE.SESSION_SEARCH, async (_e, query: string) =>
     searchSessions(String(query ?? '')),
   );
+
+  // ---------- 会话快照/回滚 ----------
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_LIST, async (_e, sessionId: string) =>
+    listCheckpoints(String(sessionId ?? '')).catch(() => []),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_PREVIEW, async (_e, sessionId: string, sha: string) =>
+    previewRewind(String(sessionId ?? ''), String(sha ?? '')),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_REWIND, async (_e, sessionId: string, sha: string) => {
+    const id = String(sessionId ?? '');
+    const row = getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, id)).get();
+    if (!row) throw new Error('会话不存在');
+    return rewindTo(id, row.workDir, String(sha ?? ''));
+  });
 
   // ---------- 审批 ----------
   ipcMain.handle(
@@ -1066,6 +1103,12 @@ ${input.text}`;
   });
   ipcMain.on(FUNDET_INVOKE.WINDOW_CLOSE, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+
+  // 任务栏/Dock 徽标：正在跑 turn 的会话数（renderer 侧 runningIds 是唯一真源）
+  ipcMain.on(FUNDET_INVOKE.WINDOW_SET_RUNNING_BADGE, (_e, count: number) => {
+    const n = Math.max(0, Math.min(99, Math.round(Number(count) || 0)));
+    app.setBadgeCount(n);
   });
 
   ipcMain.handle(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, (_e, text: string) => {
