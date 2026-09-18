@@ -1,0 +1,175 @@
+{
+  "result": {
+    "events": [
+      {
+        "attendees": [
+          {
+            "displayName": "张章",
+            "optional": false,
+            "responseStatus": "accepted",
+            "self": false
+          },
+          {
+            "displayName": "孙记森",
+            "optional": false,
+            "responseStatus": "accepted",
+            "self": true
+          },
+          {
+            "displayName": "刘成旭",
+            "optional": false,
+            "responseStatus": "tentative",
+            "self": false
+          }
+        ],
+        "categories": [
+          {
+            "displayName": "会议"
+          }
+        ],
+        "description": "",
+        "end": {
+          "date": null,
+          "dateTime": "2026-09-18T15:00:00+08:00",
+          "timeZone": "Asia/Shanghai"
+        },
+        "extendedProperties": {
+          "privateProperties": {
+            "dingtalkDetailUrl": null
+          },
+          "sharedProperties": {
+            "belongCorpId": "dingeb4ed5ff8d088df2a1320dcb25e91351"
+          }
+        },
+        "freeBusy": "BUSY",
+        "iCalUID": "L2NRaE52alVaUHZnTHlLZVI1YzIrUT09",
+        "id": "L2NRaE52alVaUHZnTHlLZVI1YzIrUT09",
+        "isAllDay": false,
+        "location": null,
+        "meetingRooms": [
+          {
+            "responseStatus": "accepted",
+            "roomId": "19ae7e4fc4823ec406660d2fee8f4c324d42b132b3c03ecb",
+            "roomName": "508（小会议室）"
+          }
+        ],
+        "onlineMeetingInfo": {
+          "conferenceId": null,
+          "extraInfo": {
+            "phones": null,
+            "roomCode": null
+          },
+          "internalExtraInfo": {
+            "urlForCalDAV": null
+          },
+          "type": null,
+          "url": null
+        },
+        "organizer": {
+          "displayName": "张章",
+          "optional": false,
+          "self": false
+        },
+        "reminders": [
+          {
+            "method": "dingtalk",
+            "minutes": 15
+          }
+        ],
+        "richTextDescription": {
+          "text": null
+        },
+        "seriesMasterId": null,
+        "start": {
+          "date": null,
+          "dateTime": "2026-09-18T14:30:00+08:00",
+          "timeZone": "Asia/Shanghai"
+        },
+        "status": "confirmed",
+        "summary": "AI小组工作同步"
+      },
+      {
+        "attendees": [
+          {
+            "displayName": "孙记森",
+            "optional": false,
+            "responseStatus": "accepted",
+            "self": true
+          }
+        ],
+        "categories": [
+          {
+            "displayName": null
+          }
+        ],
+        "description": null,
+        "end": {
+          "date": null,
+          "dateTime": "2026-09-18T16:30:00+08:00",
+          "timeZone": "Asia/Shanghai"
+        },
+        "extendedProperties": {
+          "privateProperties": {
+            "dingtalkDetailUrl": null
+          },
+          "sharedProperties": {
+            "belongCorpId": "dingeb4ed5ff8d088df2a1320dcb25e91351"
+          }
+        },
+        "freeBusy": "BUSY",
+        "iCalUID": "UWkwdTFFQmg1bVpuYjdoUDllV29VUT09",
+        "id": "UWkwdTFFQmg1bVpuYjdoUDllV29VUT09",
+        "isAllDay": false,
+        "location": null,
+        "meetingRooms": [
+          {
+            "responseStatus": "accepted",
+            "roomId": "19ae7e4fc4823ec406660d2fee8f4c324d42b132b3c03ecb",
+            "roomName": "508（小会议室）"
+          }
+        ],
+        "onlineMeetingInfo": {
+          "conferenceId": "ca550894-5927-4ad3-900a-ea911fb758cd",
+          "extraInfo": {
+            "phones": "[\"+862381045152\",\"+862381045153\"]",
+            "roomCode": "145 094 750"
+          },
+          "internalExtraInfo": {
+            "urlForCalDAV": "dingtalk://dingtalkclient/page/videoConfFromSystemCalendar?confId=ca550894-5927-4ad3-900a-ea911fb758cd\u0026calendarId=26872106794"
+          },
+          "type": "dingtalk",
+          "url": "dingtalk://dingtalkclient/page/videoConfFromCalendar?confId=ca550894-5927-4ad3-900a-ea911fb758cd\u0026calendarId=26872106794"
+        },
+        "organizer": {
+          "displayName": "孙记森",
+          "optional": false,
+          "self": true
+        },
+        "reminders": [
+          {
+            "method": "dingtalk",
+            "minutes": 15
+          }
+        ],
+        "richTextDescription": {
+          "text": null
+        },
+        "seriesMasterId": null,
+        "start": {
+          "date": null,
+          "dateTime": "2026-09-18T15:30:00+08:00",
+          "timeZone": "Asia/Shanghai"
+        },
+        "status": "confirmed",
+        "summary": "AI交流"
+      }
+    ],
+    "hasMore": false,
+    "searchRange": {
+      "endTimeISO": "2026-09-18T23:59:59+08:00",
+      "hint": "未显式指定 --start/--end，已默认查询当天 00:00:00 ~ 23:59:59（CLI 本地时区）。如需其它区间请显式传入 --start 和 --end。",
+      "startTimeISO": "2026-09-18T00:00:00+08:00"
+    }
+  },
+  "success": true
+}

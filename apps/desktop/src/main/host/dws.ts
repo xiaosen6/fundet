@@ -57,8 +57,8 @@ export interface DwsActionResult {
 
 /* ---------------- 纯解析（单测覆盖） ---------------- */
 
-/** 从混有横幅/回显的输出里截取 JSON 段再解析（cmd AutoRun 宏、首次运行提示等都可能污染 stdout） */
-function extractJson(stdout: string): unknown {
+/** 从混有横幅/回显的输出里截取 JSON 段再解析（cmd AutoRun 宏、首次运行提示等都可能污染 stdout）；导出给 dws-widgets 复用 */
+export function extractJson(stdout: string): unknown {
   const start = stdout.indexOf('{');
   if (start < 0) return null;
   const end = stdout.lastIndexOf('}');
@@ -208,8 +208,9 @@ interface DwsInvocation {
 /**
  * 解析可用的 dws 调用方式：PATH 优先；PATH 未刷新（刚安装完）时回退
  * 探测官方 install.ps1 的默认落点 ~/.local/bin/dws(.exe)。
+ * 导出给 dws-widgets（组件聚合器）复用同一执行内核。
  */
-async function resolveDws(): Promise<DwsInvocation | null> {
+export async function resolveDws(): Promise<DwsInvocation | null> {
   const home = userHome();
   const candidates: DwsInvocation[] =
     process.platform === 'win32'
@@ -240,9 +241,12 @@ async function resolveDws(): Promise<DwsInvocation | null> {
   return null;
 }
 
-async function execDws(dws: DwsInvocation, args: string[], timeoutMs: number): Promise<RunResult> {
+export async function execDws(dws: DwsInvocation, args: string[], timeoutMs: number): Promise<RunResult> {
   return runCommand(dws.command, [...dws.args, ...args], timeoutMs);
 }
+
+/** 供类型引用的调用形状 */
+export type { DwsInvocation };
 
 /* ---------------- 面板动作 ---------------- */
 

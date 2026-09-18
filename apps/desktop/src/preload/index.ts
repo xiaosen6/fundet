@@ -166,6 +166,7 @@ const api: FundetApi = {
   dwsInstall: (source) => invoke(FUNDET_INVOKE.DWS_INSTALL, source),
   dwsLogin: () => invoke(FUNDET_INVOKE.DWS_LOGIN),
   dwsSkillSetup: () => invoke(FUNDET_INVOKE.DWS_SKILL_SETUP),
+  dwsWidgets: (force) => invoke(FUNDET_INVOKE.DWS_WIDGETS, force),
 
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
@@ -212,6 +213,7 @@ const api: FundetApi = {
     subscribe<InteractionDismissedPayload>(FUNDET_PUSH.INTERACTION_DISMISSED, cb),
   onSessionListChanged: (cb) => subscribe(FUNDET_PUSH.SESSION_LIST_CHANGED, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
+  onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
   onFindResult: (cb) => subscribe<FindResultPayload>(FUNDET_PUSH.FIND_RESULT, cb),

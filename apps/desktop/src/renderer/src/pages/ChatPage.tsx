@@ -51,6 +51,9 @@ import { RunningStatus } from '../components/RunningStatus';
 import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { UsageDashboard } from '../components/UsageDashboard';
+import { DwsWidgets } from '../components/dws/DwsWidgets';
+import { DynamicIsland } from '../components/dws/DynamicIsland';
+import type { DwsWidgetsSnapshot } from '../../../shared/fundet-api.js';
 import { brand } from '../../../shared/brand.js';
 import { FolderPickerChip } from '../components/FolderPickerChip';
 import { KnowledgeChip } from '../components/KnowledgeChip';
@@ -80,6 +83,25 @@ export function ChatPage(): React.JSX.Element {
   const [skills, setSkills] = useState<SkillView[]>([]);
   const [input, setInput] = useState('');
   const [notice, setNotice] = useState('');
+  const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
+
+  // 钉钉组件：订阅主进程 push + 回焦触发刷新（主进程按 TTL 去抖，不会刷爆）
+  useEffect(() => {
+    void window.fundet.dwsWidgets().then(setDwsWidgets);
+    const off = window.fundet.onDwsWidgetsChanged(setDwsWidgets);
+    const onFocus = (): void => {
+      void window.fundet.dwsWidgets().then(setDwsWidgets);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      off();
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  const refreshDwsWidgets = useCallback((): void => {
+    void window.fundet.dwsWidgets(true).then(setDwsWidgets);
+  }, []);
 
   // 侧栏宽度拖拽（200–400px 夹紧；持久化到 localStorage）
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -268,6 +290,15 @@ export function ChatPage(): React.JSX.Element {
     rememberModelChoice(provider.id, model);
     setActiveId(meta.id);
   }, [providers, workDir]);
+
+  /** 钉钉组件 AI 钩子：开新会话并预填 prompt（用户过目后手动发送） */
+  const askDwsAgent = useCallback(
+    (prompt: string): void => {
+      createSession();
+      setInput(prompt);
+    },
+    [createSession],
+  );
 
   const deleteSession = useCallback(
     async (id: string): Promise<void> => {
@@ -604,6 +635,13 @@ export function ChatPage(): React.JSX.Element {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
+        {/* 灵动岛：会话视图顶部悬浮（欢迎页组件板直接可见；能力面板打开时让位） */}
+        <DynamicIsland
+          snapshot={dwsWidgets}
+          onAskAgent={askDwsAgent}
+          onRefresh={refreshDwsWidgets}
+          visible={Boolean(activeId) && !activePanel}
+        />
         {rewindOpen && activeId && (
           <RewindDialog sessionId={activeId} onClose={() => setRewindOpen(false)} />
         )}
@@ -668,6 +706,9 @@ export function ChatPage(): React.JSX.Element {
                   {notice && <p className="mt-2 text-13 text-error">{notice}</p>}
                 </div>
               )}
+              <div className="w-full">
+                <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
+              </div>
               <div className="w-full">
                 <UsageDashboard />
               </div>

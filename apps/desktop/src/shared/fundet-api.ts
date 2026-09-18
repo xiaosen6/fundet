@@ -161,6 +161,62 @@ export interface DwsActionResult {
   url?: string;
 }
 
+/* ---------- 钉钉组件（灵动岛数据面） ---------- */
+
+/** 今日日程（dws calendar event list 归一化） */
+export interface DwsCalendarEventView {
+  id: string;
+  title: string;
+  startMs: number | null;
+  endMs: number | null;
+  isAllDay: boolean;
+  location?: string;
+  /** 已订会议室名（meetingRooms[0].roomName） */
+  roomName?: string;
+  organizer?: string;
+}
+
+/** 我的待办（dws todo task list 归一化） */
+export interface DwsTodoView {
+  taskId: string;
+  subject: string;
+  dueMs: number | null;
+  /** dws 原始优先级（数值小=高） */
+  priority: number;
+}
+
+/** 待我审批（dws oa approval list-pending 归一化；非空形状未实测，字段宽容提取） */
+export interface DwsApprovalPendingView {
+  id: string;
+  title?: string;
+  initiator?: string;
+  createTimeMs?: number;
+}
+
+/** 未读会话（dws chat message list-unread-conversations 归一化） */
+export interface DwsUnreadConversationView {
+  id: string;
+  title: string;
+  unread: number;
+  lastMsgMs: number | null;
+  singleChat: boolean;
+}
+
+/** 组件板快照：主进程 dws-widgets 聚合器唯一真源，push 到渲染层 */
+export interface DwsWidgetsSnapshot {
+  /** disabled=未安装/未登录（reason 说明）；ready=数据面可用 */
+  state: 'disabled' | 'ready';
+  reason?: string;
+  fetchedAt: number;
+  calendar: DwsCalendarEventView[];
+  todos: DwsTodoView[];
+  approvals: DwsApprovalPendingView[];
+  unread: DwsUnreadConversationView[];
+  unreadTotal: number;
+  /** 单组件刷新失败（保留上次好数据，卡片角标提示重试） */
+  errors: { calendar?: string; todos?: string; approvals?: string; unread?: string };
+}
+
 /** 应用更新状态（主进程 updater.ts 是唯一真源） */
 export interface UpdateState {
   currentVersion: string;
@@ -423,6 +479,10 @@ export interface FundetApi {
   dwsLogin(): Promise<DwsActionResult>;
   /** 装配官方技能包到用户技能根（dingtalk-* 前缀目录） */
   dwsSkillSetup(): Promise<DwsActionResult>;
+
+  /** 钉钉组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
+  dwsWidgets(force?: boolean): Promise<DwsWidgetsSnapshot>;
+  onDwsWidgetsChanged(cb: (snapshot: DwsWidgetsSnapshot) => void): () => void;
 
   updateStatus(): Promise<UpdateState>;
   checkUpdate(): Promise<void>;

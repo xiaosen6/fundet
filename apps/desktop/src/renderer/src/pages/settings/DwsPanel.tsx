@@ -3,9 +3,10 @@
  * 状态真源在主进程 host/dws.ts；Agent 侧零改动——技能包落到用户技能根即被会话加载。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DwsStatusView } from '../../../../shared/fundet-api.js';
+import type { DwsStatusView, DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
 import { brand } from '../../../../shared/brand.ts';
+import { DwsWidgets } from '../../components/dws/DwsWidgets';
 
 const SECONDARY_BTN = 'h-8 rounded-full border border-board px-3 text-12 text-primary disabled:opacity-40';
 const PRIMARY_BTN = 'h-8 rounded-full bg-accent px-3 text-12 font-medium text-accent-fg disabled:opacity-40';
@@ -27,10 +28,17 @@ export function DwsPanel(): React.JSX.Element {
   const [notice, setNotice] = useState('');
   const [output, setOutput] = useState('');
   const [authUrl, setAuthUrl] = useState('');
+  const [widgets, setWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const busyRef = useRef(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     setStatus(await window.fundet.dwsStatus());
+  }, []);
+
+  // 组件板：订阅主进程 push（面板常驻期间跟着刷新）
+  useEffect(() => {
+    void window.fundet.dwsWidgets().then(setWidgets);
+    return window.fundet.onDwsWidgetsChanged(setWidgets);
   }, []);
 
   useEffect(() => {
@@ -191,6 +199,11 @@ export function DwsPanel(): React.JSX.Element {
           </pre>
         )}
       </div>
+
+      <DwsWidgets
+        snapshot={widgets}
+        onRefresh={() => void window.fundet.dwsWidgets(true).then(setWidgets)}
+      />
 
       <p className="text-12 text-muted">
         安全：dws 以你的 OAuth 身份调用钉钉开放平台（全链路可审计）；{brand.name}

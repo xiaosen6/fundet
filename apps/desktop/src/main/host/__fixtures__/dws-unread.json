@@ -1,0 +1,23 @@
+{
+  "result": {
+    "conversations": [
+      {
+        "lastMsgCreateAt": 1789703978738,
+        "notificationOff": 1,
+        "openConversationId": "cidnp2x3D+CPzeP7gAUEMdKbw==",
+        "singleChat": false,
+        "title": "魔搭ModelScope开发者联盟群 ①",
+        "unreadPoint": 942
+      },
+      {
+        "lastMsgCreateAt": 1786765881084,
+        "notificationOff": 0,
+        "openConversationId": "cidOFfTP+PpywAXQ8MuOw+roQ==",
+        "singleChat": false,
+        "title": "项目-第二批济南市城市全域数字化转型典型场景征集",
+        "unreadPoint": 3
+      }
+    ]
+  },
+  "success": true
+}
