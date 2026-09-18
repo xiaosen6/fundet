@@ -236,6 +236,7 @@ Fundet/
 | electron-updater 6.8.9 `setFeedURL` 不消费 `options.requestHeaders`（仅构造函数读）→ 私有 feed 拉 latest.yml 404（GitLab 把未授权伪装成 404） | 鉴权头直接赋公共字段 `autoUpdater.requestHeaders`（updater.ts applyFeed 有注释） |
 | 打包版 `remote-debugging-port` 不监听（Chromium M136 起须显式 `--user-data-dir` 才激活远程调试；重定向 stdout 也常为空） | 打包版主进程诊断用文件插桩最稳（用完删净） |
 | 冒烟判据「进程 alive」会被 Error 弹框骗（主进程未捕获异常弹原生框，进程同样活着） | 冒烟必须查 `MainWindowTitle` ≠ "Error"（0.2.16 起冒烟模板） |
+| **冒烟静默装留下的目录记忆键**：electron-builder NSIS 把安装目录写在 `HKCU\Software\<guid>`（除 Uninstall 键之外的第二个键），只清 Uninstall 键的话用户下次安装默认路径变成冒烟临时路径（0.2.22 当天真发生，用户报告） | smoke-installer.mjs 已同时清两键 + 本机已有 Fundet 安装时拒绝运行（防污染真实安装）；本机污染键 09-18 手工清除 |
 
 **架构级**：
 
