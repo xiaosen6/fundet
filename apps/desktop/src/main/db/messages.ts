@@ -10,11 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { eq, asc, and, gt, lte, ne } from 'drizzle-orm';
 import { getDb, getSqlite } from './client.js';
 import { messages } from './schema.js';
-import { upsertMessageFts } from './session-search.js';
+import { upsertMessageFts } from './messages-fts.js';
 
 export function insertMessage(sessionId: string, role: string, content: unknown): void {
   const id = randomUUID();
   const contentJson = JSON.stringify(content ?? null);
+  const db = getSqlite();
   getDb()
     .insert(messages)
     .values({
@@ -25,11 +26,12 @@ export function insertMessage(sessionId: string, role: string, content: unknown)
       createdAt: Date.now(),
     })
     .run();
-  // FTS 同步（搜索用）：user/assistant 文本入索引，其余行清残留
-  const row = getSqlite().prepare('SELECT rowid FROM messages WHERE id = ?').get(id) as
+  // FTS 同步（搜索用）：user/assistant 文本入索引，其余行清残留；
+  // upsert 内部自建表——旧库没打开过搜索时表不存在（0.2.27 前首次 send 即炸的根因）
+  const row = db.prepare('SELECT rowid FROM messages WHERE id = ?').get(id) as
     | { rowid: number }
     | undefined;
-  if (row) upsertMessageFts(row.rowid, contentJson);
+  if (row) upsertMessageFts(db, row.rowid, contentJson);
 }
 
 export function deleteMessagesInRange(sessionId: string, afterCreatedAt: number, untilCreatedAt: number): void {

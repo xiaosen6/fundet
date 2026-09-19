@@ -1,68 +1,19 @@
 /**
  * 会话搜索：标题 LIKE + 消息正文 FTS5（复用知识库 CJK bigram 分词，零新依赖）。
  *
- * messages_fts 虚表：rowid 对齐 messages.rowid，内容 = user/assistant 消息
- * {text} 字段分词后的空格串。insertMessage 时同步 upsert（OR REPLACE 顺带清掉
- * 被删消息残留的同 rowid 旧行——SQLite 无 AUTOINCREMENT 时 rowid 会复用）。
- * 启动首次搜索时对存量行幂等回填。删除路径不清理 FTS（孤儿行 join 自然过滤，
- * 行重用时被 REPLACE 覆盖）。
+ * messages_fts 的建表/伴生写在 messages-fts.ts（0.2.27 起写入路径自建表——
+ * 本文件搜索入口的 ensure 只是回填时机，不再是表存在的唯一保证）。
+ * 删除路径不清理 FTS（孤儿行 join 自然过滤，行重用时被 REPLACE 覆盖）。
  */
 import { getSqlite } from './client.js';
-import { matchExpression, queryTerms, tokenize } from '../knowledge/tokenize.ts';
+import { matchExpression, queryTerms } from '../knowledge/tokenize.ts';
+import { ensureMessagesFts } from './messages-fts.js';
 
 export interface SessionSearchHit {
   sessionId: string;
   title: string;
   updatedAt: number;
   snippet: string;
-}
-
-/** 消息 content JSON → 可索引文本（只取 {text}；工具/done 等 raw 行不入索引） */
-export function indexMessageContent(contentJson: string): string {
-  try {
-    const c = JSON.parse(contentJson) as { text?: unknown };
-    if (typeof c.text === 'string' && c.text) {
-      return tokenize(c.text)
-        .map((t) => t.text)
-        .join(' ');
-    }
-  } catch {
-    /* 非 JSON 不索引 */
-  }
-  return '';
-}
-
-/** insertMessage 的伴生写：rowid 上 REPLACE（复用行时清残留） */
-export function upsertMessageFts(rowid: number, contentJson: string): void {
-  const text = indexMessageContent(contentJson);
-  const db = getSqlite();
-  if (!text) {
-    db.prepare('DELETE FROM messages_fts WHERE rowid = ?').run(rowid);
-    return;
-  }
-  db.prepare('INSERT OR REPLACE INTO messages_fts(rowid, text) VALUES (?, ?)').run(rowid, text);
-}
-
-let ftsReady = false;
-function ensureFts(): void {
-  if (ftsReady) return;
-  const db = getSqlite();
-  db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(text, tokenize='unicode61')");
-  const ftsCount = (db.prepare('SELECT COUNT(*) AS n FROM messages_fts').get() as { n: number }).n;
-  if (ftsCount === 0) {
-    const rows = db
-      .prepare("SELECT rowid, content FROM messages WHERE role IN ('user','assistant')")
-      .all() as Array<{ rowid: number; content: string }>;
-    const insert = db.prepare('INSERT INTO messages_fts(rowid, text) VALUES (?, ?)');
-    const tx = db.transaction((rs: Array<{ rowid: number; content: string }>): void => {
-      for (const r of rs) {
-        const text = indexMessageContent(r.content);
-        if (text) insert.run(r.rowid, text);
-      }
-    });
-    tx(rows);
-  }
-  ftsReady = true;
 }
 
 function textOfContent(contentJson: string): string {
@@ -91,7 +42,7 @@ function snippetAround(text: string, terms: string[]): string {
 
 /** 搜索：标题命中优先，正文 bm25 兜底；各自按更新时间排 */
 export function searchSessions(query: string, limit = 30): SessionSearchHit[] {
-  ensureFts();
+  ensureMessagesFts(getSqlite()); // 建表 + 存量回填时机（表存在性由写路径自保证）
   const q = query.trim();
   if (!q) return [];
   const db = getSqlite();
