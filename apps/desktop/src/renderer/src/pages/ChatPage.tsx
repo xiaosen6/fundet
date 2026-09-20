@@ -753,7 +753,7 @@ export function ChatPage(): React.JSX.Element {
             <header
               className={cn(
                 'relative flex h-[46px] shrink-0 items-center justify-between gap-3 border-b border-board px-4 select-none',
-                hasFramelessControls() && 'pr-[150px]',
+                hasFramelessControls() && 'pr-[186px]',
               )}
             >
               {/* 拖拽层铺底、在窗口按钮左侧截止：悬浮 no-drag 挖洞在 Electron 37

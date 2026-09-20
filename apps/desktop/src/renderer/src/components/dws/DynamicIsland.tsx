@@ -63,8 +63,9 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh }: DynamicIsland
   const hasSignal = Boolean(nextEvent) || todoCount > 0 || approvalCount > 0 || s.unreadTotal > 0;
   if (!hasSignal) return null;
 
+  // mr-3：与右侧 Canvas 固定钮（right-[138px]）拉开呼吸位，不挤其点击热区
   return (
-    <div ref={rootRef} className="no-drag relative flex shrink-0 items-center">
+    <div ref={rootRef} className="no-drag relative mr-3 flex shrink-0 items-center">
       <button
         type="button"
         aria-expanded={open}

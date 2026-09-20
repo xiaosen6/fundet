@@ -222,13 +222,17 @@ function RowButton({
   );
 }
 
-/* ---------------- 各卡内容（board=主页静态摘要 / detail=浮层全量+手风琴） ---------------- */
+/* ---------------- 各卡内容 ----------------
+   两个正交开关（曾合并成 mode 一个字段，导致灵动岛 inline 模式条目点击
+   去开一个只在 popover 模式渲染的浮层——点开无反应，0.2.29 拆分修复）：
+   - sliced：板面密度（前 3 条 + 溢出行）；false = 全量列表
+   - expandable：条目原地手风琴展开；false = 点击弹出详情浮层（欢迎页） */
 
 type CardKind = 'calendar' | 'approvals' | 'todos' | 'unread';
 
 interface ListCtx {
-  /** board：条目点击开浮层；detail：条目点击原地展开 */
-  mode: 'board' | 'detail';
+  sliced: boolean;
+  expandable: boolean;
   expandedKey: string | null;
   toggle: (key: string) => void;
   openPopover: (kind: CardKind, e: React.MouseEvent) => void;
@@ -236,7 +240,8 @@ interface ListCtx {
 }
 
 function rowClick(ctx: ListCtx, kind: CardKind, key: string): (e: React.MouseEvent) => void {
-  return ctx.mode === 'board' ? (e) => ctx.openPopover(kind, e) : () => ctx.toggle(key);
+  if (ctx.expandable) return () => ctx.toggle(key);
+  return (e) => ctx.openPopover(kind, e);
 }
 
 function CalendarBody({
@@ -250,7 +255,7 @@ function CalendarBody({
 }): React.JSX.Element | null {
   const nextEvent = s.calendar.find((e) => (e.startMs ?? Infinity) > now) ?? s.calendar[0];
   if (s.calendar.length === 0) return <EmptyState Icon={CalendarDays} text="今天没有日程" />;
-  const items = ctx.mode === 'board' ? s.calendar.slice(0, 3) : s.calendar;
+  const items = ctx.sliced ? s.calendar.slice(0, 3) : s.calendar;
   return (
     <>
       <div className="rounded-inner bg-card-ivory px-3.5 py-3">
@@ -293,7 +298,7 @@ function CalendarBody({
       <div className="mt-1.5 flex flex-col divide-y divide-board/60">
         {items.map((e) => {
           const key = `cal:${e.id}`;
-          const open = ctx.mode === 'detail' && ctx.expandedKey === key;
+          const open = ctx.expandable && ctx.expandedKey === key;
           const isNext = e.id === nextEvent.id;
           return (
             <div key={e.id}>
@@ -311,7 +316,7 @@ function CalendarBody({
                   {e.title}
                 </span>
               </RowButton>
-              {ctx.mode === 'detail' && (
+              {ctx.expandable && (
                 <Reveal open={open}>
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     {e.attendees.length > 0 && (
@@ -338,7 +343,7 @@ function CalendarBody({
             </div>
           );
         })}
-        {ctx.mode === 'board' && s.calendar.length > 3 && (
+        {ctx.sliced && s.calendar.length > 3 && (
           <p className="px-1 pt-1 text-11 text-muted">还有 {s.calendar.length - 3} 场…</p>
         )}
       </div>
@@ -357,7 +362,7 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
       <div className="mt-2 flex flex-col divide-y divide-board/60">
         {s.approvals.map((a) => {
           const key = `oa:${a.id}`;
-          const open = ctx.mode === 'detail' && ctx.expandedKey === key;
+          const open = ctx.expandable && ctx.expandedKey === key;
           return (
             <div key={a.id}>
               <RowButton open={open} onClick={rowClick(ctx, 'approvals', key)}>
@@ -366,7 +371,7 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
                 </span>
                 {a.initiator && <span className="shrink-0 text-11 text-muted">{a.initiator}</span>}
               </RowButton>
-              {ctx.mode === 'detail' && (
+              {ctx.expandable && (
                 <Reveal open={open}>
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     {a.createTimeMs && <p className="text-12 text-muted">发起于 {fmtAgo(a.createTimeMs)}</p>}
@@ -391,7 +396,7 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
 
 function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: ListCtx }): React.JSX.Element {
   if (s.todos.length === 0) return <EmptyState Icon={CheckSquare} text="没有待办" />;
-  const items = ctx.mode === 'board' ? s.todos.slice(0, 3) : s.todos;
+  const items = ctx.sliced ? s.todos.slice(0, 3) : s.todos;
   return (
     <>
       <p className="flex items-baseline gap-2">
@@ -406,7 +411,7 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
       <div className="mt-2 flex flex-col divide-y divide-board/60">
         {items.map((t) => {
           const key = `todo:${t.taskId}`;
-          const open = ctx.mode === 'detail' && ctx.expandedKey === key;
+          const open = ctx.expandable && ctx.expandedKey === key;
           const overdue = t.dueMs !== null && t.dueMs < now;
           return (
             <div key={t.taskId}>
@@ -431,7 +436,7 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
                   </span>
                 )}
               </RowButton>
-              {ctx.mode === 'detail' && (
+              {ctx.expandable && (
                 <Reveal open={open}>
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     <p className="text-12 leading-relaxed text-secondary">{t.subject}</p>
@@ -453,7 +458,7 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
             </div>
           );
         })}
-        {ctx.mode === 'board' && s.todos.length > 3 && (
+        {ctx.sliced && s.todos.length > 3 && (
           <p className="px-1 pt-1 text-11 text-muted">还有 {s.todos.length - 3} 项…</p>
         )}
       </div>
@@ -463,7 +468,7 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
 
 function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.JSX.Element {
   if (s.unread.length === 0) return <EmptyState Icon={MessageSquare} text="没有未读" />;
-  const items = ctx.mode === 'board' ? s.unread.slice(0, 3) : s.unread;
+  const items = ctx.sliced ? s.unread.slice(0, 3) : s.unread;
   return (
     <>
       <p className="flex items-baseline gap-2">
@@ -473,7 +478,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
       <div className="mt-2 flex flex-col divide-y divide-board/60">
         {items.map((c) => {
           const key = `unread:${c.id}`;
-          const open = ctx.mode === 'detail' && ctx.expandedKey === key;
+          const open = ctx.expandable && ctx.expandedKey === key;
           return (
             <div key={c.id}>
               <RowButton open={open} onClick={rowClick(ctx, 'unread', key)}>
@@ -489,7 +494,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
                   {c.unread > 99 ? '99+' : c.unread}
                 </span>
               </RowButton>
-              {ctx.mode === 'detail' && (
+              {ctx.expandable && (
                 <Reveal open={open}>
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     <UnreadDetail convId={c.id} />
@@ -507,7 +512,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
             </div>
           );
         })}
-        {ctx.mode === 'board' && s.unread.length > 3 && (
+        {ctx.sliced && s.unread.length > 3 && (
           <p className="px-1 pt-1 text-11 text-muted">还有 {s.unread.length - 3} 个会话…</p>
         )}
       </div>
@@ -551,8 +556,11 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
   const now = Date.now();
   const toggle = (key: string): void => setExpandedKey((k) => (k === key ? null : key));
 
-  const boardCtx: ListCtx = { mode: 'board', expandedKey: null, toggle, openPopover, onAskAgent };
-  const detailCtx: ListCtx = { mode: 'detail', expandedKey, toggle, openPopover, onAskAgent };
+  const boardCtx: ListCtx =
+    expandMode === 'popover'
+      ? { sliced: true, expandable: false, expandedKey: null, toggle, openPopover, onAskAgent }
+      : { sliced: true, expandable: true, expandedKey, toggle, openPopover, onAskAgent };
+  const detailCtx: ListCtx = { sliced: false, expandable: true, expandedKey, toggle, openPopover, onAskAgent };
 
   function openPopover(kind: CardKind, e: React.MouseEvent): void {
     const card = (e.currentTarget as HTMLElement).closest('[data-widget-card]');
