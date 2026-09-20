@@ -1,23 +1,21 @@
 /**
- * PanelView —— 侧栏左上能力入口（IM 机器人 / 技能 / MCP 服务器 / 知识库）的
+ * PanelView —— 侧栏左上能力入口（IM 机器人 / 钉钉工作台 / 技能 / 知识库）的
  * 主区内嵌面板：ChatPage 右侧（原会话区域）就地切换显示，侧栏保持可见
  * （用户 2026-09-16 拍板：不做整页路由，右侧直接显示，相当于会话的部分）。
  * 顶部只留 46px 拖拽条（无返回钮——返回走 Esc / 再点同款按钮 / 点会话）；
- * 标题由各面板正文自带。
+ * 标题由各面板正文自带。MCP 服务器 0.2.29 起移回设置页（用户拍板），不在侧栏。
  */
 import { useEffect } from 'react';
 import { ImBotPanel } from '../../pages/settings/ImBotPanel';
 import { SkillsPanel } from '../../pages/settings/SkillsPanel';
-import { McpPanel } from '../../pages/settings/McpPanel';
 import { KnowledgePanel } from '../../pages/settings/KnowledgePanel';
 import { DwsPanel } from '../../pages/settings/DwsPanel';
 
-export type SidebarPanelId = 'im' | 'skills' | 'mcp' | 'knowledge' | 'dws';
+export type SidebarPanelId = 'im' | 'skills' | 'knowledge' | 'dws';
 
 const PANELS: Record<SidebarPanelId, () => React.JSX.Element> = {
   im: ImBotPanel,
   skills: SkillsPanel,
-  mcp: McpPanel,
   knowledge: KnowledgePanel,
   dws: DwsPanel,
 };

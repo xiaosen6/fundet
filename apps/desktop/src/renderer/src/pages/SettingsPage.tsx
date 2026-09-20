@@ -31,6 +31,7 @@ import { LoginItemSection } from '../components/settings/LoginItemSection';
 import { BrowserSection } from '../components/settings/BrowserSection';
 import { UsageHistoryPanel } from './settings/UsageHistoryPanel';
 import { ComputerSection } from '../components/settings/ComputerSection';
+import { McpPanel } from './settings/McpPanel';
 import { brand } from '../../../shared/brand.ts';
 
 const THEME_OPTIONS: Array<{
@@ -46,6 +47,7 @@ const THEME_OPTIONS: Array<{
 type SettingsTab =
   | 'general'
   | 'providers'
+  | 'mcp'
   | 'automation'
   | 'usage'
   | 'search';
@@ -53,6 +55,7 @@ type SettingsTab =
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: '通用',
   providers: '模型供应商',
+  mcp: 'MCP 服务器',
   automation: '自动操作',
   usage: '用量历史',
   search: '搜索',
@@ -266,6 +269,9 @@ export function SettingsPage(): React.JSX.Element {
             )}
 
             {tab === 'providers' && <ProvidersPanel />}
+
+            {/* MCP 服务器：0.2.29 起从侧栏能力入口移回设置（用户拍板） */}
+            {tab === 'mcp' && <McpPanel />}
 
             {tab === 'automation' && (
               <div className="flex flex-col gap-[14px]">

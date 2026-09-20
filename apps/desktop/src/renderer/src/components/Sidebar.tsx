@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, Briefcase, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Puzzle, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { BookOpen, Bot, Briefcase, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -66,12 +66,11 @@ const ACTION_BTN =
 const LIST_INITIAL = 60;
 const LIST_EXTEND = 80;
 
-/** 左上能力入口（独立抽屉面板，不再跳设置页） */
+/** 左上能力入口（独立抽屉面板，不再跳设置页）。MCP 服务器 0.2.29 起移回设置页（用户拍板）。 */
 const PANEL_BUTTONS: Array<{ id: SidebarPanelId; label: string; Icon: typeof Bot }> = [
   { id: 'im', label: 'IM 机器人', Icon: Bot },
   { id: 'dws', label: '钉钉工作台', Icon: Briefcase },
   { id: 'skills', label: '技能', Icon: Zap },
-  { id: 'mcp', label: 'MCP 服务器', Icon: Puzzle },
   { id: 'knowledge', label: '知识库', Icon: BookOpen },
 ];
 
