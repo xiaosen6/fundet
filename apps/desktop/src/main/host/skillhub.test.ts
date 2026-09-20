@@ -17,11 +17,7 @@ import {
   installSkillhubSkill,
   listInstalledSkillhub,
   setSkillhubDeps,
-  isAllowedIconUrl,
-  sniffImageType,
-  fetchSkillhubIcon,
 } from './skillhub.ts';
-import { skillhubIconProxyUrl } from '../../shared/skillhub.ts';
 import { validateSkillMarkdown } from './skill-frontmatter.ts';
 
 const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__');
@@ -161,68 +157,4 @@ test('validateSkillMarkdown 冒烟：与本地导入同规则的零依赖校验�
   assert.equal(name, 'demo-skill');
   assert.equal(description, '演示技能，用于安装管线测试');
   assert.throws(() => validateSkillMarkdown('no frontmatter', 'x'), /name|description/);
-});
-
-/* ---------------- 图标代理 ---------------- */
-
-test('skillhubIconProxyUrl：https 改写 / http 与垃圾输入回落 null', () => {
-  assert.equal(
-    skillhubIconProxyUrl('https://cloudcache.tencent-cloud.com/a/b.png'),
-    'skillhub-icon://cloudcache.tencent-cloud.com/a/b.png',
-  );
-  assert.equal(skillhubIconProxyUrl('http://cloudcache.tencent-cloud.com/a.png'), null);
-  assert.equal(skillhubIconProxyUrl('not a url'), null);
-  assert.equal(skillhubIconProxyUrl(null), null);
-  assert.equal(skillhubIconProxyUrl(undefined), null);
-});
-
-test('isAllowedIconUrl：白名单域（腾讯系 + skillhub.cn），其它域/非 https 拒绝', () => {
-  assert.ok(isAllowedIconUrl('https://cloudcache.tencent-cloud.com/x.png'));
-  assert.ok(isAllowedIconUrl('https://skillhub-1388575217.cos.accelerate.myqcloud.com/x.png'));
-  assert.ok(isAllowedIconUrl('https://skillhub.cn/x.png'));
-  assert.equal(isAllowedIconUrl('https://evil.com/x.png'), false);
-  assert.equal(isAllowedIconUrl('https://evil.myqcloud.com.evil.com/x.png'), false);
-  assert.equal(isAllowedIconUrl('http://skillhub.cn/x.png'), false);
-});
-
-test('sniffImageType：魔数判型（png/jpeg/svg），不认识返回 null', () => {
-  assert.equal(sniffImageType(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'image/png');
-  assert.equal(sniffImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), 'image/jpeg');
-  assert.equal(sniffImageType(Buffer.from('<svg xmlns="..."></svg>')), 'image/svg+xml');
-  assert.equal(sniffImageType(Buffer.from('hello world')), null);
-});
-
-test('fetchSkillhubIcon：下载→落缓存→二次命中不再联网；白名单外直拒', async () => {
-  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('fake-png-body')]);
-  const iconUrl = 'https://skillhub-1388575217.cos.accelerate.myqcloud.com/skill-icons/x.png';
-  const cacheDir = path.join(root, 'icons');
-  let fetches = 0;
-  setSkillhubDeps({
-    fetchIcon: async (u: string) => {
-      fetches++;
-      return u === iconUrl ? { contentType: 'image/png', bytes: png } : null;
-    },
-  });
-  const first = await fetchSkillhubIcon(iconUrl, cacheDir);
-  assert.ok(first && first.equals(png));
-  assert.equal(fetches, 1);
-  assert.ok(fs.readdirSync(cacheDir).length === 1, '缓存落盘');
-  // 断网（fetchIcon 直接抛）仍能命中缓存
-  setSkillhubDeps({
-    fetchIcon: async () => {
-      throw new Error('offline');
-    },
-  });
-  const second = await fetchSkillhubIcon(iconUrl, cacheDir);
-  assert.ok(second && second.equals(png), '缓存命中不联网');
-  // 白名单外：不触发任何网络调用
-  fetches = 0;
-  setSkillhubDeps({
-    fetchIcon: async () => {
-      fetches++;
-      return { contentType: 'image/png', bytes: png };
-    },
-  });
-  assert.equal(await fetchSkillhubIcon('https://evil.com/x.png', cacheDir), null);
-  assert.equal(fetches, 0);
 });

@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
-  Zap,
 } from 'lucide-react';
 import type { SkillView } from '../../../../shared/fundet-api.js';
 import type {
@@ -27,7 +26,6 @@ import type {
   SkillhubSort,
   SkillhubUpdateView,
 } from '../../../../shared/skillhub.js';
-import { skillhubIconProxyUrl } from '../../../../shared/skillhub.js';
 import { cn } from '../../lib/cn';
 import { getDefaultWorkDir } from '../../lib/defaults';
 
@@ -49,34 +47,6 @@ const SORTS: Array<{ id: SkillhubSort; label: string }> = [
 ];
 
 /* ---------------- 发现（SkillHub 集市） ---------------- */
-
-function SkillIcon({ url, name, size = 44 }: { url: string | null; name: string; size?: number }): React.JSX.Element {
-  const [broken, setBroken] = useState(false);
-  // 远程图标经主进程代理协议（白名单 CDN + 磁盘缓存）；CSP 不放行 https 直连
-  const src = skillhubIconProxyUrl(url);
-  const shape = size >= 56 ? 'rounded-2xl' : 'rounded-xl';
-  if (!src || broken) {
-    return (
-      <span
-        style={{ height: size, width: size }}
-        className={`flex shrink-0 items-center justify-center bg-chip text-secondary ring-1 ring-white/10 ${shape}`}
-      >
-        <Zap size={Math.round(size * 0.42)} strokeWidth={2} />
-      </span>
-    );
-  }
-  return (
-    <img
-      src={src}
-      alt={name}
-      loading="lazy"
-      decoding="async"
-      onError={() => setBroken(true)}
-      style={{ height: size, width: size }}
-      className={`shrink-0 border border-board object-cover ring-1 ring-white/10 ${shape}`}
-    />
-  );
-}
 
 function auditTone(status: string): string {
   if (/benign|pass|safe/i.test(status)) return 'text-success';
@@ -253,8 +223,7 @@ function DiscoverSkills({
               >
                 <button type="button" className="min-w-0 flex-1 text-left" aria-expanded={open} onClick={() => void expand(s.slug)}>
                   <div className="flex items-center gap-2.5">
-                    <SkillIcon url={s.iconUrl} name={s.name} />
-                    <span className="min-w-0 flex-1 truncate text-13 font-medium text-primary" title={s.name}>
+                    <span className="min-w-0 flex-1 truncate text-14 font-medium text-primary" title={s.name}>
                       {s.name}
                     </span>
                     <ChevronDown
