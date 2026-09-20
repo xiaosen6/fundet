@@ -97,6 +97,11 @@ export function ChatInput({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
+  // 程序化改值（草稿恢复/引用插入/发送后清空）也同步高度；挂载时跑一次定初值
+  useEffect(() => {
+    autoResize();
+  }, [value]);
+
   const canSend =
     (value.trim().length > 0 || attachments.length > 0 || pastedTexts.length > 0) &&
     !disabled &&
@@ -408,7 +413,9 @@ export function ChatInput({
             }
           }}
           className={cn(
-            'max-h-[200px] min-h-[24px] w-full flex-1 resize-none bg-transparent text-14 text-primary',
+            // 不用 flex-1：basis-0 会让 flex 算法无视 autoResize 写入的显式高度
+            // （曾致长文本不出增高、只出滚动条）；高度由 autoResize 内容驱动，200px 封顶
+            'max-h-[200px] min-h-[24px] w-full resize-none bg-transparent text-14 text-primary',
             'placeholder:text-placeholder outline-none focus:outline-none focus-visible:outline-none',
           )}
         />
