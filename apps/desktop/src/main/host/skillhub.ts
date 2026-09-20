@@ -163,6 +163,8 @@ export interface SkillhubDeps {
   fetchFile: (slug: string, filePath: string) => Promise<Buffer>;
   /** 落盘根目录（默认 ~/.agents/skills；单测注入临时目录） */
   skillsRoot: () => string;
+  /** 下载图标（协议代理用；返回 null = 非法/超限/非图片，单测注入假实现） */
+  fetchIcon: (url: string) => Promise<{ contentType: string; bytes: Buffer } | null>;
 }
 
 async function realFetchJson(apiPath: string): Promise<string> {
@@ -182,10 +184,23 @@ async function realFetchFile(slug: string, filePath: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+const ICON_MAX_BYTES = 1024 * 1024;
+
+async function realFetchIcon(url: string): Promise<{ contentType: string; bytes: Buffer } | null> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!res.ok) return null;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.startsWith('image/')) return null;
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > ICON_MAX_BYTES) return null;
+  return { contentType, bytes };
+}
+
 function defaultDeps(): SkillhubDeps {
   return {
     fetchJson: realFetchJson,
     fetchFile: realFetchFile,
+    fetchIcon: realFetchIcon,
     skillsRoot: () => {
       const { app } = requireElectron('electron') as typeof import('electron');
       const home = (() => {
@@ -377,4 +392,72 @@ export async function checkSkillhubUpdates(): Promise<SkillhubUpdateView[]> {
     }),
   );
   return results.filter((r): r is SkillhubUpdateView => r !== null);
+}
+
+/* ---------------- 图标代理（skillhub-icon:// 协议的后端） ---------------- */
+
+/** 实测图标 CDN 域（真机抓包只见腾讯系两域；新域出现时在此追加，未列域回落 Zap） */
+const ICON_HOST_SUFFIXES = ['cloudcache.tencent-cloud.com', '.myqcloud.com', 'skillhub.cn'];
+
+/** 主进程侧再校验一遍（渲染层给的 url 不可信）：仅 https + 白名单域 */
+export function isAllowedIconUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' || !u.host) return false;
+    return ICON_HOST_SUFFIXES.some((s) => (s.startsWith('.') ? u.host.endsWith(s) : u.host === s));
+  } catch {
+    return false;
+  }
+}
+
+/** 魔数嗅探（缓存命中时没有响应头，Content-Type 从字节判） */
+export function sniffImageType(buf: Buffer): string | null {
+  if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return 'image/png';
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf.length >= 6 && buf.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif';
+  if (
+    buf.length >= 12 &&
+    buf.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    buf.subarray(8, 12).toString('latin1') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buf.subarray(0, 256).toString('utf-8').trimStart().startsWith('<')) return 'image/svg+xml';
+  return null;
+}
+
+const iconInflight = new Map<string, Promise<Buffer | null>>();
+
+/** 图标取回：磁盘缓存（sha256(url) 命名）→ 命中直读；未命中经 deps.fetchIcon 下载，
+ *  校验（白名单域/≤1MB/魔数可辨）后落缓存。并发去重。失败 null（渲染层回退 Zap）。 */
+export async function fetchSkillhubIcon(url: string, cacheDir: string): Promise<Buffer | null> {
+  if (!isAllowedIconUrl(url)) return null;
+  const cacheFile = path.join(cacheDir, `${createHash('sha256').update(url).digest('hex')}.bin`);
+  try {
+    const cached = fs.readFileSync(cacheFile);
+    if (sniffImageType(cached)) return cached;
+  } catch {
+    /* 未命中，走下载 */
+  }
+  const running = iconInflight.get(url);
+  if (running) return running;
+  const p = (async (): Promise<Buffer | null> => {
+    const r = await deps.fetchIcon(url);
+    if (!r || !sniffImageType(r.bytes)) return null;
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      fs.writeFileSync(cacheFile, r.bytes);
+    } catch {
+      /* 缓存写失败不影响本次返回 */
+    }
+    return r.bytes;
+  })();
+  iconInflight.set(url, p);
+  try {
+    return await p;
+  } finally {
+    iconInflight.delete(url);
+  }
 }

@@ -27,6 +27,7 @@ import type {
   SkillhubSort,
   SkillhubUpdateView,
 } from '../../../../shared/skillhub.js';
+import { skillhubIconProxyUrl } from '../../../../shared/skillhub.js';
 import { cn } from '../../lib/cn';
 import { getDefaultWorkDir } from '../../lib/defaults';
 
@@ -49,21 +50,30 @@ const SORTS: Array<{ id: SkillhubSort; label: string }> = [
 
 /* ---------------- 发现（SkillHub 集市） ---------------- */
 
-function SkillIcon({ url, name }: { url: string | null; name: string }): React.JSX.Element {
+function SkillIcon({ url, name, size = 44 }: { url: string | null; name: string; size?: number }): React.JSX.Element {
   const [broken, setBroken] = useState(false);
-  if (!url || broken) {
+  // 远程图标经主进程代理协议（白名单 CDN + 磁盘缓存）；CSP 不放行 https 直连
+  const src = skillhubIconProxyUrl(url);
+  const shape = size >= 56 ? 'rounded-2xl' : 'rounded-xl';
+  if (!src || broken) {
     return (
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-chip text-secondary">
-        <Zap size={14} strokeWidth={2} />
+      <span
+        style={{ height: size, width: size }}
+        className={`flex shrink-0 items-center justify-center bg-chip text-secondary ring-1 ring-white/10 ${shape}`}
+      >
+        <Zap size={Math.round(size * 0.42)} strokeWidth={2} />
       </span>
     );
   }
   return (
     <img
-      src={url}
-      alt=""
+      src={src}
+      alt={name}
+      loading="lazy"
+      decoding="async"
       onError={() => setBroken(true)}
-      className="h-8 w-8 shrink-0 rounded-full border border-board object-cover"
+      style={{ height: size, width: size }}
+      className={`shrink-0 border border-board object-cover ring-1 ring-white/10 ${shape}`}
     />
   );
 }

@@ -70,3 +70,19 @@ export interface SkillhubInstallResult {
   dir: string;
   version: string | null;
 }
+
+/**
+ * 图标走主进程代理协议：https://host/path → skillhub-icon://host/path。
+ * CSP img-src 不放行 https:（聊天远程图管控不变），主进程按域名白名单下载+
+ * 磁盘缓存后经该协议回供。非 https / 解析失败返回 null（渲染层回退 Zap 徽标）。
+ */
+export function skillhubIconProxyUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || !u.host) return null;
+    return `skillhub-icon://${u.host}${u.pathname}`;
+  } catch {
+    return null;
+  }
+}

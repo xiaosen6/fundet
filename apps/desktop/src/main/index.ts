@@ -19,9 +19,14 @@ import {
   registerFileProtocolHandler,
   registerFileProtocolPrivileges,
 } from './file-protocol.js';
+import {
+  registerSkillhubIconPrivileges,
+  registerSkillhubIconProtocolHandler,
+} from './skillhub-icon-protocol.js';
 import { brand } from '../shared/brand.js';
 
 registerFileProtocolPrivileges();
+registerSkillhubIconPrivileges();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -239,6 +244,7 @@ function bootstrap(): void {
   registerDwsWidgetsIpc();
   startDwsWidgets();
   registerFileProtocolHandler();
+  registerSkillhubIconProtocolHandler();
   void startSavedImBots();
   // 4) 应用更新（仅打包版启用，Windows 自动下载、macOS 手动引导）
   initUpdater();
