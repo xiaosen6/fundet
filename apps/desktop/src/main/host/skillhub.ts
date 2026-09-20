@@ -84,7 +84,9 @@ export function parseSkillhubSearch(raw: string): SkillhubSkillView[] {
         version: str(r.version),
       } satisfies SkillhubSkillView;
     })
-    .filter((s) => s.slug && s.name);
+    .filter((s) => s.slug && s.name)
+    // 服务端搜索（尤其中文词）会吐重复 slug，渲染层 key=slug 会撞——保序去重
+    .filter((s, i, arr) => arr.findIndex((x) => x.slug === s.slug) === i);
 }
 
 export function parseSkillhubDetail(raw: string): SkillhubDetailView | null {
@@ -227,7 +229,10 @@ function searchQuery(params: {
   limit?: number;
 }): string {
   const q = new URLSearchParams();
-  q.set('keyword', params.keyword?.trim() ?? '');
+  // 服务端真参数是 q（实测 keyword 被静默忽略、回落默认榜，2026-09-20）；
+  // 空词不发 q（空 q 与无 q 同为默认榜）。无匹配时服务端也回落默认榜，非空结果。
+  const kw = params.keyword?.trim() ?? '';
+  if (kw) q.set('q', kw);
   q.set('sort', params.sort ?? 'downloads');
   if (params.category && params.category !== 'all') q.set('category', params.category);
   q.set('limit', String(Math.min(Math.max(params.limit ?? 30, 1), 50)));

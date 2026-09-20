@@ -16,6 +16,7 @@ import {
   validateManifest,
   installSkillhubSkill,
   listInstalledSkillhub,
+  listSkillhubSkills,
   setSkillhubDeps,
 } from './skillhub.ts';
 import { validateSkillMarkdown } from './skill-frontmatter.ts';
@@ -38,6 +39,33 @@ test('parseSkillhubSearch：真机 fixture，中英双语/计数/标签归一化
 test('parseSkillhubSearch：垃圾输入返回空', () => {
   assert.deepEqual(parseSkillhubSearch('not json'), []);
   assert.deepEqual(parseSkillhubSearch('{"results": 1}'), []);
+});
+
+test('parseSkillhubSearch：服务端重复 slug 保序去重（中文搜索实测会吐重复）', () => {
+  const raw = JSON.stringify({
+    results: [
+      { slug: 'video-gen', displayName: 'V', description: 'a' },
+      { slug: 'other', displayName: 'O', description: 'b' },
+      { slug: 'video-gen', displayName: 'V2', description: 'c' },
+    ],
+  });
+  const list = parseSkillhubSearch(raw);
+  assert.deepEqual(list.map((s) => s.slug), ['video-gen', 'other']);
+});
+
+test('listSkillhubSkills：搜索词走服务端真参数 q（keyword 被服务端静默忽略）', async () => {
+  let captured = '';
+  setSkillhubDeps({
+    fetchJson: async (p: string) => {
+      captured = p;
+      return JSON.stringify({ results: [] });
+    },
+  });
+  await listSkillhubSkills({ keyword: 'pdf' });
+  assert.ok(captured.includes('q=pdf'), `应带 q=pdf，实际 ${captured}`);
+  assert.ok(!captured.includes('keyword='), '不得再发 keyword');
+  await listSkillhubSkills({ keyword: '   ' });
+  assert.ok(!captured.includes('q='), '空词不发 q');
 });
 
 test('parseSkillhubDetail：审计报告/版本/作者归一化', () => {
