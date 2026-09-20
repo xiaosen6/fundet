@@ -27,7 +27,7 @@ import { sessions } from '../db/schema.js';
 import { copyMessagesUntil, deleteMessagesInRange, insertMessage, listMessages } from '../db/messages.js';
 import { searchSessions } from '../db/session-search.js';
 import {
-  createSnapshot,
+  enqueueSnapshot,
   deleteCheckpoints,
   isCheckpointAvailable,
   listCheckpoints,
@@ -427,16 +427,13 @@ export function registerIpcHandlers(): void {
     async (_e, input: SessionSendInput): Promise<SendResult> => {
       const session = await ensureSession(input);
       const attachments = input.attachments ?? [];
-      // 每轮发送前快照工作目录（回滚锚点）。失败只记日志，绝不阻断发送。
+      // 每轮发送前快照工作目录（回滚锚点）。后台串行、零等待——曾几何时这里是
+      // await，workDir 大时 git add 全量扫描把首条消息卡 20s+（0.2.28 修复）。
       if (input.retry !== true && isCheckpointAvailable()) {
         const workDir = input.create?.workDir
           ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
         if (workDir) {
-          try {
-            await createSnapshot(session.id, workDir, input.text);
-          } catch (err) {
-            console.warn('[fundet:checkpoint] 快照失败（不阻断发送）', err);
-          }
+          enqueueSnapshot(session.id, workDir, input.text);
         }
       }
       // 自动重试重发：user 消息与标题已落库，跳过重复插入

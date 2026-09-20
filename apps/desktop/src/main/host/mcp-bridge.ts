@@ -48,6 +48,9 @@ import { startBrowserMcpServer } from '../browser/mcp-http.js';
 
 /** 单次请求兜底超时（bridge 侧另有 startup/request 预算，这只是防永久挂起） */
 const PROXY_REQUEST_TIMEOUT_MS = 600_000;
+/** 预热 initialize 的限时：npx 冷启动给足余量，但 zombie server 不许拖死会话装配
+    （0.2.28 前预热共用 600s 请求超时，一个连不上的 server 可无限期卡住首条消息） */
+const PROXY_INIT_TIMEOUT_MS = 15_000;
 /** http body 上限：MCP 工具结果可能带大文本，给到 32MB */
 const PROXY_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
@@ -128,6 +131,7 @@ class StdioMcpHttpProxy {
 
     // 预热：host 侧先跑 initialize 握手，npx 冷启动的等待发生在这里（pi 还没 spawn），
     // bridge 扩展启动时的 initialize 直接回这份缓存，不占它的 10s 启动预算。
+    // 限时 PROXY_INIT_TIMEOUT_MS——server 起不来就当次跳过，不许卡死会话装配。
     const initMsg = await this.forward({
       jsonrpc: '2.0',
       id: this.allocHostId(),
@@ -137,7 +141,7 @@ class StdioMcpHttpProxy {
         capabilities: {},
         clientInfo: { name: 'fundet-mcp-proxy', version: '1.0.0' },
       },
-    });
+    }, PROXY_INIT_TIMEOUT_MS);
     const initErr = (initMsg as { error?: { message?: string } }).error;
     if (initErr) throw new Error(`MCP server "${this.config.name}" initialize failed: ${initErr.message ?? 'unknown'}`);
     this.initializeResult = (initMsg as { result?: unknown }).result ?? {};
@@ -153,7 +157,10 @@ class StdioMcpHttpProxy {
   }
 
   /** 转发一条带 id 的请求，按 id 等响应（超时兜底 reject） */
-  private forward(message: { id: number } & Record<string, unknown>): Promise<unknown> {
+  private forward(
+    message: { id: number } & Record<string, unknown>,
+    timeoutMs = PROXY_REQUEST_TIMEOUT_MS,
+  ): Promise<unknown> {
     if (!this.child?.stdin?.writable) {
       return Promise.reject(new Error(`MCP server "${this.config.name}" 不可用`));
     }
@@ -161,7 +168,7 @@ class StdioMcpHttpProxy {
       const timer = setTimeout(() => {
         this.pending.delete(message.id);
         reject(new Error(`MCP server "${this.config.name}" 请求超时`));
-      }, PROXY_REQUEST_TIMEOUT_MS);
+      }, timeoutMs);
       this.pending.set(message.id, { resolve, reject, timer });
       this.child!.stdin!.write(JSON.stringify(message) + '\n');
     });
@@ -336,127 +343,144 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
     // "MCP bridge prep failed, continuing without cindy tools" 的容错口径一致。
     const disposers: Array<() => void> = [];
 
-    try {
-      const search = await startSearchMcpServer(token, logger.child('search-mcp'), handleWebSearch);
-      disposers.push(search.dispose);
-      servers.push({ name: SEARCH_MCP_SERVER_NAME, url: search.url });
-    } catch (err) {
-      logger.error('内置搜索 MCP 启动失败', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    // 0.2.28：全部并行拉起（曾按块串行 await——blender 连不上重试 5s、
+    // computer 57 工具、浏览器 401 逐个排队，会话装配 6.5s；并行后总耗时
+    // ≈ 最慢单个 server）。各块只写各自的 servers/disposers 条目，无共享可变竞态。
+    const tasks: Array<() => Promise<void>> = [];
+
+    tasks.push(async () => {
+      try {
+        const search = await startSearchMcpServer(token, logger.child('search-mcp'), handleWebSearch);
+        disposers.push(search.dispose);
+        servers.push({ name: SEARCH_MCP_SERVER_NAME, url: search.url });
+      } catch (err) {
+        logger.error('内置搜索 MCP 启动失败', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
 
     // 浏览器自动化（设置 → 通用，默认关）：runtime 是进程级单例，这里只挂
     // 每会话一份 MCP server。审批不进白名单——跟会话权限三档走（ask 每次问）。
-    try {
-      if (getBoolSetting(BROWSER_ENABLED_SETTING, false)) {
-        const runtime = await ensureBrowserRuntime(logger);
-        if (runtime) {
-          const browser = await startBrowserMcpServer(token, logger.child('browser-mcp'), runtime);
-          disposers.push(browser.dispose);
-          servers.push({
-            name: BROWSER_MCP_SERVER_NAME,
-            url: browser.url,
-            remote: {
-              headerEnvVars: {},
-              // navigate/act 可能跑几十秒，给满 bridge 硬边界
-              startupTimeoutMs: 30_000,
-              requestTimeoutMs: 600_000,
-            },
-          });
+    tasks.push(async () => {
+      try {
+        if (getBoolSetting(BROWSER_ENABLED_SETTING, false)) {
+          const runtime = await ensureBrowserRuntime(logger);
+          if (runtime) {
+            const browser = await startBrowserMcpServer(token, logger.child('browser-mcp'), runtime);
+            disposers.push(browser.dispose);
+            servers.push({
+              name: BROWSER_MCP_SERVER_NAME,
+              url: browser.url,
+              remote: {
+                headerEnvVars: {},
+                // navigate/act 可能跑几十秒，给满 bridge 硬边界
+                startupTimeoutMs: 30_000,
+                requestTimeoutMs: 600_000,
+              },
+            });
+          }
         }
+      } catch (err) {
+        logger.error('浏览器 MCP 启动失败（跳过，其余 server 照常）', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch (err) {
-      logger.error('浏览器 MCP 启动失败（跳过，其余 server 照常）', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    });
 
     // 电脑操作（设置 → 通用，默认关）：cua-driver 是外部 Rust 二进制（stdio
     // MCP server，子命令 mcp），直接经 StdioMcpHttpProxy 挂载——截屏/输入
     // 能力全在 driver 内。审批不进白名单，跟会话权限三档走。
-    try {
-      if (getBoolSetting(COMPUTER_ENABLED_SETTING, false)) {
-        const command = resolveCuaDriverCommand();
-        if (!command) {
-          logger.warn('电脑操作已开启但 cua-driver 二进制缺失（tools/cua-driver/update.mjs 下载 / 重装应用）');
-        } else {
-          const proxy = new StdioMcpHttpProxy(
-            {
-              id: 'builtin-computer',
-              name: COMPUTER_MCP_SERVER_NAME,
-              type: 'stdio',
-              enabled: true,
-              command,
-              args: ['mcp'],
-              url: null,
-              headers: {},
-              createdAt: 0,
-            },
-            token,
-            logger.child(`mcp:${COMPUTER_MCP_SERVER_NAME}`),
-          );
-          const url = await proxy.start();
-          disposers.push(() => proxy.dispose());
-          servers.push({ name: COMPUTER_MCP_SERVER_NAME, url });
-        }
-      }
-    } catch (err) {
-      logger.error('电脑操作 MCP 启动失败（跳过，其余 server 照常）', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    // 知识库（会话绑定了才注入）：knowledge_search 返回带来源编号的原文片段，
-    // 审批不进白名单——跟会话权限三档走。
-    try {
-      const kbIds = ctx?.sessionId ? getSessionKnowledgeKbs(ctx.sessionId) : [];
-      if (kbIds.length > 0) {
-        const kbIdsSnapshot = [...kbIds];
-        const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), async (args) =>
-          handleKnowledgeSearch(kbIdsSnapshot, args),
-        );
-        disposers.push(knowledge.dispose);
-        servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });
-      }
-    } catch (err) {
-      logger.error('知识库 MCP 启动失败（跳过，其余 server 照常）', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    for (const config of configs) {
+    tasks.push(async () => {
       try {
-        if (config.type === 'http') {
-          const headerEnvVars: Record<string, string> = {};
-          for (const [headerName, value] of Object.entries(config.headers)) {
-            const envName = headerEnvVarName(config.name, headerName);
-            headerEnvVars[headerName] = envName;
-            mcpEnv[envName] = value;
+        if (getBoolSetting(COMPUTER_ENABLED_SETTING, false)) {
+          const command = resolveCuaDriverCommand();
+          if (!command) {
+            logger.warn('电脑操作已开启但 cua-driver 二进制缺失（tools/cua-driver/update.mjs 下载 / 重装应用）');
+          } else {
+            const proxy = new StdioMcpHttpProxy(
+              {
+                id: 'builtin-computer',
+                name: COMPUTER_MCP_SERVER_NAME,
+                type: 'stdio',
+                enabled: true,
+                command,
+                args: ['mcp'],
+                url: null,
+                headers: {},
+                createdAt: 0,
+              },
+              token,
+              logger.child(`mcp:${COMPUTER_MCP_SERVER_NAME}`),
+            );
+            const url = await proxy.start();
+            disposers.push(() => proxy.dispose());
+            servers.push({ name: COMPUTER_MCP_SERVER_NAME, url });
           }
-          servers.push({
-            name: config.name,
-            url: config.url!,
-            remote: {
-              headerEnvVars,
-              // 须在 bridge 的硬边界内（startup < 30s / request <= 600s，超出会被 clamp）
-              startupTimeoutMs: 10_000,
-              requestTimeoutMs: 600_000,
-            },
-          });
-        } else {
-          const proxy = new StdioMcpHttpProxy(config, token, logger.child(`mcp:${config.name}`));
-          const url = await proxy.start();
-          disposers.push(() => proxy.dispose());
-          servers.push({ name: config.name, url });
         }
       } catch (err) {
-        logger.error('MCP server 装配失败（跳过该 server）', {
-          name: config.name,
+        logger.error('电脑操作 MCP 启动失败（跳过，其余 server 照常）', {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    });
+
+    // 知识库（会话绑定了才注入）：knowledge_search 返回带来源编号的原文片段，
+    // 审批不进白名单——跟会话权限三档走。
+    tasks.push(async () => {
+      try {
+        const kbIds = ctx?.sessionId ? getSessionKnowledgeKbs(ctx.sessionId) : [];
+        if (kbIds.length > 0) {
+          const kbIdsSnapshot = [...kbIds];
+          const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), async (args) =>
+            handleKnowledgeSearch(kbIdsSnapshot, args),
+          );
+          disposers.push(knowledge.dispose);
+          servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });
+        }
+      } catch (err) {
+        logger.error('知识库 MCP 启动失败（跳过，其余 server 照常）', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+
+    for (const config of configs) {
+      tasks.push(async () => {
+        try {
+          if (config.type === 'http') {
+            const headerEnvVars: Record<string, string> = {};
+            for (const [headerName, value] of Object.entries(config.headers)) {
+              const envName = headerEnvVarName(config.name, headerName);
+              headerEnvVars[headerName] = envName;
+              mcpEnv[envName] = value;
+            }
+            servers.push({
+              name: config.name,
+              url: config.url!,
+              remote: {
+                headerEnvVars,
+                // 须在 bridge 的硬边界内（startup < 30s / request <= 600s，超出会被 clamp）
+                startupTimeoutMs: 10_000,
+                requestTimeoutMs: 600_000,
+              },
+            });
+          } else {
+            const proxy = new StdioMcpHttpProxy(config, token, logger.child(`mcp:${config.name}`));
+            const url = await proxy.start();
+            disposers.push(() => proxy.dispose());
+            servers.push({ name: config.name, url });
+          }
+        } catch (err) {
+          logger.error('MCP server 装配失败（跳过该 server）', {
+            name: config.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
     }
+
+    await Promise.all(tasks.map((t) => t()));
 
     if (servers.length === 0) {
       for (const dispose of disposers) dispose();

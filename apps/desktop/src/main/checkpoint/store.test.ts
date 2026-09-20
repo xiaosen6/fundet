@@ -90,3 +90,48 @@ test('删会话清理快照仓', { skip: !gitOk }, async () => {
   deleteCheckpoints(sid);
   assert.ok(!fs.existsSync(path.join(root, `${sid}.git`)));
 });
+
+test('workDir=用户主目录时跳过快照（不建仓不扫描）', { skip: !gitOk }, async () => {
+  const { createSnapshot } = await import('./store.ts');
+  const sid = 'aaaa1111-2222-3333-4444-555555555555';
+  const sha = await createSnapshot(sid, os.homedir(), '主目录轮');
+  assert.equal(sha, null);
+  assert.ok(!fs.existsSync(path.join(root, `${sid}.git`)), '不应创建快照仓');
+});
+
+test('陈旧 index.lock 被自愈清除，快照恢复可用', { skip: !gitOk }, async () => {
+  const { createSnapshot } = await import('./store.ts');
+  const sid = 'bbbb1111-2222-3333-4444-555555555555';
+  fs.writeFileSync(path.join(work, 'lock-test.txt'), 'v1\n');
+  const sha1 = await createSnapshot(sid, work, '第一轮');
+  assert.ok(sha1);
+  // 伪造上次超时被杀残留的陈旧锁（mtime 拨回 1 分钟前）
+  const bare = path.join(root, `${sid}.git`);
+  const lock = path.join(bare, 'index.lock');
+  fs.writeFileSync(lock, '');
+  const past = new Date(Date.now() - 60_000);
+  fs.utimesSync(lock, past, past);
+  fs.writeFileSync(path.join(work, 'lock-test.txt'), 'v2\n');
+  const sha2 = await createSnapshot(sid, work, '锁自愈后');
+  assert.ok(sha2 && sha2 !== sha1, '锁被清后快照应成功');
+});
+
+test('enqueueSnapshot 后台串行：立即返回、排空后 HEAD 收敛到最终态', { skip: !gitOk }, async () => {
+  const { enqueueSnapshot, listCheckpoints, snapshotChainsForTest } = await import('./store.ts');
+  const sid = 'cccc1111-2222-3333-4444-555555555555';
+  fs.writeFileSync(path.join(work, 'queue.txt'), 'v1\n');
+  const t0 = Date.now();
+  enqueueSnapshot(sid, work, '第一轮');
+  fs.writeFileSync(path.join(work, 'queue.txt'), 'v2\n');
+  enqueueSnapshot(sid, work, '第二轮');
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < 500, `enqueue 应立即返回（${elapsed}ms）`);
+  await snapshotChainsForTest(sid);
+  const list = await listCheckpoints(sid);
+  // 竞态双解均合法：快照1晚于写 v2 扫描 → 只落 1 份；否则 2 份。但无论哪种，
+  // HEAD 的 queue.txt 必为最终态 v2（发送路径的真实承诺：锚点≈发送时点）。
+  assert.ok(list.length >= 1 && list.length <= 2, `落了 ${list.length} 份`);
+  const bare = path.join(root, `${sid}.git`);
+  const content = execFileSync('git', ['--git-dir', bare, 'show', 'HEAD:queue.txt'], { encoding: 'utf8' });
+  assert.equal(content, 'v2\n');
+});

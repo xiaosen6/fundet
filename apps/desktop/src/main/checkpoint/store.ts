@@ -14,6 +14,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -26,13 +27,26 @@ const LIST_LIMIT = 20;
 /** 单次快照的变更文件数上限（防误扫巨型目录拖死发送） */
 const MAX_CHANGED_FILES = 5000;
 
-/** 快照排除清单（写进 bare 仓 info/exclude） */
+/** 快照排除清单（写进 bare 仓 info/exclude）。
+    0.2.28 起补系统/缓存巨型目录——此前只有 node_modules，workDir 在 home 时
+    AppData 几十万文件全量扫描撞 20s 超时（首条消息慢的最大头）。 */
 const EXCLUDES = [
   'node_modules/',
   '.DS_Store',
   'Thumbs.db',
   '.fundet-tmp/',
+  'AppData/',
+  'Library/',
+  '.cache/',
+  '.gradle/',
+  '.venv/',
+  'venv/',
+  '__pycache__/',
 ];
+
+/** git 超时被 SIGTERM 后残留的 index.lock 视为陈旧的最短年龄（快照已按会话串行，
+    到达新快照时还存在的锁只可能是上次被杀的遗物） */
+const STALE_LOCK_AGE_MS = 15_000;
 
 export interface CheckpointInfo {
   sha: string;
@@ -129,8 +143,23 @@ function sanitizeLabel(text: string): string {
   return oneLine.slice(0, 60) || '（无文本）';
 }
 
+/** 清掉上次超时被杀的 git 残留 index.lock（否则该会话快照永久全灭） */
+function clearStaleIndexLock(repoDir: string): void {
+  const lock = path.join(repoDir, 'index.lock');
+  try {
+    const st = fs.statSync(lock);
+    if (Date.now() - st.mtimeMs > STALE_LOCK_AGE_MS) {
+      fs.rmSync(lock);
+      console.warn('[fundet:checkpoint] 清除陈旧 index.lock（上次快照超时残留）');
+    }
+  } catch {
+    /* 无锁文件，正常路径 */
+  }
+}
+
 /**
  * 创建快照。无变更/失败返回 null（调用方忽略）。label 建议传触发消息文本。
+ * workDir 是用户主目录时跳过：全量扫描代价不可接受，回滚整个 home 也不现实。
  */
 export async function createSnapshot(
   sessionId: string,
@@ -138,8 +167,13 @@ export async function createSnapshot(
   label: string,
 ): Promise<string | null> {
   if (!isCheckpointAvailable()) return null;
+  if (path.resolve(workDir) === homedir()) {
+    console.log('[fundet:checkpoint] workDir 为主目录，跳过快照（请在会话里选择具体工作文件夹）');
+    return null;
+  }
   const started = Date.now();
   const dir = await ensureRepo(sessionId);
+  clearStaleIndexLock(dir);
   await run(dir, ['add', '-A', '--', '.'], workDir);
   // 无变更（--quiet exit 1 = 有 staged 变更；exit 0 = 无）
   let hasChanges = false;
@@ -221,6 +255,7 @@ export async function previewRewind(sessionId: string, sha: string): Promise<Rew
 /** 回滚到目标时点：先落 pre-rollback 快照（可反悔），再恢复+清理 */
 export async function rewindTo(sessionId: string, workDir: string, sha: string): Promise<RewindResult> {
   const dir = await ensureRepo(sessionId);
+  clearStaleIndexLock(dir);
   const preview = await previewRewind(sessionId, sha);
   const preRollbackSha = await createSnapshot(sessionId, workDir, '回滚前自动快照');
   if (preview.restore.length > 0) {
@@ -248,4 +283,37 @@ export function deleteCheckpoints(sessionId: string): void {
   } catch {
     /* 快照清理失败不阻断删会话 */
   }
+}
+
+/* ---------------- 发送路径的后台快照队列 ---------------- */
+
+/** 每会话一条串行链：同一 bare 仓上并发 git 会撞 index.lock */
+const snapshotChains = new Map<string, Promise<void>>();
+
+/**
+ * 后台快照（fire-and-forget）：立即返回，消息发送零等待。
+ * 0.2.28 前这里是 `await createSnapshot`——workDir 大时 git add 全量扫描
+ * 直接把首条消息卡 20s+（超时被 SIGTERM），"失败不阻断"实际只对失败成立、
+ * 对慢不成立。改为后台串行后：锚点仍在 turn 开始前后落，但不再挡路。
+ */
+export function enqueueSnapshot(sessionId: string, workDir: string, label: string): void {
+  const prev = snapshotChains.get(sessionId) ?? Promise.resolve();
+  const next = prev
+    .catch(() => {})
+    .then(() => createSnapshot(sessionId, workDir, label))
+    .then(
+      () => undefined,
+      (err) => {
+        console.warn('[fundet:checkpoint] 后台快照失败（不影响会话）', err);
+      },
+    );
+  snapshotChains.set(sessionId, next);
+  void next.finally(() => {
+    if (snapshotChains.get(sessionId) === next) snapshotChains.delete(sessionId);
+  });
+}
+
+/** 单测用：等待某会话的后台快照链排空 */
+export function snapshotChainsForTest(sessionId: string): Promise<void> {
+  return snapshotChains.get(sessionId) ?? Promise.resolve();
 }
