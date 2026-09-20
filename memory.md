@@ -323,6 +323,8 @@ Fundet/
 
 > **在途事项（2026-09-20，0.2.28 发）**：**无**——0.2.28 已发 GitHub Release（xiaosen6/fundet）：a8d9683（首条消息四联修）+ 2ff7909（组件失败可诊断化）+ 2 个 docs + 发版提交，三资产齐（12:28 批）、非 draft（gh api 复核）；安装包备份 `D:\Fundet-Setup-0.2.28-x64.exe`。**首条消息慢四联修**：①快照移出发送关键路径——`enqueueSnapshot` 后台串行队列（每会话一条链防同仓并发 git 撞 index.lock，fire-and-forget 零等待）；②workDir=主目录跳过快照 + EXCLUDES 补 AppData/Library/.cache/.gradle/.venv/venv/__pycache__；③陈旧 index.lock 自愈（>15s 清，救活曾被锁死的回滚）；④MCP 桥全并行拉起 + stdio 预热 initialize 限时 15s。实测 dev 冷首条 32.0s→11.7s（剩余=pi 启动 6.4s【打字期间完成】+模型首请求）。**组件失败态**：errOf 人话错误透传（dws error.message→stderr 尾行→退出码）；profile 失败分流（401/token/授权→提示重登；其余保登录态+旧数据+四卡角标等重试，不再误判未登录致整板消失）；角标可点重试。
 
+> **内网小模型（fundet-mini @vLLM 32768 ctx）在 Fundet 里 400 定位（2026-09-20 实证）**：直连 curl 一句话 53 token 正常；经 Fundet 发「你好」400「input ≥32768」。**本地代理解剖实发请求：140.7KB = system 22,043B（技能说明+指令）+ 66 个工具定义（8 核心 + 57「电脑操作」+ 1 搜索；浏览器开时更多）≈ 32.7k token——恰好 ≥ fundet-mini 的 32768 上限**；GLM 页脚同请求「32.7k tokens」交叉印证。**消减实测：关掉 设置→通用「电脑操作」+「浏览器自动化」两开关 → 同请求 8.5k tokens**（57 工具+浏览器定义占了 ~24k），fundet-mini 宽裕可用（剩 ~24k 对话空间）。用户配置本身无误（ctx 已正确填 32768）。对策排序：① 用 fundet-mini 时关这两个开关（运维小模型用不上截屏/浏览器）；② 服务端 vLLM 把 max-model-len 提到 ≥65536；③ blender 外部 MCP 建议删（连不上纯占工具位）。**复现方法论**：本地 loopback 代理（加 Bearer+记 body 解剖）+ 隔离种子库直插 providers 表（loopback baseUrl 免 safeStorage key）——providers 表无 enabled 列（id/name/api/base_url/models/created_at），插入别多写列。**产品待办（未做）**：选中模型 ctx 小于 harness 基线时 UI 预警/自动裁剪工具集——记待办。
+
 ---
 
 ## 7. 待办 / 已知债
