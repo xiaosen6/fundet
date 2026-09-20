@@ -82,6 +82,12 @@ import { COMPUTER_ENABLED_SETTING } from '../../shared/computer-settings.ts';
 import { disableCuaDriverTelemetry, resolveCuaDriverCommand } from '../computer/driver.ts';
 import { getBoolSetting, setBoolSetting } from '../db/settings.js';
 import { importSkillFile, listSkills, setSkillEnabled, uninstallSkill } from '../host/skills.js';
+import {
+  checkSkillhubUpdates,
+  getSkillhubDetail,
+  installSkillhubSkill,
+  listSkillhubSkills,
+} from '../host/skillhub.js';
 import { probeMcpServer } from '../host/mcp-bridge.js';
 import {
   createKnowledgeBase,
@@ -1088,6 +1094,25 @@ ${input.text}`;
   ipcMain.handle(FUNDET_INVOKE.SKILLS_SET_ENABLED, async (_e, skillDir: string, enabled: boolean) => {
     setSkillEnabled(skillDir, Boolean(enabled));
   });
+
+  // SkillHub 集市（skillhub.cn）：浏览/搜索带主进程 TTL 缓存；安装走校验管线
+  ipcMain.handle(
+    FUNDET_INVOKE.SKILLHUB_LIST,
+    async (_e, params: { keyword?: string; sort?: string; category?: string; limit?: number }) =>
+      listSkillhubSkills({
+        keyword: params?.keyword,
+        sort: (['downloads', 'trending', 'stars', 'score'] as const).includes(params?.sort as never)
+          ? (params!.sort as 'downloads')
+          : 'downloads',
+        category: params?.category,
+        limit: params?.limit,
+      }),
+  );
+  ipcMain.handle(FUNDET_INVOKE.SKILLHUB_DETAIL, async (_e, slug: string) => getSkillhubDetail(slug));
+  ipcMain.handle(FUNDET_INVOKE.SKILLHUB_INSTALL, async (_e, slug: string, replace?: boolean) =>
+    installSkillhubSkill(slug, { replace: Boolean(replace) }),
+  );
+  ipcMain.handle(FUNDET_INVOKE.SKILLHUB_UPDATES, async () => checkSkillhubUpdates());
 
   ipcMain.on(FUNDET_INVOKE.WINDOW_MINIMIZE, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();

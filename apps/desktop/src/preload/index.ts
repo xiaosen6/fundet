@@ -134,6 +134,11 @@ const api: FundetApi = {
   setSkillEnabled: (skillDir, enabled) =>
     invoke(FUNDET_INVOKE.SKILLS_SET_ENABLED, skillDir, enabled),
 
+  skillhubList: (params) => invoke(FUNDET_INVOKE.SKILLHUB_LIST, params),
+  skillhubDetail: (slug) => invoke(FUNDET_INVOKE.SKILLHUB_DETAIL, slug),
+  skillhubInstall: (slug, replace) => invoke(FUNDET_INVOKE.SKILLHUB_INSTALL, slug, replace),
+  skillhubUpdates: () => invoke(FUNDET_INVOKE.SKILLHUB_UPDATES),
+
   searchStatus: () => invoke(FUNDET_INVOKE.SEARCH_STATUS),
   setSearchEngineKey: (id, key) => invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
   clearSearchEngineKey: (id) => invoke(FUNDET_INVOKE.SEARCH_CLEAR_KEY, id),

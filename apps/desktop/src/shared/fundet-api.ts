@@ -308,6 +308,13 @@ import type {
   KnowledgeImportResult,
   KnowledgeSessionBinding,
 } from './knowledge.js';
+import type {
+  SkillhubDetailView,
+  SkillhubInstallResult,
+  SkillhubSkillView,
+  SkillhubSort,
+  SkillhubUpdateView,
+} from './skillhub.js';
 export type {
   KnowledgeBaseParams,
   KnowledgeBaseView,
@@ -453,6 +460,14 @@ export interface FundetApi {
   uninstallSkill(skillDir: string): Promise<void>;
   /** 停用/启用：把技能目录在 skills/ 与 skills.disabled/ 之间移动（pi 只扫 skills/） */
   setSkillEnabled(skillDir: string, enabled: boolean): Promise<void>;
+
+  /** SkillHub 集市（skillhub.cn）：浏览/搜索（参数同后端缓存键） */
+  skillhubList(params: { keyword?: string; sort?: SkillhubSort; category?: string; limit?: number }): Promise<SkillhubSkillView[]>;
+  skillhubDetail(slug: string): Promise<SkillhubDetailView | null>;
+  /** 安装（replace=更新场景覆盖已装目录）；返回落盘目录 */
+  skillhubInstall(slug: string, replace?: boolean): Promise<SkillhubInstallResult>;
+  /** 检查已装 skillhub 技能的版本更新 */
+  skillhubUpdates(): Promise<SkillhubUpdateView[]>;
 
   searchStatus(): Promise<SearchStatus>;
   setSearchEngineKey(id: SearchEngineId, key: string): Promise<void>;
