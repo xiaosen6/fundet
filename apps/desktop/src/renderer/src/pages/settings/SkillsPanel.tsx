@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import {
   BadgeCheck,
-  ChevronDown,
+  ChevronRight,
   Download,
   Flame,
   Loader2,
@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { SkillView } from '../../../../shared/fundet-api.js';
 import type {
@@ -54,6 +55,159 @@ function auditTone(status: string): string {
   return 'text-warning';
 }
 
+/** 技能详情弹层：点卡片打开，内容区滚动（主页列表不动，对齐 ConfirmDialog 观感） */
+function SkillhubDetailDialog({
+  skill,
+  detail,
+  installed,
+  update,
+  installing,
+  disabled,
+  onClose,
+  onInstall,
+}: {
+  skill: SkillhubSkillView;
+  detail: SkillhubDetailView | null;
+  installed: boolean;
+  update: SkillhubUpdateView | null;
+  installing: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onInstall: () => void;
+}): React.JSX.Element {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const stats = detail?.stats ?? skill;
+  return (
+    <div
+      className="fixed inset-0 z-[75] animate-[confirm-overlay-in_160ms_ease-out] bg-neutral-900/40"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="flex h-full items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${skill.name} 详情`}
+          className="flex max-h-[78vh] w-full max-w-[560px] flex-col rounded-xl border border-board bg-card shadow-[var(--shadow-menu)]"
+        >
+          {/* 头部：名称 + 作者 + 关闭 */}
+          <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-16 font-medium text-primary" title={skill.name}>{skill.name}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-11 text-muted">
+                {skill.owner && <span className="truncate">@{skill.owner}</span>}
+                {detail?.verified && (
+                  <span className="flex items-center gap-0.5 text-success"><BadgeCheck size={11} /> 作者已验证</span>
+                )}
+                {skill.requiresApiKey && <span className="text-warning">需 API Key</span>}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-primary"
+              aria-label="关闭详情"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* 内容区（滚动） */}
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-board/40 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-1.5 text-11">
+              <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">{fmtCount(stats.downloads)} 下载</span>
+              <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">{fmtCount(stats.installs)} 安装</span>
+              <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">{fmtCount(stats.stars)} 星标</span>
+              {detail?.latestVersion && (
+                <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">v{detail.latestVersion}</span>
+              )}
+              {skill.category && <span className="rounded-full bg-chip px-1.5 leading-4">{skill.category}</span>}
+            </div>
+
+            <p className="text-13 leading-relaxed text-secondary">{skill.description || '（无描述）'}</p>
+            {detail?.overview && (
+              <div>
+                <p className="text-11 font-medium text-muted">概览</p>
+                <p className="mt-1 text-12 leading-relaxed text-secondary">{detail.overview}</p>
+              </div>
+            )}
+
+            {/* 安全审计 */}
+            <div>
+              <p className="text-11 font-medium text-muted">安全审计</p>
+              {detail === null ? (
+                <p className="mt-1 flex items-center gap-1.5 text-12 text-muted">
+                  <Loader2 size={11} className="animate-spin" /> 详情加载中…
+                </p>
+              ) : detail.securityReports.length > 0 ? (
+                <div className="mt-1 flex flex-col gap-1">
+                  {detail.securityReports.map((r) => (
+                    <button
+                      key={r.provider}
+                      type="button"
+                      disabled={!r.reportUrl}
+                      onClick={() => r.reportUrl && window.open(r.reportUrl, '_blank', 'noopener')}
+                      className={cn(
+                        'flex w-fit items-center gap-1 rounded-full px-1.5 text-11 tabular-nums',
+                        auditTone(r.status),
+                        r.reportUrl && 'hover:bg-hover',
+                      )}
+                      title={r.reportUrl ?? undefined}
+                    >
+                      <ShieldCheck size={11} />
+                      {r.provider}：{r.statusText ?? r.status}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-12 text-muted">暂无安全审计报告</p>
+              )}
+            </div>
+
+            {detail?.changelog && (
+              <div>
+                <p className="text-11 font-medium text-muted">更新日志（v{detail.latestVersion}）</p>
+                <p className="mt-1 text-12 leading-relaxed text-secondary">{detail.changelog}</p>
+              </div>
+            )}
+            {detail && detail.tags.length > 0 && (
+              <p className="truncate text-11 text-muted">{detail.tags.map((t) => `#${t}`).join(' ')}</p>
+            )}
+          </div>
+
+          {/* 底部：安装 */}
+          <div className="flex items-center justify-between gap-3 border-t border-board/40 px-4 py-3">
+            <span className="min-w-0 truncate text-11 text-muted">
+              {installed ? `已安装${update ? ` · 可更新到 v${update.latest}` : ''}` : '来源：skillhub.cn'}
+            </span>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onInstall}
+              className={cn(
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-4 text-13 font-medium transition-colors',
+                installed ? 'border border-board text-secondary hover:text-primary' : 'bg-accent text-accent-fg hover:bg-accent-hover',
+                installing && 'opacity-60',
+              )}
+            >
+              {installing ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {installing ? '安装中…' : installed ? (update ? `更新到 v${update.latest}` : '重新安装') : '安装'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DiscoverSkills({
   installedDirs,
   updates,
@@ -70,7 +224,7 @@ function DiscoverSkills({
   const [list, setList] = useState<SkillhubSkillView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [detailFor, setDetailFor] = useState<SkillhubSkillView | null>(null);
   const [details, setDetails] = useState<Record<string, SkillhubDetailView | null>>({});
   const [installing, setInstalling] = useState<string | null>(null);
   const seq = useRef(0);
@@ -108,19 +262,15 @@ function DiscoverSkills({
     return ['all', ...[...seen.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c)];
   }, [list]);
 
-  const expand = async (slug: string): Promise<void> => {
-    if (expanded === slug) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(slug);
-    if (details[slug] === undefined) {
-      setDetails((d) => ({ ...d, [slug]: null }));
+  const openDetail = async (skill: SkillhubSkillView): Promise<void> => {
+    setDetailFor(skill);
+    if (details[skill.slug] === undefined) {
+      setDetails((d) => ({ ...d, [skill.slug]: null }));
       try {
-        const det = await window.fundet.skillhubDetail(slug);
-        setDetails((d) => ({ ...d, [slug]: det }));
+        const det = await window.fundet.skillhubDetail(skill.slug);
+        setDetails((d) => ({ ...d, [skill.slug]: det }));
       } catch {
-        setDetails((d) => ({ ...d, [slug]: null }));
+        setDetails((d) => ({ ...d, [skill.slug]: null }));
       }
     }
   };
@@ -206,29 +356,25 @@ function DiscoverSkills({
           没有匹配的技能。换个关键词或分类试试。
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        // items-start：各卡自然高度，点开的弹层不再影响同行
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
           {list.map((s, idx) => {
-            const open = expanded === s.slug;
             const installed = installedDirs.has(s.slug);
             const upd = updates.get(s.slug);
-            const det = details[s.slug];
             return (
               <div
                 key={s.slug}
-                className={cn(
-                  'group animate-fundet-rise-in fundet-surface flex min-w-0 flex-col rounded-container border border-board bg-card px-4 py-3.5 select-none',
-                  open ? 'border-[var(--input-focus-border)]' : 'hover:border-[var(--input-focus-border)]',
-                )}
+                className="group animate-fundet-rise-in fundet-surface flex min-w-0 flex-col rounded-container border border-board bg-card px-4 py-3.5 select-none hover:border-[var(--input-focus-border)]"
                 style={{ animationDelay: `${Math.min(idx, 8) * 50}ms` }}
               >
-                <button type="button" className="min-w-0 flex-1 text-left" aria-expanded={open} onClick={() => void expand(s.slug)}>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => void openDetail(s)}>
                   <div className="flex items-center gap-2.5">
                     <span className="min-w-0 flex-1 truncate text-14 font-medium text-primary" title={s.name}>
                       {s.name}
                     </span>
-                    <ChevronDown
+                    <ChevronRight
                       size={13}
-                      className={cn('shrink-0 text-muted transition-transform duration-[var(--motion-fast)]', open && 'rotate-180')}
+                      className="shrink-0 text-muted transition-transform duration-[var(--motion-fast)] group-hover:translate-x-0.5"
                     />
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-12 leading-relaxed text-secondary">{s.description || '（无描述）'}</p>
@@ -240,65 +386,7 @@ function DiscoverSkills({
                   </div>
                 </button>
 
-                {/* 展开详情：审计徽标 / 版本 / 概览 / 安装 */}
-                <div
-                  className={cn(
-                    'grid transition-[grid-template-rows] duration-[var(--motion-base)] ease-[var(--motion-ease-move)]',
-                    open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                  )}
-                >
-                  <div className="min-h-0 overflow-hidden">
-                    <div className="mt-2.5 flex flex-col gap-2 border-t border-board/40 pt-2.5">
-                      {det === undefined || det === null ? (
-                        <p className="text-11 text-muted">{det === undefined ? '加载详情…' : '详情暂不可用'}</p>
-                      ) : (
-                        <>
-                          <div className="flex flex-wrap items-center gap-1.5 text-11">
-                            <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">v{det.latestVersion ?? '?'}</span>
-                            {det.verified && (
-                              <span className="flex items-center gap-0.5 text-success">
-                                <BadgeCheck size={11} /> 作者已验证
-                              </span>
-                            )}
-                            {det.securityReports.length > 0 ? (
-                              det.securityReports.slice(0, 3).map((r) => (
-                                <span key={r.provider} className={cn('flex items-center gap-0.5', auditTone(r.status))} title={r.reportUrl ?? undefined}>
-                                  <ShieldCheck size={11} />
-                                  {r.statusText ?? r.provider}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-muted">暂无安全审计</span>
-                            )}
-                          </div>
-                          {det.changelog && <p className="text-11 text-muted">更新日志：{det.changelog.slice(0, 80)}</p>}
-                          {det.tags.length > 0 && (
-                            <p className="truncate text-11 text-muted">{det.tags.map((t) => `#${t}`).join(' ')}</p>
-                          )}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        disabled={installing !== null}
-                        onClick={() => void install(s.slug)}
-                        className={cn(
-                          'flex h-7 w-fit items-center gap-1 rounded-full px-3 text-12 font-medium transition-colors',
-                          installed ? 'border border-board text-secondary hover:text-primary' : 'bg-accent text-accent-fg',
-                          installing === s.slug && 'opacity-60',
-                        )}
-                      >
-                        {installing === s.slug ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Download size={12} />
-                        )}
-                        {installing === s.slug ? '安装中…' : installed ? (upd ? `更新到 v${upd.latest}` : '重新安装') : '安装'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {installed && !open && (
+                {installed && (
                   <span className="mt-2 w-fit rounded-full bg-hover-soft px-2 py-px text-11 text-success">
                     已安装{upd ? ` · 可更新 v${upd.latest}` : ''}
                   </span>
@@ -307,6 +395,19 @@ function DiscoverSkills({
             );
           })}
         </div>
+      )}
+
+      {detailFor && (
+        <SkillhubDetailDialog
+          skill={detailFor}
+          detail={details[detailFor.slug] ?? null}
+          installed={installedDirs.has(detailFor.slug)}
+          update={updates.get(detailFor.slug) ?? null}
+          installing={installing === detailFor.slug}
+          disabled={installing !== null}
+          onClose={() => setDetailFor(null)}
+          onInstall={() => void install(detailFor.slug)}
+        />
       )}
     </div>
   );

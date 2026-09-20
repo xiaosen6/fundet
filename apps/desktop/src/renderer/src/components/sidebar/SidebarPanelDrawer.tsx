@@ -29,7 +29,8 @@ export function PanelView({
 }): React.JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onBack();
+      // 有 dialog（技能详情/确认框等）打开时 Esc 归它，不当场连面板一起关
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) onBack();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
