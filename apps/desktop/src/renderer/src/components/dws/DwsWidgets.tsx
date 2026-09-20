@@ -123,11 +123,12 @@ interface CardShellProps {
   badge?: number;
   error?: string;
   onAsk?: () => void;
+  onRefresh?: () => void;
   index: number;
   children: React.ReactNode;
 }
 
-function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardShellProps): React.JSX.Element {
+function CardShell({ title, Icon, badge, error, onAsk, onRefresh, index, children }: CardShellProps): React.JSX.Element {
   return (
     <div
       data-widget-card
@@ -147,9 +148,14 @@ function CardShell({ title, Icon, badge, error, onAsk, index, children }: CardSh
           <span className="rounded-full bg-accent px-1.5 py-px text-11 font-medium tabular-nums text-accent-fg">{badge}</span>
         )}
         {error && (
-          <span className="rounded-full bg-hover-soft px-1.5 py-px text-11 text-error" title={error}>
+          <button
+            type="button"
+            title={`${error}（点此重试）`}
+            className="rounded-full bg-hover-soft px-1.5 py-px text-11 text-error transition-colors hover:text-primary"
+            onClick={onRefresh}
+          >
             刷新失败
-          </span>
+          </button>
         )}
         <span className="flex-1" />
         {onAsk && (
@@ -613,17 +619,19 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           title="今日日程"
           Icon={CalendarDays}
           error={s.errors.calendar}
+          onRefresh={onRefresh}
           index={0}
         >
           <CalendarBody s={s} now={now} ctx={boardCtx} />
         </CardShell>
-        <CardShell title="待我审批" Icon={Inbox} error={s.errors.approvals} index={1}>
+        <CardShell title="待我审批" Icon={Inbox} error={s.errors.approvals} onRefresh={onRefresh} index={1}>
           <ApprovalsBody s={s} ctx={boardCtx} />
         </CardShell>
         <CardShell
           title="我的待办"
           Icon={CheckSquare}
           error={s.errors.todos}
+          onRefresh={onRefresh}
           index={2}
           onAsk={cardAsk.todos}
         >
@@ -633,6 +641,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           title="未读消息"
           Icon={MessageSquare}
           error={s.errors.unread}
+          onRefresh={onRefresh}
           index={3}
           onAsk={cardAsk.unread}
         >

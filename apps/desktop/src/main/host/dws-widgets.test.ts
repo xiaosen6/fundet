@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  errOf,
   parseApprovalsPending,
   parseCalendarEvents,
   parseChatMessages,
@@ -135,5 +136,23 @@ describe('parseChatMessages（真机 fixture：会话最近消息）', () => {
 
   it('垃圾输入返回空', () => {
     assert.deepEqual(parseChatMessages('{"foo": 1}'), []);
+  });
+});
+
+describe('errOf（失败原因人话化）', () => {
+  it('stdout 带 dws error.message 时优先取业务错（doskey 噪声免疫）', () => {
+    const out = 'doskey 宏回显行\r\n{"error":{"message":"操作人无花名册管理权限","reason":"business_error"}}';
+    assert.equal(errOf({ code: 1, stdout: out, stderr: '' }), '操作人无花名册管理权限');
+  });
+
+  it('stdout 无 JSON 时退 stderr 尾行', () => {
+    const r = { code: 1, stdout: '', stderr: 'line1\nfetch failed: ETIMEDOUT 10.7.0.95:443\n' };
+    assert.equal(errOf(r), 'fetch failed: ETIMEDOUT 10.7.0.95:443');
+  });
+
+  it('超长信息截 120，最后兜底退出码', () => {
+    const long = 'x'.repeat(300);
+    assert.equal(errOf({ code: 1, stdout: `{"error":{"message":"${long}"}}`, stderr: '' }).length, 120);
+    assert.equal(errOf({ code: 3, stdout: '', stderr: '' }), '退出码 3');
   });
 });

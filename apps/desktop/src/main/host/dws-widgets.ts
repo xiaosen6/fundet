@@ -236,6 +236,27 @@ function push(): void {
   }
 }
 
+/**
+ * 从 dws 调用结果提炼人话错误：优先 stdout 里 dws 的 error.message（业务错：
+ * 无权限/token 过期/缺命令），退 stderr 尾行（网络层），兜底退出码。
+ * 此前只记「退出码 N」——所有人所有原因一个脸，排查无从下手（0.2.28 修）。
+ */
+export function errOf(result: { code: number; stdout: string; stderr: string }): string {
+  const parsed = extractJson(result.stdout) as { error?: { message?: unknown; reason?: unknown } } | null;
+  const bizMsg = typeof parsed?.error?.message === 'string' ? parsed.error.message.trim() : '';
+  if (bizMsg) return bizMsg.slice(0, 120);
+  const tail = result.stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .pop();
+  if (tail) return tail.slice(0, 120);
+  return `退出码 ${result.code}`;
+}
+
+/** profile 失败里能识别出「登录态失效」的信号（token 30 天过期、授权被撤） */
+const AUTH_FAIL_RE = /401|token|授权|unauthor|login|登录/i;
+
 async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
   if (busy) return snapshot();
   if (!force && Date.now() - lastCycleAt < REFRESH_TTL_MS) return snapshot();
@@ -255,6 +276,25 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       execDws(dws, ['oa', 'approval', 'list-pending', '--format', 'json'], QUERY_TIMEOUT_MS),
       execDws(dws, ['chat', 'message', 'list-unread-conversations', '--format', 'json'], QUERY_TIMEOUT_MS),
     ]);
+    // profile 命令本身失败 ≠ 未登录：token 过期给可操作提示；网络/代理抖动
+    // 保住登录态与旧数据，四卡挂失败角标等下轮重试（此前一律误判"还没登录"，
+    // 整板直接消失——部分用户「加载失败」的来源）。
+    if (profile.code !== 0) {
+      const msg = errOf(profile);
+      if (AUTH_FAIL_RE.test(msg)) {
+        disabled = { reason: `钉钉登录态失效：${msg}（到钉钉工作台重新登录）` };
+      } else {
+        disabled = null;
+        const err = `钉钉连接失败：${msg}`;
+        cache.calendar = { data: cache.calendar?.data ?? [], error: err };
+        cache.todos = { data: cache.todos?.data ?? [], error: err };
+        cache.approvals = { data: cache.approvals?.data ?? [], error: err };
+        cache.unread = { data: cache.unread?.data ?? { conversations: [], total: 0 }, error: err };
+      }
+      lastCycleAt = Date.now();
+      push();
+      return snapshot();
+    }
     const profiles = extractJson(profile.stdout) as { profiles?: unknown } | null;
     if (!Array.isArray(profiles?.profiles) || (profiles?.profiles as unknown[]).length === 0) {
       disabled = { reason: '还没登录钉钉（钉钉工作台面板点「开始登录」）' };
@@ -267,19 +307,19 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
     cache.calendar =
       cal.code === 0
         ? { data: parseCalendarEvents(cal.stdout) }
-        : { data: cache.calendar?.data ?? [], error: `退出码 ${cal.code}` };
+        : { data: cache.calendar?.data ?? [], error: errOf(cal) };
     cache.todos =
       todo.code === 0
         ? { data: parseTodos(todo.stdout) }
-        : { data: cache.todos?.data ?? [], error: `退出码 ${todo.code}` };
+        : { data: cache.todos?.data ?? [], error: errOf(todo) };
     cache.approvals =
       oa.code === 0
         ? { data: parseApprovalsPending(oa.stdout) }
-        : { data: cache.approvals?.data ?? [], error: `退出码 ${oa.code}` };
+        : { data: cache.approvals?.data ?? [], error: errOf(oa) };
     cache.unread =
       unread.code === 0
         ? { data: parseUnread(unread.stdout) }
-        : { data: cache.unread?.data ?? { conversations: [], total: 0 }, error: `退出码 ${unread.code}` };
+        : { data: cache.unread?.data ?? { conversations: [], total: 0 }, error: errOf(unread) };
 
     lastCycleAt = Date.now();
     push();
