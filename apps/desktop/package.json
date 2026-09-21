@@ -16,7 +16,7 @@
     "dist:mac": "electron-builder --mac --x64 --arm64",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types src/shared/*.test.ts src/main/fs-local.test.ts src/main/doc-text.test.ts src/main/browser/*.test.ts src/main/knowledge/*.test.ts src/main/search/*.test.ts src/main/im/*.test.ts src/main/db/messages-fts.test.ts src/main/host/dws.test.ts src/main/host/skillhub.test.ts src/main/host/dws-widgets.test.ts src/main/checkpoint/*.test.ts src/renderer/src/lib/artifacts.test.ts src/renderer/src/lib/streamingMarkdown.test.ts src/renderer/src/lib/errorRetry.test.ts",
+    "test": "node --test --experimental-strip-types src/shared/*.test.ts src/main/fs-local.test.ts src/main/doc-text.test.ts src/main/browser/*.test.ts src/main/knowledge/*.test.ts src/main/search/*.test.ts src/main/im/*.test.ts src/main/db/messages-fts.test.ts src/main/host/dws.test.ts src/main/host/skillhub.test.ts src/main/host/automation-schedule.test.ts src/main/host/dws-widgets.test.ts src/main/checkpoint/*.test.ts src/renderer/src/lib/artifacts.test.ts src/renderer/src/lib/streamingMarkdown.test.ts src/renderer/src/lib/errorRetry.test.ts",
     "rebuild:native": "electron-rebuild -f -w better-sqlite3 -o better-sqlite3",
     "predev": "pnpm --filter @fundet/browser-runtime compile",
     "prebuild": "pnpm --filter @fundet/browser-runtime compile",

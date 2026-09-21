@@ -46,6 +46,48 @@ export const messages = sqliteTable(
   (t) => [index('idx_messages_session').on(t.sessionId)],
 );
 
+/**
+ * 自动化（定时例行任务）：定义 + 每次运行记录。
+ * 幂等补列在 client.ts initDatabase 里 raw SQL 创建（对齐 messages_fts 同款做法，
+ * drizzle-kit 大版本迁移留给后续）。会话 id 以 auto- 前缀隔离（不进侧栏会话列表）。
+ */
+export const automations = sqliteTable('automations', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** 触发类型：hourly/daily/weekdays/weekly/monthly/cron */
+  schedule: text('schedule').notNull(),
+  /** daily/weekly/monthly 的 HH:MM（本地时区）；hourly 空 */
+  time: text('time'),
+  /** weekly 0-6（0=周日）；monthly 1-31 */
+  day: integer('day'),
+  /** cron 表达式（schedule=cron 时） */
+  cron: text('cron'),
+  /** 发送给 agent 的指令 */
+  instructions: text('instructions').notNull(),
+  workDir: text('work_dir').notNull(),
+  /** active / paused */
+  status: text('status').notNull().default('active'),
+  /** 下次触发时间（ms epoch）；paused 时保留原值 */
+  nextRunAt: integer('next_run_at'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const automationRuns = sqliteTable('automation_runs', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id')
+    .notNull()
+    .references(() => automations.id, { onDelete: 'cascade' }),
+  /** 运行会话（auto-<runId>，不出现在侧栏） */
+  sessionId: text('session_id').notNull(),
+  /** queued / running / success / failed */
+  status: text('status').notNull().default('queued'),
+  startedAt: integer('started_at'),
+  endedAt: integer('ended_at'),
+  error: text('error'),
+  createdAt: integer('created_at').notNull(),
+});
+
 export const providers = sqliteTable('providers', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

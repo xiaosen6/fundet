@@ -58,6 +58,32 @@ export function initDatabase(): FundetDb {
   if (!sessionCols.has('sort_order')) {
     native.prepare('ALTER TABLE sessions ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run();
   }
+  // 幂等建表（自动化：定时例行任务；对齐 messages_fts 的 raw SQL 做法）
+  native.prepare(`CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    time TEXT,
+    day INTEGER,
+    cron TEXT,
+    instructions TEXT NOT NULL,
+    work_dir TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    next_run_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  native.prepare(`CREATE TABLE IF NOT EXISTS automation_runs (
+    id TEXT PRIMARY KEY,
+    automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    started_at INTEGER,
+    ended_at INTEGER,
+    error TEXT,
+    created_at INTEGER NOT NULL
+  )`).run();
+  native.prepare('CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id)').run();
   console.log('[fundet:db] migrations applied');
   return db;
 }

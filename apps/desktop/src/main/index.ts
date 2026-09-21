@@ -13,6 +13,7 @@ import { registerIpcHandlers } from './ipc/register.js';
 import { registerImIpc, startSavedImBots, stopAllImBots } from './im/host.ts';
 import { registerDwsIpc } from './host/dws.ts';
 import { registerDwsWidgetsIpc, startDwsWidgets, stopDwsWidgets } from './host/dws-widgets.ts';
+import { startAutomationScheduler, stopAutomationScheduler } from './host/automations.js';
 import { disposeBrowserHost } from './browser/host.js';
 import { initUpdater } from './updater.js';
 import {
@@ -238,6 +239,7 @@ function bootstrap(): void {
   registerDwsIpc();
   registerDwsWidgetsIpc();
   startDwsWidgets();
+  startAutomationScheduler();
   registerFileProtocolHandler();
   void startSavedImBots();
   // 4) 应用更新（仅打包版启用，Windows 自动下载、macOS 手动引导）
@@ -253,6 +255,7 @@ function bootstrap(): void {
     isQuitting = true;
     void stopAllImBots();
     stopDwsWidgets();
+    stopAutomationScheduler();
     // 关闭托管浏览器（用过才发 stop；没用过 stop 反而会拉起服务挂住退出）
     void disposeBrowserHost();
     // 关闭所有活跃会话，回收 pi 子进程

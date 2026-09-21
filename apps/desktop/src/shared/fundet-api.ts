@@ -315,6 +315,7 @@ import type {
   SkillhubSort,
   SkillhubUpdateView,
 } from './skillhub.js';
+import type { AutomationInput, AutomationRunView, AutomationView } from './automations.ts';
 export type {
   KnowledgeBaseParams,
   KnowledgeBaseView,
@@ -468,6 +469,14 @@ export interface FundetApi {
   skillhubInstall(slug: string, replace?: boolean): Promise<SkillhubInstallResult>;
   /** 检查已装 skillhub 技能的版本更新 */
   skillhubUpdates(): Promise<SkillhubUpdateView[]>;
+
+  automationsList(): Promise<AutomationView[]>;
+  automationsCreate(input: AutomationInput): Promise<AutomationView>;
+  automationsUpdate(id: string, input: AutomationInput): Promise<AutomationView>;
+  automationsDelete(id: string): Promise<void>;
+  automationsRunNow(id: string): Promise<void>;
+  automationsRuns(id: string, limit?: number): Promise<AutomationRunView[]>;
+  automationsSetPaused(id: string, paused: boolean): Promise<AutomationView[]>;
 
   searchStatus(): Promise<SearchStatus>;
   setSearchEngineKey(id: SearchEngineId, key: string): Promise<void>;

@@ -88,6 +88,17 @@ import {
   installSkillhubSkill,
   listSkillhubSkills,
 } from '../host/skillhub.js';
+import {
+  listAutomations,
+  createAutomation,
+  updateAutomation,
+  deleteAutomation,
+  setAutomationPaused,
+  listAutomationRuns,
+  runAutomationNow,
+  setAutomationDeps,
+} from '../host/automations.js';
+import type { AutomationInput } from '../../shared/automations.ts';
 import { probeMcpServer } from '../host/mcp-bridge.js';
 import {
   createKnowledgeBase,
@@ -296,9 +307,25 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
 /** 首条用户消息自动标题时要覆盖的占位值（renderer 建草稿时写入「新对话」） */
 const PLACEHOLDER_TITLES = new Set(['', '新会话', '新对话']);
 
+/** 自动化入参校验：指令非空 + workDir 存在 + 各触发类型的必要字段 */
+function validateAutomationInput(input: AutomationInput): string | null {
+  if (!input || typeof input !== 'object') return '参数缺失';
+  if (!input.instructions || !input.instructions.trim()) return '指令不能为空';
+  if (!input.workDir || !fs.existsSync(path.resolve(input.workDir))) return '工作目录不存在：' + input.workDir;
+  const needTime = input.schedule === 'daily' || input.schedule === 'weekdays' || input.schedule === 'weekly' || input.schedule === 'monthly';
+  if (needTime && !/^\d{1,2}:\d{2}$/.test(input.time ?? '')) return '请填写触发时间（HH:MM）';
+  if (input.schedule === 'weekly' && (input.day === null || input.day === undefined || input.day < 0 || input.day > 6)) {
+    return '每周触发需选择星期几';
+  }
+  if (input.schedule === 'monthly' && (input.day === null || input.day === undefined || input.day < 1 || input.day > 31)) {
+    return '每月触发需填日期（1-31）';
+  }
+  if (input.schedule === 'cron' && !(input.cron ?? '').trim()) return '请填 cron 表达式';
+  return null;
+}
+
 /** 首条用户消息落库时，用消息前 20 字做会话标题（不用 LLM）；仅覆盖占位标题 */
-function autoTitleFromFirstMessage(sessionId: string, text: string): void {
-  try {
+function autoTitleFromFirstMessage(sessionId: string, text: string): void {  try {
     const row = getDb()
       .select({ title: sessions.title })
       .from(sessions)
@@ -1113,6 +1140,51 @@ ${input.text}`;
     installSkillhubSkill(slug, { replace: Boolean(replace) }),
   );
   ipcMain.handle(FUNDET_INVOKE.SKILLHUB_UPDATES, async () => checkSkillhubUpdates());
+
+  // ---------- 自动化（定时例行任务）：定义 CRUD + 调度 + 发送管线 ----------
+  // 发送管线：起隔离会话（auto- 前缀，不进侧栏），用当前默认 provider 首个启用模型。
+  setAutomationDeps({
+    sendFn: async ({ instructions, workDir, sessionId }) => {
+      const { maker } = getHost();
+      const provider = listProviders().find((p) => p.models.some((m) => m.enabled !== false));
+      const model = provider?.models.find((m) => m.enabled !== false)?.id;
+      if (!provider || !model) throw new Error('没有可用模型（provider/模型未配置）');
+      const session = await maker.createSession({
+        agentKind: 'pi',
+        id: sessionId,
+        title: `自动化：${instructions.slice(0, 16)}`,
+        workingDir: workDir,
+        model,
+        providerId: provider.id,
+      });
+      wireSession(session);
+      insertMessage(session.id, 'user', { text: instructions });
+      const result = await session.send(await buildUserMessage(instructions, []));
+      if (!result.accepted) throw new Error(result.reason ?? '发送被拒');
+    },
+  });
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_LIST, async () => listAutomations());
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_CREATE, async (_e, input) => {
+    const v = validateAutomationInput(input);
+    if (v) throw new Error(v);
+    return createAutomation(input);
+  });
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_UPDATE, async (_e, id: string, input) => {
+    const v = validateAutomationInput(input);
+    if (v) throw new Error(v);
+    const r = updateAutomation(id, input);
+    if (!r) throw new Error('任务不存在');
+    return r;
+  });
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_DELETE, async (_e, id: string) => deleteAutomation(id));
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_RUN_NOW, async (_e, id: string) => runAutomationNow(id));
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_RUNS, async (_e, id: string, limit?: number) =>
+    listAutomationRuns(id, limit),
+  );
+  ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_SET_PAUSED, async (_e, id: string, paused: boolean) => {
+    setAutomationPaused(id, paused);
+    return listAutomations();
+  });
 
   ipcMain.on(FUNDET_INVOKE.WINDOW_MINIMIZE, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();

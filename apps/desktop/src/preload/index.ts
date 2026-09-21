@@ -139,6 +139,14 @@ const api: FundetApi = {
   skillhubInstall: (slug, replace) => invoke(FUNDET_INVOKE.SKILLHUB_INSTALL, slug, replace),
   skillhubUpdates: () => invoke(FUNDET_INVOKE.SKILLHUB_UPDATES),
 
+  automationsList: () => invoke(FUNDET_INVOKE.AUTOMATIONS_LIST),
+  automationsCreate: (input) => invoke(FUNDET_INVOKE.AUTOMATIONS_CREATE, input),
+  automationsUpdate: (id, input) => invoke(FUNDET_INVOKE.AUTOMATIONS_UPDATE, id, input),
+  automationsDelete: (id) => invoke(FUNDET_INVOKE.AUTOMATIONS_DELETE, id),
+  automationsRunNow: (id) => invoke(FUNDET_INVOKE.AUTOMATIONS_RUN_NOW, id),
+  automationsRuns: (id, limit) => invoke(FUNDET_INVOKE.AUTOMATIONS_RUNS, id, limit),
+  automationsSetPaused: (id, paused) => invoke(FUNDET_INVOKE.AUTOMATIONS_SET_PAUSED, id, paused),
+
   searchStatus: () => invoke(FUNDET_INVOKE.SEARCH_STATUS),
   setSearchEngineKey: (id, key) => invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
   clearSearchEngineKey: (id) => invoke(FUNDET_INVOKE.SEARCH_CLEAR_KEY, id),
