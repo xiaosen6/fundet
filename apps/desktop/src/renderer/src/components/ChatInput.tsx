@@ -233,7 +233,7 @@ export function ChatInput({
           </div>
         </div>
       )}
-      <div className="relative flex max-h-[300px] min-h-[86px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]">
+      <div className="relative flex max-h-[300px] min-h-[110px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]">
         {/* 粘贴长文本 chip：点击预览全文，× 移除（Cindy「粘贴的文本(N 行)」同款） */}
         {pastedTexts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
