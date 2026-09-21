@@ -750,10 +750,12 @@ export function ChatPage(): React.JSX.Element {
               </div>
             )}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {/* slim 头部：46px 行高 + 1px Board 下发丝（对齐 Cindy ContentHeader：标题，不是用量环） */}
+            {/* slim 头部：46px 行高 + 1px Board 下发丝（对齐 Cindy ContentHeader：标题，不是用量环）。
+                空消息态按 Cindy 首页风格隐去内容，只留 46px 拖拽区 */}
             <header
               className={cn(
-                'relative flex h-[46px] shrink-0 items-center justify-between gap-3 border-b border-board px-4 select-none',
+                'relative flex h-[46px] shrink-0 items-center justify-between gap-3 px-4 select-none',
+                slice.items.length > 0 && 'border-b border-board',
                 hasFramelessControls() && 'pr-[186px]',
               )}
             >
@@ -766,6 +768,7 @@ export function ChatPage(): React.JSX.Element {
                   hasFramelessControls() ? 'right-[150px]' : 'right-0',
                 )}
               />
+              {slice.items.length > 0 && (
               <div className="no-drag group/title relative flex min-w-0 flex-1 items-center gap-1">
                 {renamingHeader ? (
                   <SessionRenameInput
@@ -823,19 +826,14 @@ export function ChatPage(): React.JSX.Element {
                   </>
                 )}
               </div>
+              )}
               {/* 灵动岛：驻进会话头部尾部（与标题同层，不再是悬浮异物） */}
               <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
             </header>
 
-            {/* 新会话空消息（对齐 Cindy 首页解剖）：品牌 lockup（圆 logo 40 + 名 24）
-                输入框左上方；首条消息后让位给消息流 */}
-            {slice.items.length === 0 && (
-              <div className="flex shrink-0 items-center gap-3 self-start px-6 pt-5 select-none">
-                <BrandMark size={40} />
-                <span className="text-24 leading-none font-medium tracking-tight text-primary">{brand.name}</span>
-              </div>
-            )}
-            {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留） */}
+            {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留）。
+                空消息态不挂 MessageStream（Cindy 首页布局接管，见 composer 段） */}
+            {slice.items.length > 0 && (
             <FadeSwitcher trigger={activeId ?? 'none'} className="min-h-0 flex-1">
             <MessageStream
               slice={slice}
@@ -891,10 +889,23 @@ export function ChatPage(): React.JSX.Element {
               }
             />
             </FadeSwitcher>
+            )}
 
-            {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方 */}
-            <div className="px-6 pt-1 pb-4">
+            {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方。
+                空消息态（Cindy 首页）：整个块垂直居中，lockup 上置、输入框、建议卡 */}
+            <div
+              className={cn(
+                'flex flex-col px-6',
+                slice.items.length === 0 ? 'min-h-0 flex-1 justify-center pb-4' : 'pt-1 pb-4',
+              )}
+            >
               <div className="mx-auto flex max-w-[820px] flex-col">
+                {slice.items.length === 0 && (
+                  <div className="mb-7 flex items-center gap-3 self-start select-none">
+                    <BrandMark size={40} />
+                    <span className="text-24 leading-none font-medium tracking-tight text-primary">{brand.name}</span>
+                  </div>
+                )}
                 {notice && <div className="pb-1 text-12 text-error">{notice}</div>}
                 {pendingPermission ? (
                   <PermissionPrompt
