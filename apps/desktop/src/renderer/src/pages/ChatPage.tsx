@@ -754,8 +754,9 @@ export function ChatPage(): React.JSX.Element {
                 空消息态按 Cindy 首页风格隐去内容，只留 46px 拖拽区 */}
             <header
               className={cn(
-                'relative flex h-[46px] shrink-0 items-center justify-between gap-3 px-4 select-none',
-                slice.items.length > 0 && 'border-b border-board',
+                'relative flex h-[46px] shrink-0 items-center gap-3 px-4 select-none',
+                slice.items.length > 0 && 'justify-between border-b border-board',
+                slice.items.length === 0 && 'justify-end',
                 hasFramelessControls() && 'pr-[186px]',
               )}
             >
@@ -899,11 +900,11 @@ export function ChatPage(): React.JSX.Element {
                 slice.items.length === 0 ? 'min-h-0 flex-1 justify-center pb-4' : 'pt-1 pb-4',
               )}
             >
-              <div className="mx-auto flex max-w-[820px] flex-col">
+              <div className={cn('mx-auto flex flex-col', slice.items.length === 0 ? 'max-w-[640px]' : 'max-w-[820px]')}>
                 {slice.items.length === 0 && (
-                  <div className="mb-7 flex items-center gap-3 self-start select-none">
-                    <BrandMark size={40} />
-                    <span className="text-24 leading-none font-medium tracking-tight text-primary">{brand.name}</span>
+                  <div className="mb-8 flex items-center gap-4 self-start select-none">
+                    <BrandMark size={80} />
+                    <span className="text-[64px] leading-none font-medium tracking-tight text-primary">{brand.name}</span>
                   </div>
                 )}
                 {notice && <div className="pb-1 text-12 text-error">{notice}</div>}
