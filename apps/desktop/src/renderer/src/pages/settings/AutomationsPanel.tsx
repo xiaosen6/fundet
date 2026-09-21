@@ -9,11 +9,18 @@ import {
   CalendarClock,
   ChevronDown,
   Clock,
+  FileText,
+  FlaskConical,
+  GitPullRequest,
+  Landmark,
   Loader2,
+  Newspaper,
   Play,
   Plus,
+  Radar,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import type { AutomationInput, AutomationRunView, AutomationView } from '../../../../shared/automations.js';
 import { automationScheduleSummary } from '../../../../shared/automations.js';
@@ -32,6 +39,94 @@ const SCHEDULES: Array<{ id: AutomationInput['schedule']; label: string }> = [
   { id: 'once', label: '一次' },
 ];
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 空态模板（对齐 Cindy 自动化页：分组 + 名称/描述/触发徽标；点卡预填编辑器） */
+const TEMPLATES: Array<{
+  title: string;
+  items: Array<{
+    name: string;
+    desc: string;
+    instructions: string;
+    schedule: AutomationInput['schedule'];
+    time?: string;
+    day?: number;
+    tags: string[];
+    Icon: LucideIcon;
+  }>;
+}> = [
+  {
+    title: '信息雷达',
+    items: [
+      {
+        name: '领域雷达',
+        desc: '定期搜集你关注领域的最新动态，输出有观点的摘要',
+        instructions: '搜集我关注领域（AI Agent / 本地大模型 / 桌面应用）最近一周的最新动态，输出有观点的摘要。',
+        schedule: 'weekdays',
+        time: '09:00',
+        tags: ['Web 搜索', '可自定义'],
+        Icon: Radar,
+      },
+      {
+        name: '竞品动态追踪',
+        desc: '每周汇总竞品的产品与市场动态，分析对我们的影响',
+        instructions: '汇总本周本地 AI Agent 桌面应用（Cindy / WorkBuddy 等）的产品与市场动态，分析对 Fundet 的影响。',
+        schedule: 'weekly',
+        time: '09:00',
+        day: 1,
+        tags: ['Web 搜索', '可自定义'],
+        Icon: Newspaper,
+      },
+    ],
+  },
+  {
+    title: '办公与钉钉',
+    items: [
+      {
+        name: '每日日程晨报',
+        desc: '每天早上汇总今天的钉钉日程，重点提醒下一场会议',
+        instructions: '汇总我今天的钉钉日程，按时间排序列出，重点提醒下一场会议。',
+        schedule: 'weekdays',
+        time: '09:00',
+        tags: ['钉钉'],
+        Icon: CalendarClock,
+      },
+      {
+        name: '政策申报窗口',
+        desc: '每周搜近期面向企业的政策申报与补贴窗口，列截止时间',
+        instructions: '搜近期面向企业（尤其山东/济南）的政策申报与补贴窗口，列清单并附截止时间与申报条件。',
+        schedule: 'weekly',
+        time: '10:00',
+        day: 1,
+        tags: ['Web 搜索'],
+        Icon: Landmark,
+      },
+    ],
+  },
+  {
+    title: '文档与开发',
+    items: [
+      {
+        name: '周报草稿助手',
+        desc: '从工作目录的文档和产出物整理本周工作，生成周报草稿',
+        instructions: '整理当前工作目录本周的文档与产出物变化，生成一份周报草稿。',
+        schedule: 'weekly',
+        time: '16:00',
+        day: 5,
+        tags: ['可自定义'],
+        Icon: FileText,
+      },
+      {
+        name: 'PR 守门人',
+        desc: '工作日预审仓库的新增改动，按严重程度报告风险',
+        instructions: '审查当前工作目录里未提交的改动与最近 PR，按严重程度报告风险点。',
+        schedule: 'weekdays',
+        time: '10:00',
+        tags: ['可自定义'],
+        Icon: GitPullRequest,
+      },
+    ],
+  },
+];
 
 function fmtNext(ms: number | null): string {
   if (!ms) return '—';
@@ -204,34 +299,29 @@ export function AutomationsPanel(): React.JSX.Element {
         <div className="rounded-xl border border-board bg-card px-4 py-2.5 text-12 text-error">{error}</div>
       )}
 
-      {/* 编辑器（弹层） */}
+      {/* 编辑器（弹层，对齐 Cindy 创建自动化） */}
       {editorOpen && editing && (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-neutral-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) { setEditing(null); setEditingId(null); } }}>
-          <div className="flex max-h-[82vh] w-full max-w-[520px] flex-col rounded-xl border border-board bg-card shadow-[var(--shadow-menu)]">
-            <div className="flex items-center justify-between px-4 pt-4 pb-2">
-              <p className="text-16 font-medium text-primary">{editingId ? '编辑任务' : '新建任务'}</p>
+          <div className="flex max-h-[82vh] w-full max-w-[560px] flex-col rounded-2xl border border-board bg-card shadow-[var(--shadow-menu)]">
+            <div className="flex items-start justify-between px-5 pt-5 pb-3">
+              <div>
+                <p className="text-18 font-medium text-primary">{editingId ? '编辑自动化' : '创建自动化'}</p>
+                <p className="mt-1 text-12 text-muted">让模型按计划运行指令。</p>
+              </div>
               <button type="button" onClick={() => { setEditing(null); setEditingId(null); }} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-hover hover:text-primary" aria-label="关闭">
                 <X size={14} />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-11 text-muted">名称（可选，默认取指令前 20 字）</span>
-                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className="h-9 rounded-lg border border-board bg-card px-3 text-13 text-primary outline-none focus:border-[var(--input-focus-border)]" />
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-12 text-muted">标题</span>
+                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="为这个自动化命名" className="h-10 rounded-xl border border-board bg-card px-3.5 text-14 text-primary outline-none placeholder:text-placeholder focus:border-[var(--input-focus-border)]" />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-11 text-muted">指令</span>
-                <textarea value={editing.instructions} onChange={(e) => setEditing({ ...editing, instructions: e.target.value })} rows={3} placeholder="例如：汇总我今天的钉钉日程并发给我" className="rounded-lg border border-board bg-card px-3 py-2 text-13 text-primary outline-none focus:border-[var(--input-focus-border)]" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-11 text-muted">工作目录</span>
-                <input value={editing.workDir} onChange={(e) => setEditing({ ...editing, workDir: e.target.value })} className="h-9 rounded-lg border border-board bg-card px-3 text-13 text-primary outline-none focus:border-[var(--input-focus-border)]" />
-              </label>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-11 text-muted">何时运行</span>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-col gap-2">
+                <span className="text-12 text-muted">计划</span>
+                <div className="flex w-fit flex-wrap items-center gap-1 rounded-xl bg-chip p-1">
                   {SCHEDULES.map((s) => (
-                    <button key={s.id} type="button" onClick={() => setEditing({ ...editing, schedule: s.id })} className={cn('h-8 rounded-full px-3 text-12 transition-colors', editing.schedule === s.id ? 'bg-accent font-medium text-accent-fg' : 'border border-board text-secondary hover:text-primary')}>
+                    <button key={s.id} type="button" onClick={() => setEditing({ ...editing, schedule: s.id })} className={cn('h-7 rounded-lg px-3 text-12 transition-colors', editing.schedule === s.id ? 'bg-card font-medium text-primary shadow-sm' : 'text-secondary hover:text-primary')}>
                       {s.label}
                     </button>
                   ))}
@@ -263,31 +353,94 @@ export function AutomationsPanel(): React.JSX.Element {
                   <p className="text-11 text-muted">到点运行一次后自动失效。</p>
                 )}
               </div>
-              {/* 模型（可选；空=默认） */}
-              <label className="flex flex-col gap-1">
-                <span className="text-11 text-muted">模型（可选；不填用当前默认）</span>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-12 text-muted">提示词</span>
+                <textarea value={editing.instructions} onChange={(e) => setEditing({ ...editing, instructions: e.target.value })} rows={5} placeholder="示例：汇总我今天的钉钉日程，重点提醒下一场会议。" className="rounded-xl border border-board bg-card px-3.5 py-2.5 text-13 leading-relaxed text-primary outline-none placeholder:text-placeholder focus:border-[var(--input-focus-border)]" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-12 text-muted">工作目录</span>
+                <input value={editing.workDir} onChange={(e) => setEditing({ ...editing, workDir: e.target.value })} className="h-10 rounded-xl border border-board bg-card px-3.5 text-13 text-primary outline-none focus:border-[var(--input-focus-border)]" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-12 text-muted">模型（可选；不填用当前默认）</span>
                 <ModelPicker providers={providers} model={editing.model} providerId={editing.providerId} onChange={(model, providerId) => setEditing({ ...editing, model, providerId })} />
               </label>
             </div>
-            <div className="flex justify-end gap-2.5 border-t border-board/40 px-4 py-3">
-              <button type="button" onClick={() => { setEditing(null); setEditingId(null); }} className="h-9 min-w-[88px] rounded-lg border border-board px-3 text-13 text-secondary hover:bg-hover">取消</button>
-              <button type="button" disabled={saving || !editing.instructions.trim()} onClick={() => void save()} className="flex h-9 min-w-[88px] items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-13 font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-50">
+            <div className="flex items-center justify-between gap-3 border-t border-board/40 px-5 py-3.5">
+              <span className="min-w-0 truncate text-11 text-muted">
+                {editingId ? '修改后按新计划运行' : automationScheduleSummary({ schedule: editing.schedule, time: editing.time || null, day: editing.day, intervalMinutes: editing.intervalMinutes })}
+              </span>
+              <button type="button" disabled={saving || !editing.instructions.trim()} onClick={() => void save()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 text-13 font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-50">
                 {saving && <Loader2 size={13} className="animate-spin" />}
-                保存
+                {editingId ? '保存' : '创建'}
               </button>
             </div>
           </div>
         </div>
       )}
-
       {/* 列表 */}
       {loading ? (
         <div className="flex h-32 items-center justify-center gap-2 text-13 text-muted">
           <Loader2 size={14} className="animate-spin" /> 加载中…
         </div>
       ) : list.length === 0 ? (
-        <div className="rounded-xl border border-board bg-card-ivory px-5 py-6 text-13 text-muted">
-          还没有自动化任务。点右上角「新建任务」，让 agent 定时帮你干活（比如每天早上发日程晨报）。
+        // 空态（对齐 Cindy 自动化页）：hero + 模板卡分组
+        <div className="flex flex-col items-center gap-2 py-10 select-none">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-chip text-muted">
+            <CalendarClock size={22} />
+          </span>
+          <p className="text-16 font-medium text-primary">暂无自动化</p>
+          <p className="max-w-[420px] text-center text-12 leading-relaxed text-muted">
+            创建一个 cron 自动化，让模型按计划执行你的指令。
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(emptyDraft());
+              setEditingId(null);
+            }}
+            className="mt-2 flex h-9 items-center gap-1.5 rounded-full bg-accent px-4 text-13 font-medium text-accent-fg hover:bg-accent-hover"
+          >
+            <Plus size={14} /> 新建自动化
+          </button>
+          <div className="mt-8 flex w-full flex-col gap-5">
+            <p className="text-12 text-muted">从模板开始</p>
+            {TEMPLATES.map((group) => (
+              <div key={group.title} className="flex flex-col gap-2">
+                <p className="text-11 text-muted">{group.title}</p>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {group.items.map((t) => (
+                    <button
+                      key={t.name}
+                      type="button"
+                      onClick={() => {
+                        setEditing({ ...emptyDraft(), name: t.name, instructions: t.instructions, schedule: t.schedule, time: t.time ?? '09:00', day: t.day ?? 1 });
+                        setEditingId(null);
+                      }}
+                      className="fundet-surface flex flex-col gap-2 rounded-container border border-board bg-card px-4 py-3.5 text-left transition-colors hover:border-[var(--input-focus-border)]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-chip text-secondary">
+                          <t.Icon size={13} />
+                        </span>
+                        <span className="text-13 font-medium text-primary">{t.name}</span>
+                      </div>
+                      <p className="text-11 leading-relaxed text-muted">{t.desc}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-chip px-1.5 text-11 leading-4 text-muted tabular-nums">
+                          <Clock size={9} className="mr-0.5 inline -translate-y-px" />
+                          {automationScheduleSummary({ schedule: t.schedule, time: t.time ?? null, day: t.day ?? null, intervalMinutes: null })}
+                        </span>
+                        {t.tags.map((tag) => (
+                          <span key={tag} className="rounded-full bg-chip px-1.5 text-11 leading-4 text-muted">{tag}</span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
