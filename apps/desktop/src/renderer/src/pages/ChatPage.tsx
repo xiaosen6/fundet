@@ -897,14 +897,14 @@ export function ChatPage(): React.JSX.Element {
             <div
               className={cn(
                 'flex flex-col px-6',
-                slice.items.length === 0 ? 'min-h-0 flex-1 justify-center pb-4' : 'pt-1 pb-4',
+                slice.items.length === 0 ? 'min-h-0 flex-1 items-center justify-center pb-4' : 'pt-1 pb-4',
               )}
             >
-              <div className={cn('mx-auto flex flex-col', slice.items.length === 0 ? 'max-w-[640px]' : 'max-w-[820px]')}>
+              <div className={cn('mx-auto flex flex-col', slice.items.length === 0 ? 'w-full max-w-[640px]' : 'max-w-[820px]')}>
                 {slice.items.length === 0 && (
                   <div className="mb-8 flex items-center gap-4 self-start select-none">
                     <BrandMark size={80} />
-                    <span className="text-[64px] leading-none font-medium tracking-tight text-primary">{brand.name}</span>
+                    <span className="text-[72px] leading-none font-semibold tracking-tight text-primary">{brand.name}</span>
                   </div>
                 )}
                 {notice && <div className="pb-1 text-12 text-error">{notice}</div>}
