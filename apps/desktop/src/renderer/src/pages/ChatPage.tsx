@@ -956,6 +956,7 @@ export function ChatPage(): React.JSX.Element {
                       onSend={() => void send()}
                       onAbort={() => void abort()}
                       isRunning={slice.isRunning}
+                      tall={slice.items.length === 0}
                       sendDisabled={noModel}
                       slashItems={slashItems}
                       placeholder={noModel ? '先在设置页添加 Provider，再开始对话…' : '输入消息；@ 引用文件，或拖入文件…'}

@@ -58,6 +58,8 @@ interface ChatInputProps {
   onStagePaths?: (paths: string[]) => void;
   /** 运行中按 Enter：把纯文本排队（本轮结束后自动发送）；带附件时不排队 */
   onQueue?: (text: string) => void;
+  /** 高体量（Cindy 首页空态 150px 多行卡）；对话态缺省为扁输入框（~86px，打字长高） */
+  tall?: boolean;
 }
 
 export function ChatInput({
@@ -83,6 +85,7 @@ export function ChatInput({
   workDir,
   onStagePaths,
   onQueue,
+  tall = false,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -233,7 +236,7 @@ export function ChatInput({
           </div>
         </div>
       )}
-      <div className="relative flex max-h-[300px] min-h-[150px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]">
+      <div className={cn('relative flex max-h-[300px] w-full flex-col justify-between px-[11px] pt-[11px] pb-[6px]', tall ? 'min-h-[150px]' : 'min-h-[72px]')}>
         {/* 粘贴长文本 chip：点击预览全文，× 移除（Cindy「粘贴的文本(N 行)」同款） */}
         {pastedTexts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
