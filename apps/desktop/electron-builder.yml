@@ -1,8 +1,10 @@
-# Fundet 品牌变体打包配置（BRAND=fundet 构建时使用）。
-# 与 electron-builder.yml 唯一差别：productName / 图标 / 发布仓（xiaosen6/fundet）。
-# 功能与 LongMa 完全一致；userData 自动隔离到 %APPDATA%\Fundet。
+# 未灵（Weiling）品牌变体打包配置（BRAND=fundet 构建时使用）。
+# 0.3.0 起：展示名「未灵」（快捷方式/窗口/应用内），productName 用 ASCII
+# 「Weiling」保证安装目录无中文；appId/GitHub 仓（xiaosen6/fundet）保留
+# fundet 技术标识——卸载升级身份与更新通道连续；userData 由 main/index.ts
+# 钉死 %APPDATA%\Fundet（存量数据零迁移）。
 appId: com.fundet.app
-productName: Fundet
+productName: Weiling
 directories:
   output: dist
   buildResources: resources
@@ -61,8 +63,8 @@ nsis:
   include: build/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
-  shortcutName: Fundet
-  artifactName: Fundet-Setup-${version}-${arch}.exe
+  shortcutName: 未灵
+  artifactName: Weiling-Setup-${version}-${arch}.exe
 
 mac:
   icon: resources/fundet/icon.png

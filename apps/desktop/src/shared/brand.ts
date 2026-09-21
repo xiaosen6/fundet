@@ -35,8 +35,10 @@ const BRANDS: Record<BrandId, BrandConfig> = {
   },
   fundet: {
     id: 'fundet',
-    name: 'Fundet',
-    assistantRole: '一个运行在本地的 AI 助手',
+    // 0.3.0 起产品名「未灵 Weiling」（未来互联之「未」+ 灵动精灵；英文谐音
+    // willing）。id/appId/userData/GitHub 仓保留 fundet 技术标识，只改展示名。
+    name: '未灵',
+    assistantRole: '一个运行在本地的 AI 灵伴助手',
     updater: { owner: 'xiaosen6', repo: 'fundet' },
     bundledSkills: false,
   },

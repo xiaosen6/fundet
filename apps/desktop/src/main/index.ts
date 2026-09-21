@@ -271,9 +271,12 @@ function bootstrap(): void {
 // 会落到 fundet-desktop；且必须在 single-instance lock 之前设置才生效）。
 // FUNDET_USER_DATA 环境变量可整体覆盖（冒烟/测试隔离用——Windows 上 Electron
 // 的 appData 走系统 API 不吃 %APPDATA% 环境变量，锁隔离只能从这里做）。
+// 0.3.0 起品牌更名「未灵」：目录与自启动键名仍钉死 Fundet——存量装机数据零迁移、
+// HKCU Run 键与 installer.nsh 卸载清理保持对齐。
+app.setName('Fundet');
 const brandUserData = process.env.FUNDET_USER_DATA
   ? path.resolve(process.env.FUNDET_USER_DATA)
-  : path.join(app.getPath('appData'), brand.name);
+  : path.join(app.getPath('appData'), 'Fundet');
 fs.mkdirSync(brandUserData, { recursive: true }); // 锁文件需要目录先存在，否则单实例锁失败 → 静默退出
 app.setPath('userData', brandUserData);
 
