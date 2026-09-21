@@ -901,7 +901,7 @@ export function ChatPage(): React.JSX.Element {
                 slice.items.length === 0 ? 'min-h-0 flex-1 items-center justify-center pb-4 pt-[10vh]' : 'pt-1 pb-4',
               )}
             >
-              <div className={cn('mx-auto flex flex-col', slice.items.length === 0 ? 'w-full max-w-[790px]' : 'max-w-[820px]')}>
+              <div className={cn('mx-auto flex w-full flex-col', slice.items.length === 0 ? 'max-w-[790px]' : 'max-w-[820px]')}>
                 {slice.items.length === 0 && (
                   <div className="mb-3.5 flex items-center gap-3 self-start select-none">
                     <BrandMark size={44} />
