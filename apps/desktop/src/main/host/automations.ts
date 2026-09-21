@@ -27,10 +27,14 @@ function toView(r: Row): AutomationView {
     time: r.time,
     day: r.day,
     cron: r.cron,
+    intervalMinutes: r.intervalMinutes,
+    model: r.model,
+    providerId: r.providerId,
     instructions: r.instructions,
     workDir: r.workDir,
     status: r.status as AutomationView['status'],
     nextRunAt: r.nextRunAt,
+    lastRunAt: r.lastRunAt,
     createdAt: r.createdAt,
   };
 }
@@ -39,7 +43,7 @@ function toView(r: Row): AutomationView {
 
 export interface AutomationDeps {
   /** 起隔离会话并发指令；返回会话 id（auto- 前缀） */
-  sendFn: (input: { instructions: string; workDir: string; sessionId: string }) => Promise<void>;
+  sendFn: (input: { instructions: string; workDir: string; sessionId: string; model: string | null; providerId: string | null }) => Promise<void>;
   now: () => number;
 }
 
@@ -75,10 +79,14 @@ export function createAutomation(input: AutomationInput): AutomationView {
       time: input.time,
       day: input.day,
       cron: input.cron,
+      intervalMinutes: input.intervalMinutes,
+      model: input.model,
+      providerId: input.providerId,
       instructions: input.instructions,
       workDir: input.workDir,
       status: 'active',
       nextRunAt: first,
+      lastRunAt: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -89,7 +97,7 @@ export function createAutomation(input: AutomationInput): AutomationView {
 export function updateAutomation(id: string, input: AutomationInput): AutomationView | null {
   const row = getDb().select().from(automations).where(eq(automations.id, id)).get();
   if (!row) return null;
-  const next = row.status === 'active' ? nextRunAt(input, new Date(deps.now())) : row.nextRunAt;
+  const next = row.status === 'active' ? nextRunAt({ ...input, lastRunAt: row.lastRunAt }, new Date(deps.now())) : row.nextRunAt;
   getDb()
     .update(automations)
     .set({
@@ -98,6 +106,9 @@ export function updateAutomation(id: string, input: AutomationInput): Automation
       time: input.time,
       day: input.day,
       cron: input.cron,
+      intervalMinutes: input.intervalMinutes,
+      model: input.model,
+      providerId: input.providerId,
       instructions: input.instructions,
       workDir: input.workDir,
       nextRunAt: next,
@@ -170,11 +181,15 @@ async function fireAutomation(id: string): Promise<void> {
       createdAt: now,
     })
     .run();
-  // 触发后立即算下一次（避免本次运行期间 tick 重入）
-  const next = nextRunAt(row as AutomationView, new Date(now));
-  getDb().update(automations).set({ nextRunAt: next, updatedAt: now }).where(eq(automations.id, id)).run();
+  // 触发后立即算下一次（interval 以 now 为新锚；once 已触发则 nextRunAt=null）
+  const next = nextRunAt({ ...(row as AutomationView), lastRunAt: row.schedule === 'once' ? now : row.lastRunAt }, new Date(now));
+  getDb()
+    .update(automations)
+    .set({ nextRunAt: next, lastRunAt: row.schedule === 'once' ? now : row.lastRunAt, updatedAt: now })
+    .where(eq(automations.id, id))
+    .run();
   try {
-    await deps.sendFn({ instructions: row.instructions, workDir: row.workDir, sessionId });
+    await deps.sendFn({ instructions: row.instructions, workDir: row.workDir, sessionId, model: row.model, providerId: row.providerId });
     getDb()
       .update(automationRuns)
       .set({ status: 'success', endedAt: deps.now() })

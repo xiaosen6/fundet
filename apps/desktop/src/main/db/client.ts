@@ -84,6 +84,22 @@ export function initDatabase(): FundetDb {
     created_at INTEGER NOT NULL
   )`).run();
   native.prepare('CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id)').run();
+  // 幂等补列（0.3.0 自动化对齐 Cindy：interval/once/可选模型）
+  const autoCols = new Set(
+    (native.prepare('PRAGMA table_info(automations)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!autoCols.has('interval_minutes')) {
+    native.prepare('ALTER TABLE automations ADD COLUMN interval_minutes INTEGER').run();
+  }
+  if (!autoCols.has('model')) {
+    native.prepare('ALTER TABLE automations ADD COLUMN model TEXT').run();
+  }
+  if (!autoCols.has('provider_id')) {
+    native.prepare('ALTER TABLE automations ADD COLUMN provider_id TEXT').run();
+  }
+  if (!autoCols.has('last_run_at')) {
+    native.prepare('ALTER TABLE automations ADD COLUMN last_run_at INTEGER').run();
+  }
   console.log('[fundet:db] migrations applied');
   return db;
 }

@@ -17,16 +17,19 @@ import {
 } from 'lucide-react';
 import type { AutomationInput, AutomationRunView, AutomationView } from '../../../../shared/automations.js';
 import { automationScheduleSummary } from '../../../../shared/automations.js';
+import type { ProviderView } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
 import { getDefaultWorkDir } from '../../lib/defaults';
 
 const SCHEDULES: Array<{ id: AutomationInput['schedule']; label: string }> = [
   { id: 'hourly', label: '每小时' },
+  { id: 'interval', label: '间隔' },
   { id: 'daily', label: '每天' },
   { id: 'weekdays', label: '工作日' },
   { id: 'weekly', label: '每周' },
   { id: 'monthly', label: '每月' },
   { id: 'cron', label: '自定义 cron' },
+  { id: 'once', label: '一次' },
 ];
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -51,6 +54,9 @@ interface Draft {
   time: string;
   day: number;
   cron: string;
+  intervalMinutes: number;
+  model: string;
+  providerId: string;
   instructions: string;
   workDir: string;
 }
@@ -60,6 +66,9 @@ const emptyDraft = (): Draft => ({
   time: '09:00',
   day: 1,
   cron: '0 9 * * 1-5',
+  intervalMinutes: 30,
+  model: '',
+  providerId: '',
   instructions: '',
   workDir: getDefaultWorkDir(),
 });
@@ -71,18 +80,24 @@ function draftFrom(a: AutomationView): Draft {
     time: a.time ?? '09:00',
     day: a.day ?? 1,
     cron: a.cron ?? '0 9 * * 1-5',
+    intervalMinutes: a.intervalMinutes ?? 30,
+    model: a.model ?? '',
+    providerId: a.providerId ?? '',
     instructions: a.instructions,
     workDir: a.workDir,
   };
 }
 function toInput(d: Draft): AutomationInput {
-  const needTime = ['daily', 'weekdays', 'weekly', 'monthly'].includes(d.schedule);
+  const needTime = ['daily', 'weekdays', 'weekly', 'monthly', 'once'].includes(d.schedule);
   return {
     name: d.name.trim() || d.instructions.slice(0, 20),
     schedule: d.schedule,
     time: needTime ? d.time : null,
     day: d.schedule === 'weekly' || d.schedule === 'monthly' ? d.day : null,
     cron: d.schedule === 'cron' ? d.cron : null,
+    intervalMinutes: d.schedule === 'interval' ? d.intervalMinutes : null,
+    model: d.model || null,
+    providerId: d.providerId || null,
     instructions: d.instructions,
     workDir: d.workDir,
   };
@@ -98,6 +113,7 @@ export function AutomationsPanel(): React.JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [runningNow, setRunningNow] = useState<string | null>(null);
+  const [providers, setProviders] = useState<ProviderView[]>([]);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError('');
@@ -112,6 +128,7 @@ export function AutomationsPanel(): React.JSX.Element {
 
   useEffect(() => {
     void refresh();
+    void window.fundet.listProviders().then((p) => setProviders(p));
   }, [refresh]);
 
   const toggle = async (a: AutomationView): Promise<void> => {
@@ -219,7 +236,7 @@ export function AutomationsPanel(): React.JSX.Element {
                     </button>
                   ))}
                 </div>
-                {['daily', 'weekdays', 'weekly', 'monthly'].includes(editing.schedule) && (
+                {['daily', 'weekdays', 'weekly', 'monthly', 'once'].includes(editing.schedule) && (
                   <div className="flex items-center gap-2">
                     {editing.schedule === 'weekly' && (
                       <select value={editing.day} onChange={(e) => setEditing({ ...editing, day: Number(e.target.value) })} className="h-9 rounded-lg border border-board bg-card px-2 text-13 text-primary">
@@ -232,10 +249,25 @@ export function AutomationsPanel(): React.JSX.Element {
                     <input type="time" value={editing.time} onChange={(e) => setEditing({ ...editing, time: e.target.value })} className="h-9 rounded-lg border border-board bg-card px-2 text-13 text-primary" />
                   </div>
                 )}
+                {editing.schedule === 'interval' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-12 text-muted">上次运行完成后等</span>
+                    <input type="number" min={1} value={editing.intervalMinutes} onChange={(e) => setEditing({ ...editing, intervalMinutes: Math.max(1, Number(e.target.value) || 1) })} className="h-9 w-24 rounded-lg border border-board bg-card px-2 text-13 text-primary" />
+                    <span className="text-12 text-muted">分钟</span>
+                  </div>
+                )}
                 {editing.schedule === 'cron' && (
                   <input value={editing.cron} onChange={(e) => setEditing({ ...editing, cron: e.target.value })} placeholder="分 时 日 月 周，如 0 9 * * 1-5" className="h-9 rounded-lg border border-board bg-card px-3 font-mono text-13 text-primary outline-none focus:border-[var(--input-focus-border)]" />
                 )}
+                {editing.schedule === 'once' && (
+                  <p className="text-11 text-muted">到点运行一次后自动失效。</p>
+                )}
               </div>
+              {/* 模型（可选；空=默认） */}
+              <label className="flex flex-col gap-1">
+                <span className="text-11 text-muted">模型（可选；不填用当前默认）</span>
+                <ModelPicker providers={providers} model={editing.model} providerId={editing.providerId} onChange={(model, providerId) => setEditing({ ...editing, model, providerId })} />
+              </label>
             </div>
             <div className="flex justify-end gap-2.5 border-t border-board/40 px-4 py-3">
               <button type="button" onClick={() => { setEditing(null); setEditingId(null); }} className="h-9 min-w-[88px] rounded-lg border border-board px-3 text-13 text-secondary hover:bg-hover">取消</button>
@@ -272,6 +304,12 @@ export function AutomationsPanel(): React.JSX.Element {
                     <p className="truncate text-13 font-medium text-primary" title={a.name}>{a.name}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-11 text-muted">
                       <span className="rounded-full bg-chip px-1.5 leading-4">{automationScheduleSummary(a)}</span>
+                      {a.schedule === 'once' && (
+                        <span className={cn('rounded-full px-1.5 leading-4', a.lastRunAt ? 'bg-hover-soft text-muted' : 'bg-hover-soft text-warning')}>
+                          {a.lastRunAt ? '已运行' : '待运行'}
+                        </span>
+                      )}
+                      {a.model && <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">{a.model}</span>}
                       <span className="flex items-center gap-0.5"><Clock size={10} /> 下次 {fmtNext(a.nextRunAt)}</span>
                     </p>
                   </div>
@@ -317,5 +355,41 @@ export function AutomationsPanel(): React.JSX.Element {
         </div>
       )}
     </div>
+  );
+}
+
+/** 模型选择（可选）：第一个 option=默认，其余 provider 的启用模型 */
+function ModelPicker({
+  providers,
+  model,
+  providerId,
+  onChange,
+}: {
+  providers: ProviderView[];
+  model: string;
+  providerId: string;
+  onChange: (model: string, providerId: string) => void;
+}): React.JSX.Element {
+  const value = model && providerId ? `${providerId}::${model}` : '';
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (!v) return onChange('', '');
+        const [pid, mid] = v.split('::');
+        onChange(mid ?? '', pid ?? '');
+      }}
+      className="h-9 rounded-lg border border-board bg-card px-2 text-13 text-primary"
+    >
+      <option value="">默认（当前 provider 首启用模型）</option>
+      {providers.flatMap((p) =>
+        p.models.filter((m) => m.enabled !== false).map((m) => (
+          <option key={`${p.id}::${m.id}`} value={`${p.id}::${m.id}`}>
+            {p.name} · {m.id}
+          </option>
+        )),
+      )}
+    </select>
   );
 }

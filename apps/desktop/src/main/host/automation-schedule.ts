@@ -4,10 +4,14 @@
  */
 
 export interface ScheduleRule {
-  schedule: 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'cron';
+  schedule: 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'cron' | 'interval' | 'once';
   time: string | null;
   day: number | null;
   cron: string | null;
+  /** interval：上次运行完成后等 N 分钟 */
+  intervalMinutes?: number | null;
+  /** once：上次触发时间（已跑过则不再触发） */
+  lastRunAt?: number | null;
 }
 
 /** 解析 HH:MM → {h, m}；非法返回 null */
@@ -130,6 +134,25 @@ export function nextRunAt(rule: ScheduleRule, from: Date = new Date()): number |
     }
     case 'cron':
       return rule.cron ? cronNext(rule.cron, from) : null;
+    case 'interval': {
+      // 相对间隔：以上次运行完成时间为锚；未跑过则以 from 为锚
+      const m = rule.intervalMinutes ?? 0;
+      if (m < 1) return null;
+      const anchor = rule.lastRunAt ?? from.getTime();
+      const next = anchor + m * 60_000;
+      // 锚已过且下次已过（停机久了）→ 立即触发一次
+      return next > from.getTime() ? next : from.getTime() + 60_000;
+    }
+    case 'once': {
+      // 一次性：到点触发一次，跑过（lastRunAt 非空）后不再触发
+      if (rule.lastRunAt) return null;
+      const t = parseTime(rule.time);
+      if (!t) return null;
+      let x = new Date(from.getTime());
+      x.setHours(t.h, t.m, 0, 0);
+      if (x.getTime() <= from.getTime()) x = nextDay(x, 1);
+      return x.getTime();
+    }
     default:
       return null;
   }

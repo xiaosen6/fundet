@@ -62,6 +62,12 @@ export const automations = sqliteTable('automations', {
   day: integer('day'),
   /** cron 表达式（schedule=cron 时） */
   cron: text('cron'),
+  /** interval：上次运行完成后等 N 分钟 */
+  intervalMinutes: integer('interval_minutes'),
+  /** 指定模型（空=默认 provider 首启用模型） */
+  model: text('model'),
+  /** 指定 providerId（与 model 配对；空=默认） */
+  providerId: text('provider_id'),
   /** 发送给 agent 的指令 */
   instructions: text('instructions').notNull(),
   workDir: text('work_dir').notNull(),
@@ -69,6 +75,8 @@ export const automations = sqliteTable('automations', {
   status: text('status').notNull().default('active'),
   /** 下次触发时间（ms epoch）；paused 时保留原值 */
   nextRunAt: integer('next_run_at'),
+  /** once：上次成功触发时间（一次性已跑标记） */
+  lastRunAt: integer('last_run_at'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

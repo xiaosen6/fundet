@@ -59,3 +59,32 @@ test('非法输入返回 null', () => {
   assert.equal(nextRunAt(rule('cron', null, null, 'not a cron'), at(2026, 9, 21)), null);
   assert.equal(nextRunAt(rule('monthly', '09:00', 32), at(2026, 9, 21)), null);
 });
+
+test('interval：未跑过以 from 为锚；跑过以上次完成时间为锚', () => {
+  // 未跑过（lastRunAt 空）：from + 30min
+  const r1 = { schedule: 'interval' as const, time: null, day: null, cron: null, intervalMinutes: 30, lastRunAt: null };
+  const d1 = new Date(nextRunAt(r1, at(2026, 9, 21, 10, 0))!);
+  assert.equal(d1.getHours(), 10);
+  assert.equal(d1.getMinutes(), 30);
+  // 跑过（lastRunAt=10:00）：锚 + 30min = 10:30
+  const r2 = { ...r1, lastRunAt: at(2026, 9, 21, 10, 0).getTime() };
+  const d2 = new Date(nextRunAt(r2, at(2026, 9, 21, 10, 10))!);
+  assert.equal(d2.getMinutes(), 30);
+  // 停机久（锚已过）：立即触发（1 分钟后）
+  const r3 = { ...r1, lastRunAt: at(2026, 9, 20, 10, 0).getTime() };
+  const d3 = new Date(nextRunAt(r3, at(2026, 9, 21, 10, 0))!);
+  assert.equal(d3.getHours(), 10);
+  assert.equal(d3.getMinutes(), 1);
+});
+
+test('once：未跑到点触发；已跑（lastRunAt 非空）不再触发', () => {
+  const r1 = { schedule: 'once' as const, time: '15:00', day: null, cron: null, lastRunAt: null };
+  const d1 = new Date(nextRunAt(r1, at(2026, 9, 21, 10, 0))!);
+  assert.equal(d1.getHours(), 15);
+  // 已过 15:00 → 明天 15:00
+  const d2 = new Date(nextRunAt(r1, at(2026, 9, 21, 16, 0))!);
+  assert.equal(d2.getDate(), 22);
+  // 已跑 → null
+  const r2 = { ...r1, lastRunAt: at(2026, 9, 21, 15, 0).getTime() };
+  assert.equal(nextRunAt(r2, at(2026, 9, 22, 10, 0)), null);
+});

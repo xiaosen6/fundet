@@ -312,13 +312,16 @@ function validateAutomationInput(input: AutomationInput): string | null {
   if (!input || typeof input !== 'object') return '参数缺失';
   if (!input.instructions || !input.instructions.trim()) return '指令不能为空';
   if (!input.workDir || !fs.existsSync(path.resolve(input.workDir))) return '工作目录不存在：' + input.workDir;
-  const needTime = input.schedule === 'daily' || input.schedule === 'weekdays' || input.schedule === 'weekly' || input.schedule === 'monthly';
+  const needTime = input.schedule === 'daily' || input.schedule === 'weekdays' || input.schedule === 'weekly' || input.schedule === 'monthly' || input.schedule === 'once';
   if (needTime && !/^\d{1,2}:\d{2}$/.test(input.time ?? '')) return '请填写触发时间（HH:MM）';
   if (input.schedule === 'weekly' && (input.day === null || input.day === undefined || input.day < 0 || input.day > 6)) {
     return '每周触发需选择星期几';
   }
   if (input.schedule === 'monthly' && (input.day === null || input.day === undefined || input.day < 1 || input.day > 31)) {
     return '每月触发需填日期（1-31）';
+  }
+  if (input.schedule === 'interval' && (input.intervalMinutes === null || input.intervalMinutes === undefined || input.intervalMinutes < 1)) {
+    return '间隔触发需填分钟数（≥1）';
   }
   if (input.schedule === 'cron' && !(input.cron ?? '').trim()) return '请填 cron 表达式';
   return null;
@@ -1142,12 +1145,20 @@ ${input.text}`;
   ipcMain.handle(FUNDET_INVOKE.SKILLHUB_UPDATES, async () => checkSkillhubUpdates());
 
   // ---------- 自动化（定时例行任务）：定义 CRUD + 调度 + 发送管线 ----------
-  // 发送管线：起隔离会话（auto- 前缀，不进侧栏），用当前默认 provider 首个启用模型。
+  // 发送管线：起隔离会话（auto- 前缀，不进侧栏）；任务指定 model/providerId 时用指定的，
+  // 否则回落默认 provider 首个启用模型。
   setAutomationDeps({
-    sendFn: async ({ instructions, workDir, sessionId }) => {
+    sendFn: async ({ instructions, workDir, sessionId, model: wantModel, providerId: wantProviderId }) => {
       const { maker } = getHost();
-      const provider = listProviders().find((p) => p.models.some((m) => m.enabled !== false));
-      const model = provider?.models.find((m) => m.enabled !== false)?.id;
+      let provider = wantProviderId
+        ? listProviders().find((p) => p.id === wantProviderId)
+        : listProviders().find((p) => p.models.some((m) => m.enabled !== false));
+      let model = wantModel ?? provider?.models.find((m) => m.enabled !== false)?.id;
+      // 指定模型但该 provider 没有/被禁用：抛错让 run 标 failed（用户看得见的配置问题）
+      if (wantProviderId && !provider) throw new Error(`指定的 provider 不存在：${wantProviderId}`);
+      if (wantModel && provider && !provider.models.some((m) => m.id === wantModel && m.enabled !== false)) {
+        throw new Error(`指定的模型在 provider 里不可用或已禁用：${wantModel}`);
+      }
       if (!provider || !model) throw new Error('没有可用模型（provider/模型未配置）');
       const session = await maker.createSession({
         agentKind: 'pi',

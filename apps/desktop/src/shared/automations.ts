@@ -4,7 +4,7 @@
  * 到点在本机起一个隔离会话（auto- 前缀，不进侧栏）跑，结果进运行历史。
  */
 
-export type AutomationSchedule = 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'cron';
+export type AutomationSchedule = 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'cron' | 'interval' | 'once';
 
 export interface AutomationView {
   id: string;
@@ -16,10 +16,18 @@ export interface AutomationView {
   day: number | null;
   /** cron 表达式（schedule=cron 时） */
   cron: string | null;
+  /** interval：上次运行完成后等 N 分钟 */
+  intervalMinutes: number | null;
+  /** 指定模型（空=默认 provider 首启用模型） */
+  model: string | null;
+  /** 指定 providerId（与 model 配对；空=默认） */
+  providerId: string | null;
   instructions: string;
   workDir: string;
   status: 'active' | 'paused';
   nextRunAt: number | null;
+  /** once：上次成功触发时间（用于一次性已跑标记） */
+  lastRunAt: number | null;
   createdAt: number;
 }
 
@@ -33,11 +41,11 @@ export interface AutomationRunView {
   error: string | null;
 }
 
-/** 新建/编辑入参（id/status/nextRunAt 由主进程管） */
-export type AutomationInput = Omit<AutomationView, 'id' | 'status' | 'nextRunAt' | 'createdAt'>;
+/** 新建/编辑入参（id/status/nextRunAt/lastRunAt/createdAt 由主进程管） */
+export type AutomationInput = Omit<AutomationView, 'id' | 'status' | 'nextRunAt' | 'lastRunAt' | 'createdAt'>;
 
-/** 触发摘要（列表人话版：每天 09:00 / 每周一 09:00 / 每小时） */
-export function automationScheduleSummary(a: Pick<AutomationView, 'schedule' | 'time' | 'day'>): string {
+/** 触发摘要（列表人话版：每天 09:00 / 每周一 09:00 / 每 30 分钟 / 一次） */
+export function automationScheduleSummary(a: Pick<AutomationView, 'schedule' | 'time' | 'day' | 'intervalMinutes'>): string {
   const t = a.time ?? '';
   switch (a.schedule) {
     case 'hourly':
@@ -50,8 +58,14 @@ export function automationScheduleSummary(a: Pick<AutomationView, 'schedule' | '
       return `每周${['日', '一', '二', '三', '四', '五', '六'][a.day ?? 0]} ${t}`;
     case 'monthly':
       return `每月 ${a.day} 日 ${t}`;
+    case 'interval': {
+      const m = a.intervalMinutes ?? 0;
+      return m >= 60 && m % 60 === 0 ? `每 ${m / 60} 小时` : `每 ${m} 分钟`;
+    }
     case 'cron':
       return '自定义';
+    case 'once':
+      return `一次 ${t}`;
     default:
       return '';
   }
