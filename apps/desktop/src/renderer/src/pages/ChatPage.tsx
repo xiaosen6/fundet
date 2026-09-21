@@ -826,6 +826,14 @@ export function ChatPage(): React.JSX.Element {
               <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
             </header>
 
+            {/* 新会话空消息：品牌 lockup（对齐 Cindy：圆形 logo 左 + 名字右，
+                输入框左上方）；首条消息后让位给消息流 */}
+            {slice.items.length === 0 && (
+              <div className="flex shrink-0 items-center gap-3 self-start px-6 pt-5 select-none">
+                <BrandMark size={34} />
+                <span className="text-20 leading-none font-medium tracking-tight text-primary">{brand.name}</span>
+              </div>
+            )}
             {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留） */}
             <FadeSwitcher trigger={activeId ?? 'none'} className="min-h-0 flex-1">
             <MessageStream

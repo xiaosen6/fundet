@@ -77,33 +77,34 @@
   --text-24: 24px;
 }
 
-/* ---------- Light（米色 / 象牙：页底暖米，卡片更浅象牙） ---------- */
+/* ---------- Light（对齐 CINDY Light skin：2026-09-21 从 Cindy 0.1.14
+   app.asar 主题对象原值抄录，冷灰白系；此前暖米色系弃用） ---------- */
 :root {
   --app-font-ui: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --app-font-code: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   /* 三层 */
-  --surface: #f2ebe1;
-  --card: #faf6f0;
-  --card-ivory: #fff9f2;
-  --chip: #ede4d6;
-  --chip-alt: #f0e8dc;
-  --hover: #e6dcce;
-  --hover-soft: #f4ede4;
-  --board: #ddd2c3;
+  --surface: #f2f2ed;
+  --card: #fdfdf8;
+  --card-ivory: #fdfdf8;
+  --chip: #eeeee9;
+  --chip-alt: #fafaf5;
+  --hover: #eeeee9;
+  --hover-soft: #f0f0eb;
+  --board: #e4e4df;
   /* 文字 */
-  --text-primary: #3d3832;
-  --text-secondary: #6f675c;
-  --text-muted: #948a7c;
-  --text-placeholder: #a3988a;
-  --text-disabled: #6f675c;
+  --text-primary: #1a1a1a;
+  --text-secondary: #888883;
+  --text-muted: #6b6b67;
+  --text-placeholder: #6b6b67;
+  --text-disabled: #6b6b67;
   /* 反相 CTA（深底浅字） */
-  --accent: #3d3832;
-  --accent-fg: #fbf6ef;
-  --accent-hover: #2f2b26;
+  --accent: #3c3f43;
+  --accent-fg: #fcfcfc;
+  --accent-hover: #2e3237;
   /* 发送钮禁用态 */
-  --send-disabled-bg: #ede4d6;
-  --send-disabled-icon: #a3988a;
+  --send-disabled-bg: #444242;
+  --send-disabled-icon: #585555;
   /* 反相深钮上的 kbd 徽章 */
   --accent-kbd-bg: rgba(255, 255, 255, 0.16);
   --accent-kbd-border: rgba(255, 255, 255, 0.3);
@@ -119,31 +120,30 @@
   --perm-auto: #417cdd;
   --perm-bypass: #ea6b17;
   /* 代码 / diff */
-  --inline-code-bg: rgba(175, 160, 140, 0.22);
-  --agent-rail: #ddd2c3;
+  --inline-code-bg: rgba(110, 118, 129, 0.22);
+  --agent-rail: #e4e4df;
   --diff-add-fg: #22863a;
   --diff-add-bg: #f0fff4;
   --diff-del-fg: #b31d28;
   --diff-del-bg: #ffeef0;
   /* composer / 菜单 */
-  --composer-pill-bg: #fffbf6;
-  --model-item-hover: #e8dcce;
-  --perm-code-bg: #f5eee6;
+  --composer-pill-bg: #fffffa;
+  --model-item-hover: #efefea;
+  --perm-code-bg: #fafaf5;
   /* 输入框聚焦描边 */
-  --input-focus-border: rgba(111, 103, 92, 0.3);
+  --input-focus-border: rgba(107, 107, 103, 0.3);
   /* 浮层（token 收口的阴影/遮罩例外） */
   --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.15);
   --overlay-modal: rgba(0, 0, 0, 0.5);
-  /* 卡片材质（0.2.27「有质感」批）：暖黑低强度环境影 + 顶缘 1px 高光内描边，
-     静置/悬停两档；沿用浮层同款 token 收口纪律（二层影：近距贴身 + 大范围弥散） */
+  /* 卡片材质（Cindy 冷灰白：中性黑环境影，弃暖黑） */
   --card-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 1px 2px rgba(61, 56, 50, 0.06),
-    0 6px 20px rgba(61, 56, 50, 0.06);
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 6px 20px rgba(0, 0, 0, 0.05);
   --card-shadow-hover:
     inset 0 1px 0 rgba(255, 255, 255, 1),
-    0 2px 6px rgba(61, 56, 50, 0.08),
-    0 12px 32px rgba(61, 56, 50, 0.1);
+    0 2px 6px rgba(0, 0, 0, 0.07),
+    0 12px 32px rgba(0, 0, 0, 0.09);
   /* 选中文本底色 */
   --text-selection-bg: var(--focus-ring-soft);
 }
