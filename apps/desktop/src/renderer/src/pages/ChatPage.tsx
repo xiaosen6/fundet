@@ -656,8 +656,9 @@ export function ChatPage(): React.JSX.Element {
             <div className="flex h-full w-full max-w-[720px] flex-col items-stretch gap-2.5 px-6 py-2">
               <div className="flex shrink-0 flex-col items-center gap-1.5 select-none">
                 <BrandMark size={40} />
-                <div className="text-[30px] leading-none font-medium tracking-tight text-primary">
-                  {brand.name}
+                {/* 品牌 wordmark（图3 同款）：斜体粗体压缩红字 FunDet */}
+                <div className="text-[30px] leading-none font-bold italic tracking-tighter text-[#c8102e]">
+                  Fun<span className="font-black">Det</span>
                 </div>
               </div>
               {providers.length === 0 ? (

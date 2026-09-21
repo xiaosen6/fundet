@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ProviderLogoMark } from '../../components/icons/ProviderLogoMark';
 import type { AutomationInput, AutomationRunView, AutomationView } from '../../../../shared/automations.js';
 import { automationScheduleSummary } from '../../../../shared/automations.js';
 import type { ProviderView } from '../../../../shared/fundet-api.js';
@@ -609,9 +610,14 @@ function ModelPicker({
                         model === m.id && providerId === p.id && 'bg-hover-soft',
                       )}
                     >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-chip text-secondary">
-                        <Cpu size={13} />
-                      </span>
+                      <ProviderLogoMark
+                        providerId={p.id}
+                        name={p.name}
+                        baseUrl={p.baseUrl}
+                        modelId={m.id}
+                        size={22}
+                        className="shrink-0"
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="block text-13 font-medium text-primary">{m.id}</span>
                         <span className="block text-11 text-muted">{p.name}</span>
