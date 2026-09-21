@@ -904,10 +904,9 @@ export function ChatPage(): React.JSX.Element {
                 {slice.items.length === 0 && (
                   <div className="mb-3.5 flex items-center gap-3 self-start select-none">
                     <BrandMark size={44} />
-                    {/* 品牌 wordmark（图3）：斜体粗体压缩红字 FunDet + 未来互联 */}
+                    {/* 品牌 wordmark（图3）：斜体粗体压缩红字 FunDet */}
                     <span className="text-44 leading-none font-bold italic tracking-tighter text-[#c8102e]">
                       Fun<span className="font-black">Det</span>
-                      <span className="ml-2 text-20 not-italic font-semibold tracking-normal">未来互联</span>
                     </span>
                   </div>
                 )}

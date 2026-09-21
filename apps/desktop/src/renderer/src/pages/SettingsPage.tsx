@@ -39,7 +39,7 @@ const THEME_OPTIONS: Array<{
   label: string;
   previewBg: string;
 }> = [
-  { value: 'light', label: '米色', previewBg: '#F2EBE1' },
+  { value: 'light', label: '浅色', previewBg: '#F2F2ED' },
   { value: 'dark', label: '深色', previewBg: '#2A2828' },
   { value: 'system', label: '跟随系统', previewBg: '' },
 ];

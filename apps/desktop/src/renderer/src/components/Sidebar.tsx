@@ -471,11 +471,11 @@ export function Sidebar({
         className="absolute top-0 right-0 z-30 h-full w-[3px] cursor-col-resize hover:bg-accent/40"
         onPointerDown={onResizeStart}
       />
-      {/* 顶行：图形 logo + 字标 */}
+      {/* 顶行：图形 logo + 字标（FunDet 斜体粗体压缩红字，对齐图3） */}
       <div className="drag-region flex h-[46px] shrink-0 items-center gap-2 px-4">
         <BrandMark size={22} />
-        <span className="text-15 font-medium tracking-tight text-primary select-none">
-          {brand.name}
+        <span className="text-15 font-bold italic tracking-tighter text-[#c8102e] select-none">
+          Fun<span className="font-black">Det</span>
         </span>
       </div>
 

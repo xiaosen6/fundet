@@ -9,6 +9,7 @@ import {
   CalendarClock,
   ChevronDown,
   Clock,
+  Cpu,
   FileText,
   FlaskConical,
   GitPullRequest,
@@ -22,6 +23,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { AutomationInput, AutomationRunView, AutomationView } from '../../../../shared/automations.js';
 import { automationScheduleSummary } from '../../../../shared/automations.js';
 import type { ProviderView } from '../../../../shared/fundet-api.js';
@@ -512,6 +514,9 @@ export function AutomationsPanel(): React.JSX.Element {
 }
 
 /** 模型选择（可选）：第一个 option=默认，其余 provider 的启用模型 */
+/** 模型选择（对齐 Cindy 创建自动化的模型弹层）：chip 触发 → 居中弹层
+ * （搜索框 + provider 分组模型行[图标/名称/能力档]+ 默认项 + 底部配置入口）。
+ * 能力档按 contextWindow 粗分（超高/高/中），付费徽标暂缺（BYOK 无计费概念）。 */
 function ModelPicker({
   providers,
   model,
@@ -523,26 +528,116 @@ function ModelPicker({
   providerId: string;
   onChange: (model: string, providerId: string) => void;
 }): React.JSX.Element {
-  const value = model && providerId ? `${providerId}::${model}` : '';
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const triggerLabel = model && providerId
+    ? `${providers.find((p) => p.id === providerId)?.name ?? providerId} · ${model}`
+    : '默认（当前 provider 首启用模型）';
+
+  const filtered = providers
+    .map((p) => ({
+      ...p,
+      models: p.models.filter((m) => m.enabled !== false && (!query || m.id.toLowerCase().includes(query.toLowerCase()))),
+    }))
+    .filter((p) => p.models.length > 0);
+
+  const tierOf = (m: { contextWindow?: number }): string => {
+    const w = m.contextWindow ?? 0;
+    if (w >= 128_000) return '超高';
+    if (w >= 64_000) return '高';
+    return '中';
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
-    <select
-      value={value}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (!v) return onChange('', '');
-        const [pid, mid] = v.split('::');
-        onChange(mid ?? '', pid ?? '');
-      }}
-      className="h-9 rounded-lg border border-board bg-card px-2 text-13 text-primary"
-    >
-      <option value="">默认（当前 provider 首启用模型）</option>
-      {providers.flatMap((p) =>
-        p.models.filter((m) => m.enabled !== false).map((m) => (
-          <option key={`${p.id}::${m.id}`} value={`${p.id}::${m.id}`}>
-            {p.name} · {m.id}
-          </option>
-        )),
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-10 items-center justify-between gap-2 rounded-xl border border-board bg-card px-3.5 text-13 text-primary transition-colors hover:border-[var(--input-focus-border)]"
+      >
+        <span className="min-w-0 truncate">{triggerLabel}</span>
+        <ChevronDown size={13} className="shrink-0 text-muted" />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-neutral-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="flex max-h-[70vh] w-full max-w-[420px] flex-col rounded-2xl border border-board bg-card shadow-[var(--shadow-menu)]">
+            {/* 搜索 */}
+            <div className="border-b border-board/40 px-4 py-3">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索模型…"
+                className="h-9 w-full rounded-lg border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder focus:border-[var(--input-focus-border)]"
+              />
+            </div>
+            {/* 模型列表 */}
+            <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
+              {/* 默认项 */}
+              <button
+                type="button"
+                onClick={() => { onChange('', ''); setOpen(false); }}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hover"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-chip text-secondary">
+                  <Cpu size={13} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-13 font-medium text-primary">默认</span>
+                  <span className="block text-11 text-muted">当前 provider 首启用模型</span>
+                </span>
+              </button>
+              {filtered.map((p) => (
+                <div key={p.id}>
+                  <p className="px-3 pt-2 pb-1 text-11 text-muted">{p.name}</p>
+                  {p.models.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => { onChange(m.id, p.id); setOpen(false); }}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hover',
+                        model === m.id && providerId === p.id && 'bg-hover-soft',
+                      )}
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-chip text-secondary">
+                        <Cpu size={13} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-13 font-medium text-primary">{m.id}</span>
+                        <span className="block text-11 text-muted">{p.name}</span>
+                      </span>
+                      <span className="shrink-0 text-11 text-muted tabular-nums">{tierOf(m)}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <p className="px-3 py-6 text-center text-12 text-muted">没有匹配的模型</p>
+              )}
+            </div>
+            {/* 底部配置入口 */}
+            <div className="border-t border-board/40 px-2 py-2">
+              <Link
+                to="/settings"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-13 text-secondary transition-colors hover:bg-hover hover:text-primary"
+              >
+                <Plus size={13} /> 配置模型
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
-    </select>
+    </>
   );
 }
