@@ -522,6 +522,8 @@ export interface FundetApi {
   /** 钉钉组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
   dwsWidgets(force?: boolean): Promise<DwsWidgetsSnapshot>;
   onDwsWidgetsChanged(cb: (snapshot: DwsWidgetsSnapshot) => void): () => void;
+  /** dws 安装增量输出（重装/安装时的实时进度） */
+  onDwsInstallProgress(cb: (chunk: string) => void): () => void;
   /** 组件卡条目点开查看（v1 仅 unread：最近消息） */
   dwsWidgetsDetail(kind: 'unread', id: string): Promise<DwsChatMessageView[]>;
 

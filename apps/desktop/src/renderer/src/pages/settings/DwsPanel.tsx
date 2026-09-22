@@ -31,6 +31,33 @@ export function DwsPanel(): React.JSX.Element {
   const [authUrl, setAuthUrl] = useState('');
   const [widgets, setWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const busyRef = useRef(false);
+  // 安装进度：起始时间（时间型进度条）+ 增量输出尾巴（主进程流式推送）
+  const [installStartedAt, setInstallStartedAt] = useState<number | null>(null);
+  const [installLog, setInstallLog] = useState('');
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  // 安装期间：秒级计时（进度条推进）+ 订阅增量输出
+  useEffect(() => {
+    if (installStartedAt === null) return undefined;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    const off = window.fundet.onDwsInstallProgress((chunk) => {
+      setInstallLog((prev) => (prev + chunk).slice(-4000));
+    });
+    return () => {
+      clearInterval(t);
+      off();
+    };
+  }, [installStartedAt]);
+
+  /** 时间型进度：0-60s 线性到 72%，60s-600s 缓爬到 95%（下载任务无精确百分比，
+   *  完成时由 run() 的 finally 跳满；上限 10 分钟 = 超时） */
+  const installProgress = (): number => {
+    if (installStartedAt === null) return 0;
+    const el = (nowTick - installStartedAt) / 1000;
+    if (el <= 60) return 5 + (el / 60) * 67;
+    if (el <= 600) return 72 + ((el - 60) / 540) * 23;
+    return 95;
+  };
 
   const refresh = useCallback(async (): Promise<void> => {
     setStatus(await window.fundet.dwsStatus());
@@ -56,6 +83,11 @@ export function DwsPanel(): React.JSX.Element {
     busyRef.current = true;
     setError('');
     setNotice('');
+    if (key === 'install') {
+      setInstallStartedAt(Date.now());
+      setNowTick(Date.now());
+      setInstallLog('');
+    }
     try {
       const res = await action();
       setOutput(res.output);
@@ -68,6 +100,7 @@ export function DwsPanel(): React.JSX.Element {
     } finally {
       busyRef.current = false;
       setBusy(null);
+      setInstallStartedAt(null);
     }
   };
 
@@ -231,6 +264,28 @@ export function DwsPanel(): React.JSX.Element {
               </button>
             </div>
           </>
+        )}
+
+        {/* 安装进度（时间型进度条 + 实时输出尾巴） */}
+        {busy === 'install' && installStartedAt !== null && (
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border border-board bg-card px-3.5 py-3">
+            <div className="flex items-center justify-between text-11 text-muted">
+              <span>正在下载安装…已进行 {Math.floor((nowTick - installStartedAt) / 60000)} 分 {Math.floor(((nowTick - installStartedAt) / 1000) % 60)} 秒（通常约 1 分钟，慢网络最长 10 分钟）</span>
+              <span className="tabular-nums">{Math.round(installProgress())}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-chip">
+              <div
+                data-install-progress
+                className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-linear"
+                style={{ width: `${installProgress()}%` }}
+              />
+            </div>
+            {installLog && (
+              <pre className="max-h-24 overflow-y-auto text-10 leading-relaxed text-muted whitespace-pre-wrap">
+                {installLog.split('\n').slice(-6).join('\n')}
+              </pre>
+            )}
+          </div>
         )}
 
         {error && <p className="mt-3 text-12 text-error">{error}</p>}

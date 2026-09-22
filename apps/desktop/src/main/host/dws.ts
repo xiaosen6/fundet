@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
-import { FUNDET_INVOKE } from '../ipc/channels.ts';
+import { FUNDET_INVOKE, FUNDET_PUSH } from '../ipc/channels.ts';
 
 const requireElectron = createRequire(import.meta.url);
 
@@ -276,12 +276,17 @@ const INSTALL_SCRIPTS: Record<DwsInstallSource, string> = {
     'irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.ps1 | iex',
 };
 
-/** 官方 install.ps1（装到 ~/.local/bin 并注册用户 PATH）。完成后无需重启应用即可探测。 */
-export async function installDws(source: DwsInstallSource): Promise<DwsActionResult> {
-  const res = await runCommand(
+/** 官方 install.ps1（装到 ~/.local/bin 并注册用户 PATH）。完成后无需重启应用即可探测。
+ * onOutput：增量输出回调（面板实时进度用；不给则行为同前）。 */
+export async function installDws(
+  source: DwsInstallSource,
+  onOutput?: (chunk: string) => void,
+): Promise<DwsActionResult> {
+  const res = await runCommandStreaming(
     'powershell.exe',
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', INSTALL_SCRIPTS[source]],
     INSTALL_TIMEOUT_MS,
+    onOutput,
   );
   const output = tail(`${res.stdout}\n${res.stderr}`.trim());
   if (res.code !== 0) return { ok: false, output: output || '安装脚本退出码非 0' };
@@ -290,6 +295,58 @@ export async function installDws(source: DwsInstallSource): Promise<DwsActionRes
     ok: after !== null,
     output: after ? `${output}\n\n安装成功：dws ${after.psCommand === 'dws' ? '' : '(本地路径)'}已可用。` : `${output}\n\n脚本跑完但没探测到 dws——可能 PATH 未刷新，重启应用再试。`,
   };
+}
+
+/** runCommand 的流式变体：stdout/stderr 增量回调（安装进度实时透出用） */
+function runCommandStreaming(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  onOutput?: (chunk: string) => void,
+): Promise<RunResult> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, { windowsHide: true });
+    } catch {
+      resolve({ code: -1, stdout: '', stderr: 'spawn 失败' });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try {
+          child.kill();
+        } catch {
+          /* ignore */
+        }
+        resolve({ code: -1, stdout, stderr: `${stderr}\n超时（${Math.round(timeoutMs / 1000)}s）` });
+      }
+    }, timeoutMs);
+    child.stdout?.on('data', (d: Buffer) => {
+      stdout += d.toString();
+      onOutput?.(d.toString());
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      stderr += d.toString();
+      onOutput?.(d.toString());
+    });
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: -1, stdout, stderr: `${stderr}\n${err.message}` });
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, stdout, stderr });
+    });
+  });
 }
 
 /** 从登录输出里抓授权 URL（浏览器没自动弹时的手动兜底入口） */
@@ -359,10 +416,13 @@ export async function runDwsSkillSetup(): Promise<DwsActionResult> {
 /* ---------------- IPC ---------------- */
 
 export function registerDwsIpc(): void {
-  const { ipcMain } = requireElectron('electron') as typeof import('electron');
+  const { ipcMain, BrowserWindow } = requireElectron('electron') as typeof import('electron');
+  const broadcastProgress = (chunk: string): void => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(FUNDET_PUSH.DWS_INSTALL_PROGRESS, chunk);
+  };
   ipcMain.handle(FUNDET_INVOKE.DWS_STATUS, async () => getDwsStatus());
   ipcMain.handle(FUNDET_INVOKE.DWS_INSTALL, async (_e: unknown, source: unknown) =>
-    installDws(source === 'github' ? 'github' : 'gitee'),
+    installDws(source === 'github' ? 'github' : 'gitee', broadcastProgress),
   );
   ipcMain.handle(FUNDET_INVOKE.DWS_LOGIN, async () => openDwsLogin());
   ipcMain.handle(FUNDET_INVOKE.DWS_LOGOUT, async () => runDwsLogout());

@@ -140,6 +140,8 @@ export const FUNDET_PUSH = {
   IM_STATUS_CHANGED: 'im:status-changed',
   /** 钉钉组件板快照变化：payload = DwsWidgetsSnapshot */
   DWS_WIDGETS_CHANGED: 'dws:widgets-changed',
+  /** dws 安装进度（payload = 增量输出文本行） */
+  DWS_INSTALL_PROGRESS: 'dws:install-progress',
   /** 知识库导入进度：payload { kbId, completed, total, current } */
   KB_IMPORT_PROGRESS: 'kb:import-progress',
   /** 更新状态变化：payload = UpdateState */

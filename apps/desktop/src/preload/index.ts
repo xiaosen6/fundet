@@ -229,6 +229,7 @@ const api: FundetApi = {
   onSessionListChanged: (cb) => subscribe(FUNDET_PUSH.SESSION_LIST_CHANGED, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
+  onDwsInstallProgress: (cb) => subscribe(FUNDET_PUSH.DWS_INSTALL_PROGRESS, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
   onFindResult: (cb) => subscribe<FindResultPayload>(FUNDET_PUSH.FIND_RESULT, cb),
