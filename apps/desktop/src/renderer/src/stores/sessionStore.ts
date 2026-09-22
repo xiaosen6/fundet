@@ -788,6 +788,18 @@ function rebuildItems(messages: MessageView[]): DisplayItem[] {
             done: false,
             createdAt: m.createdAt,
           });
+        } else if (kind === 'tool_result_full') {
+          // 全文结果：挂回对应工具卡（知识库引用角标重载后仍可点的前提；
+          // 0.3.6 前未落库此事件——存量会话的【n】重载后仍是纯文本）
+          const tid = data.toolUseId as string | undefined;
+          const it = tid ? items.find((x) => x.kind === 'tool' && x.id === tid) : undefined;
+          if (it && it.kind === 'tool') {
+            Object.assign(it, {
+              resultText: (data.fullText as string) || '',
+              isError: data.isError === true,
+              done: true,
+            });
+          }
         } else if (kind === 'tool_result') {
           // 历史里只有 summary 没有全文：把对应工具卡标 done
           for (const id of (data.toolUseIds as string[]) ?? []) {

@@ -175,6 +175,13 @@ function persistEvent(sessionId: string, event: AgentEvent): void {
       case 'tool_result':
         insertMessage(sessionId, 'tool', { kind: event.type, data: event.data });
         break;
+      case 'tool_result_full': {
+        // 工具结果全文：知识库引用角标溯源的数据源（不落库则重开会话后【n】
+        // 变纯文本——用户实报：刷新前可点圈、重载后退化）
+        const data = event.data as { toolUseId?: string };
+        if (data.toolUseId) insertMessage(sessionId, 'tool', { kind: 'tool_result_full', data: event.data });
+        break;
+      }
       case 'done':
         insertMessage(sessionId, 'done', event.data);
         break;
