@@ -1,12 +1,12 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-09-17。给任何接手的人/AI：先读本文，再读 `README.md`（用户向）。`cindy/` 目录是参考项目源码快照，**只读对照，禁止修改、禁止 fork 进本仓**（GitLab 仓不含 `cindy/`，完整只读克隆在 `D:\AI\Fundet\cindy`）。
+> 最后更新：2026-09-22（0.3.5）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
-> 仓库路径：源码已推内网 GitLab `git@172.16.56.11:fundet-harness/fundet-buddy.git`（2026-09-03 起）。**活跃分支 `main`；`master` 是收编进来的落后占位历史，不要在上面开发**。初始开发机工作副本 `D:\AI\Fundet`。
+> 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
-> **品牌**：本产品是 **Fundet**（山东未来互联科技的本地 AI 智能体）。Logo 为红球经纬线球体（2026-09-10 全套换新：白卡圆角 tile 版做 app icon——`resources/fundet/` ico/png/svg + renderer favicon；抠底透明球做 UI 内 BrandMark。`logo-raw.png` 是原始图；再生用 PIL，ICO 是多尺寸标准容器，UI 标用「左/上弧边界点最小二乘圆拟合 + 圆掩膜」从白卡里抠球——别用颜色阈值硬分，瓷砖右下粉色渐变和球体分不开）。构建系统（`shared/brand.ts` + `BRAND` 环境变量）源自一个支持多品牌的底座，里面保留着一个由另一团队维护的变体分支（`longma`）——**本仓一切开发/构建/发版都是 Fundet，默认即 Fundet，不要动 brand.ts 里的变体分支，不要用它出包**。
+> **品牌（2026-09-21 换新）**：本产品是 **Fundet**（山东未来互联科技的本地 AI 智能体）。Logo 为**红色头盔小宇航员吉祥物**（圆形透明角全套：`resources/fundet/icon.{ico,png}` + renderer favicon + `assets/logo-fundet.png`）；字标 **FunDet 斜体粗体红字**（#c8102e，三处统一：欢迎页/新会话 lockup/侧栏左上）。历史：曾用红球经纬线 logo（旧资产 `logo-raw.png`/icon.svg 还在 resources/，已不用）；曾一日改名「未灵 Weiling」后按用户拍板回退——技术标识（appId com.fundet.app / userData %APPDATA%\Fundet / GitHub 仓）从头到尾没动过，**改名类需求先看 §3.5 的 0.3.0 行**。构建系统（`shared/brand.ts` + BRAND 环境变量）保留 longma 变体分支——一切开发/构建/发版都是 Fundet，**不要动变体分支，不要用它出包**。
 >
-> 历史命名：仓库/包名大量使用 `fundet`（`@fundet/agent-core`、`window.fundet`、`FUNDET_*` IPC、`fundet-file://`）——这些就是本项目的主命名，保持即可。
+> 历史命名：仓库/包名大量使用 `fundet`（`@fundet/agent-core`、`window.fundet`、`FUNDET_*` IPC）——这些是本项目主命名，保持即可。
 
 ---
 
@@ -33,8 +33,8 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 
 - Electron 37 + electron-vite + React 19 + Tailwind 4。
 - Agent 底座只有 **Pi v0.83.0**（`earendil-works/pi`，bun 单二进制，`--mode rpc`）。
-- UI 视觉对齐 Cindy **CINDY skin**（米色浅色 + CINDY Dark），品牌是红球经纬线 Logo（山东未来互联科技 logo 截取），文案中文。自我介绍：**「你是 Fundet，一个运行在本地的 AI 助手」**。
-- **不要做成 Cindy fork。** 不搬：账号/OAuth、Ghost 插件、Office、设备互联、IM 云、语音、定时任务、Claude Code/Codex harness、SkillHub 市场。
+- UI 视觉对齐 Cindy（0.3.0 起亮色=Cindy Light 原值冷灰白、暗色=CINDY Dark 原值；新会话空消息态=Cindy 首页布局），品牌是小宇航员圆形 Logo + FunDet 斜体红字标，文案中文。自我介绍：**「你是 Fundet，一个运行在本地的 AI 助手」**。
+- **不要做成 Cindy fork。** 不搬：账号/OAuth、Ghost 插件、Office、设备互联、IM 云、语音、Claude Code/Codex harness。（原「不搬」清单里的定时任务、SkillHub 市场已在 0.3.0 按用户要求实现——自动化=宿主层调度非插件沙箱，技能集市=接 skillhub.cn 公共市场。）
 
 已对齐的产品边界：
 
@@ -92,7 +92,7 @@ Fundet/
 │   ├── desktop/                 # Electron 主工程（产品几乎全在这）
 │   │   ├── electron-builder.yml # 打包主配置（productName Fundet、发布 xiaosen6/fundet）
 │   │   ├── src/main|preload|renderer|shared/
-│   │   ├── resources/fundet/    # 红球 logo 全套（ico/png/svg；icon.ico=PNG-in-ICO 容器）
+│   │   ├── resources/fundet/    # 小宇航员圆形 logo 全套（ico/png；旧红球资产 icon.svg/logo-raw.png 已不用）
 │   │   └── dist/                # 安装包产物
 │   ├── pi-bin/<plat>-<arch>/    # Pi 运行时（gitignore；缺 theme 则 RPC 即崩）
 │   ├── ripgrep-bin/             # rg 二进制（gitignore，update.mjs 现下）
