@@ -156,9 +156,31 @@ Fundet/
 
 ```powershell
 pnpm typecheck
-pnpm test:unit
+pnpm test        # 183 项（node --test，desktop 侧在 apps/desktop/package.json 逐文件枚举）
 pnpm --filter @fundet/agent-core test
 ```
+
+---
+
+## 发版流程（0.2.19 起 GitHub 单线）
+
+1. 确认改动已提交、`pnpm test` 全绿；`apps/desktop/package.json` 升版本号
+2. `pnpm build && pnpm dist:win`（apps/desktop 下）——**EBUSY 失败是 Defender 锁新签名 exe 的高频项，重跑即过**（脚本带 3 次重试更稳）
+3. `memory.md` 写版本行（内容、根因、验证方式）+ 在途事项清零
+4. `git tag -a v<版本> && git push github main && git push github v<版本>`（远端名是 **github**；origin 是已弃用的 GitLab）
+5. `gh release create v<版本> dist/Fundet-Setup-*.exe dist/*.blockmap dist/latest.yml --title ... --notes ...`
+6. `gh api repos/xiaosen6/fundet/releases/tags/v<版本>` 复核非 draft、三资产齐；安装包备份到 `D:\`
+
+工作节奏（用户约定）：**修复→本地提交→用户实测→用户说「发」才发版**。
+
+---
+
+## 接手必读（AI / 新人）
+
+- **`memory.md` 是项目记忆**：版本史、在途事项、技术事实（skillhub API 真参数、Cindy asar 抽取法、dws 命令族）、踩坑记录（E2E 探针必须写文件脚本忌内联转义、冒烟种子必须 db-only 忌整库拷贝、fixture 抓包必须脱敏凭证——GitHub Push Protection 会拦）。接手先通读。
+- **代码纪律**：主进程模块间 import 用 `.ts` 扩展（node --test 直跑 TS 源）；测试注入式依赖（看 `setSkillhubDeps` / `setAutomationDeps` 范式）；表结构变更走 client.ts 幂等 raw SQL（drizzle-kit 迁移留大版本）。
+- **设计基准**：UI 对齐 Cindy（本机 `D:\AI\Cindy` 可抽 asar 对照；主题原值已抄进 globals.css）；产品名 Fundet（技术标识 appId/userData/GitHub 仓不可动——动了断存量数据与更新通道）。
+- **E2E**：CDP 驱动，工具脚本库在 `C:\temp\fundet-dev-tools\`（launch-dev/sh-pack-launch 等）；引用圈 DOM 是 `button[title^=查看来源]` 不是 `.kb-cite`（渲染层被替换过）。
 
 ---
 
