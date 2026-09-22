@@ -27,26 +27,18 @@ export function DwsPanel(): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [output, setOutput] = useState('');
   const [authUrl, setAuthUrl] = useState('');
   const [widgets, setWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const busyRef = useRef(false);
-  // 安装进度：起始时间（时间型进度条）+ 增量输出尾巴（主进程流式推送）
+  // 安装进度：起始时间（时间型进度条；日志不展示，进度即反馈）
   const [installStartedAt, setInstallStartedAt] = useState<number | null>(null);
-  const [installLog, setInstallLog] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
 
-  // 安装期间：秒级计时（进度条推进）+ 订阅增量输出
+  // 安装期间：秒级计时（进度条推进）
   useEffect(() => {
     if (installStartedAt === null) return undefined;
     const t = setInterval(() => setNowTick(Date.now()), 1000);
-    const off = window.fundet.onDwsInstallProgress((chunk) => {
-      setInstallLog((prev) => (prev + chunk).slice(-4000));
-    });
-    return () => {
-      clearInterval(t);
-      off();
-    };
+    return () => clearInterval(t);
   }, [installStartedAt]);
 
   /** 时间型进度：0-60s 线性到 72%，60s-600s 缓爬到 95%（下载任务无精确百分比，
@@ -86,14 +78,12 @@ export function DwsPanel(): React.JSX.Element {
     if (key === 'install') {
       setInstallStartedAt(Date.now());
       setNowTick(Date.now());
-      setInstallLog('');
     }
     try {
       const res = await action();
-      setOutput(res.output);
       setAuthUrl(res.url ?? '');
       if (res.ok) setNotice('完成。');
-      else setError('没成功，看下方输出定位。');
+      else setError('操作没成功，请重试；反复失败可先「退出登录」再来。');
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -198,20 +188,6 @@ export function DwsPanel(): React.JSX.Element {
         ) : (
           <>
             {identity && <p className="mt-2 text-12 text-secondary">已登录：{identity}</p>}
-            <p className="mt-2 text-12 text-secondary">
-              {status.skills.length > 0
-                ? `已装配 ${status.skills.length} 个钉钉技能。直接在会话里说人话即可，例如「帮我订明天下午 3 点的会议室，拉上产品组」「请下周一一天年假」「查一下张三的手机号」。写操作（提交审批、发消息等）会先向你确认。`
-                : '官方技能包还没装。装完后智能体才认识这些钉钉命令（会议/审批/通讯录/文档等 14 个技能）。'}
-            </p>
-            {status.skills.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {status.skills.map((name) => (
-                  <span key={name} className="rounded-full bg-chip px-2 py-0.5 text-11 text-secondary">
-                    {name.replace('dingtalk-', '')}
-                  </span>
-                ))}
-              </div>
-            )}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -236,18 +212,6 @@ export function DwsPanel(): React.JSX.Element {
               <button
                 type="button"
                 disabled={busy !== null}
-                className="h-8 px-2 text-12 text-muted underline decoration-board underline-offset-2 hover:text-primary"
-                title="Gitee 源失败时换 GitHub 源重装（需能访问 raw.githubusercontent.com）"
-                onClick={() => void run('install', async () => {
-                  setNotice('正在从 GitHub 下载安装 dws（需能访问 GitHub，通常 1-2 分钟）…');
-                  return window.fundet.dwsInstall('github');
-                })}
-              >
-                用 GitHub 源
-              </button>
-              <button
-                type="button"
-                disabled={busy !== null}
                 className="h-8 px-3 text-12 text-secondary underline decoration-board underline-offset-2 hover:text-error"
                 onClick={() => void run('logout', async () => {
                   const ok = await confirmDialog({
@@ -266,11 +230,11 @@ export function DwsPanel(): React.JSX.Element {
           </>
         )}
 
-        {/* 安装进度（时间型进度条 + 实时输出尾巴） */}
+        {/* 安装进度（时间型进度条；日志不展示——进度即反馈） */}
         {busy === 'install' && installStartedAt !== null && (
           <div className="mt-3 flex flex-col gap-2 rounded-lg border border-board bg-card px-3.5 py-3">
             <div className="flex items-center justify-between text-11 text-muted">
-              <span>正在下载安装…已进行 {Math.floor((nowTick - installStartedAt) / 60000)} 分 {Math.floor(((nowTick - installStartedAt) / 1000) % 60)} 秒（通常约 1 分钟，慢网络最长 10 分钟）</span>
+              <span>正在下载安装…已进行 {Math.floor((nowTick - installStartedAt) / 60000)} 分 {Math.floor(((nowTick - installStartedAt) / 1000) % 60)} 秒（通常约 1 分钟）</span>
               <span className="tabular-nums">{Math.round(installProgress())}%</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-chip">
@@ -280,21 +244,11 @@ export function DwsPanel(): React.JSX.Element {
                 style={{ width: `${installProgress()}%` }}
               />
             </div>
-            {installLog && (
-              <pre className="max-h-24 overflow-y-auto text-10 leading-relaxed text-muted whitespace-pre-wrap">
-                {installLog.split('\n').slice(-6).join('\n')}
-              </pre>
-            )}
           </div>
         )}
 
         {error && <p className="mt-3 text-12 text-error">{error}</p>}
         {notice && !error && <p className="mt-3 text-12 text-secondary">{notice}</p>}
-        {output && (
-          <pre className="mt-3 max-h-44 overflow-y-auto rounded-lg bg-hover-soft p-3 text-11 leading-relaxed text-secondary whitespace-pre-wrap">
-            {output}
-          </pre>
-        )}
       </div>
 
       <DwsWidgets
