@@ -311,6 +311,9 @@ function scheduleFlush(sessionId: string): void {
 // ---------------------------------------------------------------------------
 
 function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'throttled' {
+  // 自动化隔离会话（auto- 前缀）无 UI 展示：直接丢弃事件，避免为它建孤儿
+  // slice（每次定时任务一个，永不清理的内存泄漏；主进程侧已落库可溯源）
+  if (sessionId.startsWith('auto-')) return 'immediate';
   const s = getSlice(sessionId);
   switch (event.type) {
     case 'text': {

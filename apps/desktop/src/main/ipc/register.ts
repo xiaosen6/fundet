@@ -357,6 +357,9 @@ function sessionRowsToList(): SessionListItem[] {
     // 置顶段在前（段内按手动序），其余按更新时间倒序
     .orderBy(desc(sessions.pinned), desc(sessions.sortOrder), desc(sessions.updatedAt))
     .all()
+    // 自动化隔离会话（auto- 前缀）不进侧栏——每次定时触发一个，不过滤会把
+    // 列表刷屏；运行历史在自动化面板看
+    .filter((r) => !r.id.startsWith('auto-'))
     .map((r) => ({
       id: r.id,
       title: r.title,
@@ -1154,6 +1157,9 @@ ${input.text}`;
   // ---------- 自动化（定时例行任务）：定义 CRUD + 调度 + 发送管线 ----------
   // 发送管线：起隔离会话（auto- 前缀，不进侧栏）；任务指定 model/providerId 时用指定的，
   // 否则回落默认 provider 首个启用模型。
+  // 生命周期（0.3.8 review 修复）：send 被接收 ≠ 任务完成——等 done 事件再落定
+  // run 状态（超时 10 分钟按失败），结束后 closeSession 回收 pi 子进程（此前
+  // 每次触发泄漏一个进程，interval 任务一天几十个）。
   setAutomationDeps({
     sendFn: async ({ instructions, workDir, sessionId, model: wantModel, providerId: wantProviderId }) => {
       const { maker } = getHost();
@@ -1176,9 +1182,35 @@ ${input.text}`;
         providerId: provider.id,
       });
       wireSession(session);
-      insertMessage(session.id, 'user', { text: instructions });
-      const result = await session.send(await buildUserMessage(instructions, []));
-      if (!result.accepted) throw new Error(result.reason ?? '发送被拒');
+      try {
+        insertMessage(session.id, 'user', { text: instructions });
+        const result = await session.send(await buildUserMessage(instructions, []));
+        if (!result.accepted) throw new Error(result.reason ?? '发送被拒');
+        // 等本轮真正完成（done 事件）；send 的 resolve 只代表 pi 收下了输入
+        await new Promise<void>((resolve, reject) => {
+          const unsubscribe = session.onEvent((event: AgentEvent) => {
+            if (event.type === 'done') {
+              cleanup();
+              resolve();
+            }
+          });
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('任务超时（10 分钟未完成，已终止）'));
+          }, 10 * 60_000);
+          function cleanup(): void {
+            clearTimeout(timeout);
+            unsubscribe();
+          }
+        });
+      } finally {
+        // 回收：关会话杀 pi 子进程（auto- 会话不进侧栏、无人工接管场景）
+        try {
+          await maker.closeSession(sessionId, 'requested');
+        } catch {
+          /* 关闭失败不改变 run 结果 */
+        }
+      }
     },
   });
   ipcMain.handle(FUNDET_INVOKE.AUTOMATIONS_LIST, async () => listAutomations());

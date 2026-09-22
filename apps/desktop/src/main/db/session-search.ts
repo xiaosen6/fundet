@@ -51,6 +51,7 @@ export function searchSessions(query: string, limit = 30): SessionSearchHit[] {
   for (const r of db
     .prepare('SELECT id, title, updated_at FROM sessions')
     .all() as Array<{ id: string; title: string; updated_at: number }>) {
+    if (r.id.startsWith('auto-')) continue; // 自动化隔离会话不进搜索（同侧栏过滤）
     sessionMeta.set(r.id, { title: r.title, updatedAt: r.updated_at });
   }
   const metaOf = (id: string) => sessionMeta.get(id);
