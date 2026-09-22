@@ -229,12 +229,28 @@ export function DwsPanel(): React.JSX.Element {
 
       <DwsWidgets
         snapshot={widgets}
-        onRefresh={() => void window.fundet.dwsWidgets(true).then(setWidgets)}
+        onRefresh={async () => {
+          const s = await window.fundet.dwsWidgets(true);
+          setWidgets(s);
+          // 刷新结果摘要（用户要求：刷新完要看到刷新了什么）
+          const now = Date.now();
+          const overdue = s.todos.filter((t) => t.dueMs && t.dueMs < now).length;
+          const time = `${String(new Date(s.fetchedAt).getHours()).padStart(2, '0')}:${String(new Date(s.fetchedAt).getMinutes()).padStart(2, '0')}`;
+          const parts = [
+            `日程 ${s.calendar.length} 条`,
+            `待办 ${s.todos.length} 条${overdue > 0 ? `（${overdue} 逾期）` : ''}`,
+            `待审批 ${s.approvals.length} 条`,
+            `未读 ${s.unreadTotal} 条`,
+          ];
+          const errs = Object.entries(s.errors).map(([k]) => ({ calendar: '日程', todos: '待办', approvals: '审批', unread: '未读' }[k] ?? k));
+          setNotice(`已刷新（${time}）：${parts.join(' · ')}${errs.length > 0 ? `；失败：${errs.join('/')}` : ''}`);
+        }}
       />
 
       <p className="text-12 text-muted">
         安全：dws 以你的 OAuth 身份调用钉钉开放平台（全链路可审计）；{brand.name}
-        侧执行 dws 命令照常走命令确认闸。退出登录可在终端跑 <code>dws auth logout</code>。
+        侧执行 dws 命令照常走命令确认闸。升级 dws 后组件异常时：先「重装 / 升级
+        dws」，仍失败再「退出登录」重新登录。
       </p>
     </div>
   );
