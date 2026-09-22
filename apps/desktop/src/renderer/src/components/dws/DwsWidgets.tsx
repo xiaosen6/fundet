@@ -123,7 +123,7 @@ interface CardShellProps {
   badge?: number;
   error?: string;
   onAsk?: () => void;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
   index: number;
   children: React.ReactNode;
 }
@@ -525,7 +525,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
 export interface DwsWidgetsProps {
   snapshot: DwsWidgetsSnapshot | null;
   onAskAgent?: (prompt: string) => void;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
   /** popover=主页欢迎页（板静态，点击弹浮层）；inline=灵动岛弹层（原地展开） */
   expandMode?: 'inline' | 'popover';
 }
@@ -540,6 +540,8 @@ const CARD_META: Record<CardKind, { title: string; Icon: typeof CalendarDays }> 
 export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inline' }: DwsWidgetsProps): React.JSX.Element | null {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [pop, setPop] = useState<{ kind: CardKind; top: number; left: number; width: number; height: number } | null>(null);
+  /** 板级手动刷新中：图标转起来直到查询完成（点击无反馈是用户实报的「不管用」） */
+  const [refreshing, setRefreshing] = useState(false);
 
   // Esc 关浮层（须在早退 return 之前：钩子数不能随 snapshot 变化）
   useEffect(() => {
@@ -613,10 +615,14 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
             type="button"
             className="ml-auto flex h-6 w-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-hover hover:text-primary"
             aria-label="刷新钉钉组件"
-            title="刷新钉钉组件"
-            onClick={onRefresh}
+            title="刷新钉钉组件（拉取最新数据，需几秒）"
+            onClick={() => {
+              if (refreshing) return;
+              setRefreshing(true);
+              Promise.resolve(onRefresh()).finally(() => setRefreshing(false));
+            }}
           >
-            <RefreshCw size={12} />
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : undefined} />
           </button>
         )}
       </div>

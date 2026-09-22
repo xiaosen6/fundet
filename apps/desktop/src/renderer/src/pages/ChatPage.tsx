@@ -99,8 +99,8 @@ export function ChatPage(): React.JSX.Element {
     };
   }, []);
 
-  const refreshDwsWidgets = useCallback((): void => {
-    void window.fundet.dwsWidgets(true).then(setDwsWidgets);
+  const refreshDwsWidgets = useCallback((): Promise<void> => {
+    return window.fundet.dwsWidgets(true).then(setDwsWidgets);
   }, []);
 
   // 侧栏宽度拖拽（200–400px 夹紧；持久化到 localStorage）
