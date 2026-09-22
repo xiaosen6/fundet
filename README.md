@@ -181,6 +181,7 @@ pnpm --filter @fundet/agent-core test
 - **代码纪律**：主进程模块间 import 用 `.ts` 扩展（node --test 直跑 TS 源）；测试注入式依赖（看 `setSkillhubDeps` / `setAutomationDeps` 范式）；表结构变更走 client.ts 幂等 raw SQL（drizzle-kit 迁移留大版本）。
 - **设计基准**：UI 对齐 Cindy（本机 `D:\AI\Cindy` 可抽 asar 对照；主题原值已抄进 globals.css）；产品名 Fundet（技术标识 appId/userData/GitHub 仓不可动——动了断存量数据与更新通道）。
 - **E2E**：CDP 驱动，工具脚本库在 `C:\temp\fundet-dev-tools\`（launch-dev/sh-pack-launch 等）；引用圈 DOM 是 `button[title^=查看来源]` 不是 `.kb-cite`（渲染层被替换过）。
+- **dws 安装镜像**（0.3.7）：Gitee `sun-jisen/dws-mirror`（自建公开仓，v1.0.62 全资产），Fundet 安装 dws 全链走它（官方 Gitee 渠道仍回落 GitHub 下载——国内用户卡死根因）；每周一 09:30 本机定时同步（`C:\temp\dws-mirror-tools\sync-mirror.mjs`，token 在同目录 token.env 不进 git，幂等按 tag 跳过）；镜像仓分支是 **master**（raw URL 用 `/raw/master/`）。
 
 ---
 
