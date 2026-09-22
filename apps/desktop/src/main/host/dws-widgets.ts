@@ -128,9 +128,19 @@ export function parseTodos(stdout: string, nowMs: number = Date.now()): DwsTodoV
 
 /** 待审批当前恰好为空（无真实非空样本），字段名宽容提取 */
 export function parseApprovalsPending(stdout: string): DwsApprovalPendingView[] {
-  const parsed = extractJson(stdout) as { result?: { values?: unknown } } | null;
-  const values = parsed?.result?.values;
-  if (!Array.isArray(values)) return [];
+  const parsed = extractJson(stdout) as Record<string, unknown> | null;
+  if (!parsed) return [];
+  // dws 版本差异：1.0.62 是 result.values，老版可能是顶层数组或 result.data/items
+  const candidates = [
+    (parsed.result as Record<string, unknown> | undefined)?.values,
+    (parsed.result as Record<string, unknown> | undefined)?.data,
+    (parsed.result as Record<string, unknown> | undefined)?.items,
+    (parsed as { values?: unknown }).values,
+    (parsed as { items?: unknown }).items,
+    Array.isArray(parsed) ? parsed : null,
+  ];
+  const values = candidates.find((c): c is unknown[] => Array.isArray(c));
+  if (!values) return [];
   return values
     .filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null)
     .map((v) => ({
@@ -257,6 +267,16 @@ export function errOf(result: { code: number; stdout: string; stderr: string }):
 /** profile 失败里能识别出「登录态失效」的信号（token 30 天过期、授权被撤） */
 const AUTH_FAIL_RE = /401|token|授权|unauthor|login|登录/i;
 
+/** 审批查询失败的错误文案增强：dws 版本 < 1.0.62 时提示升级（输出格式不匹配的主因） */
+function enrichApprovalError(msg: string, version: string | null): string {
+  if (!version) return msg;
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!m) return msg;
+  const [_, major, minor, patch] = m.map(Number);
+  const tooOld = major! < 1 || (major === 1 && (minor! < 0 || (minor === 0 && patch! < 62)));
+  return tooOld ? `${msg}（dws ${version} 版本过旧，到钉钉工作台面板点「补装/修复技能」升级后重试）` : msg;
+}
+
 async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
   if (busy) return snapshot();
   if (!force && Date.now() - lastCycleAt < REFRESH_TTL_MS) return snapshot();
@@ -269,6 +289,15 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       push();
       return snapshot();
     }
+    // 版本探测（审批卡错误文案增强用；探测失败 null 不阻断）
+    let dwsVersion: string | null = null;
+    try {
+      const v = await execDws(dws, ['version', '--format', 'json'], 10_000);
+      if (v.code === 0) {
+        const parsed = (await import('./dws.js')).parseDwsVersion(v.stdout);
+        dwsVersion = parsed.version ?? null;
+      }
+    } catch { /* 版本拿不到不阻断 */ }
     const [profile, cal, todo, oa, unread] = await Promise.all([
       execDws(dws, ['profile', 'list', '--format', 'json'], RUN_TIMEOUT_MS),
       execDws(dws, ['calendar', 'event', 'list', '--format', 'json'], QUERY_TIMEOUT_MS),
@@ -315,7 +344,10 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
     cache.approvals =
       oa.code === 0
         ? { data: parseApprovalsPending(oa.stdout) }
-        : { data: cache.approvals?.data ?? [], error: errOf(oa) };
+        : {
+            data: cache.approvals?.data ?? [],
+            error: enrichApprovalError(errOf(oa), dwsVersion),
+          };
     cache.unread =
       unread.code === 0
         ? { data: parseUnread(unread.stdout) }
