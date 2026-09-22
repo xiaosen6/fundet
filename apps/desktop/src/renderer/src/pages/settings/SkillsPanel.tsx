@@ -377,20 +377,20 @@ function DiscoverSkills({
                       className="shrink-0 text-muted transition-transform duration-[var(--motion-fast)] group-hover:translate-x-0.5"
                     />
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-12 leading-relaxed text-secondary">{s.description || '（无描述）'}</p>
+                  {/* 描述固定两行高：短介绍的卡与长文卡完全等高 */}
+                  <p className="mt-1.5 line-clamp-2 min-h-[3.3em] text-12 leading-relaxed text-secondary">{s.description || '（无描述）'}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-11 text-muted">
                     <span className="rounded-full bg-chip px-1.5 leading-4 tabular-nums">{fmtCount(s.downloads)} 下载</span>
                     {s.category && <span className="rounded-full bg-chip px-1.5 leading-4">{s.category}</span>}
                     {s.requiresApiKey && <span className="rounded-full bg-hover-soft px-1.5 leading-4 text-warning">需 API Key</span>}
+                    {installed && (
+                      <span className="rounded-full bg-hover-soft px-1.5 leading-4 text-success">
+                        已安装{upd ? ` · 可更新 v${upd.latest}` : ''}
+                      </span>
+                    )}
                     {s.owner && <span className="truncate">@{s.owner}</span>}
                   </div>
                 </button>
-
-                {installed && (
-                  <span className="mt-2 w-fit rounded-full bg-hover-soft px-2 py-px text-11 text-success">
-                    已安装{upd ? ` · 可更新 v${upd.latest}` : ''}
-                  </span>
-                )}
               </div>
             );
           })}
