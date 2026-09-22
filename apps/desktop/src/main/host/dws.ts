@@ -269,9 +269,13 @@ export async function getDwsStatus(): Promise<DwsStatusView> {
 }
 
 const INSTALL_SCRIPTS: Record<DwsInstallSource, string> = {
+  // Gitee 渠道：走自建镜像仓 sun-jisen/dws-mirror（官方 Gitee 仓的脚本会回落
+  // GitHub 下载二进制——国内用户卡死的根因；镜像仓的 release 资产定期同步自
+  // GitHub，脚本经 DWS_GITEE_REPO 用 Gitee API 解析版本+下载，全链国内直连。
+  // 实测 38s 装完 v1.0.62，零 GitHub 依赖。镜像分支是 master。）
   gitee:
-    "$env:DWS_GITEE_REPO='DingTalk-Real-AI/dingtalk-workspace-cli'; " +
-      'irm https://gitee.com/DingTalk-Real-AI/dingtalk-workspace-cli/raw/main/scripts/install.ps1 | iex',
+    "$env:DWS_GITEE_REPO='sun-jisen/dws-mirror'; " +
+      'irm https://gitee.com/sun-jisen/dws-mirror/raw/master/scripts/install.ps1 | iex',
   github:
     'irm https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.ps1 | iex',
 };
