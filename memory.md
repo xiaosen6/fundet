@@ -124,6 +124,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.3.5 | 09-22 | **热补 5：钉钉面板刷新结果反馈**——0.3.4 只修了欢迎页组件板的 spinning，钉钉工作台面板里的刷新钮没接（用户实报仍无反馈）且要结果可见：①面板 onRefresh 改 async（spinning 生效）；②刷新完成 notice 区显示摘要「已刷新（HH:MM）：日程 N 条 · 待办 N 条（M 逾期）· 待审批 N 条 · 未读 N 条」，单组件失败追加「失败：XX」；③底部过时提示更新（退出登录已有按钮）。dev 实测点击即转+摘要显示 |
 | 0.3.4 | 09-21 | **热补 4：组件刷新钮反馈**——用户实报「点了没反应」：链路其实通（force=true 真查询），但 dws 查询要几秒~几十秒、期间无任何视觉反馈 = 体感失灵。修：refreshDwsWidgets 返回 Promise（原 void），DwsWidgets 板级 refreshing state——点击图标 animate-spin 直到查询完成，title 注明「需几秒」；dev 实测点击即转、2s 完成（用户机慢则转更久，正是反馈意义） |
 | 0.3.3 | 09-21 | **热补 3：技能卡等高**——描述长短不一导致卡片参差（用户实报）：描述固定两行高（line-clamp-2 + min-h-[3.3em]）+「已安装」徽标并入徽标行（不再单独占行）；28 卡实测全部 118px（极差 0） |
 | 0.3.2 | 09-21 | **热补 2：钉钉自救链路补全**——0.3.1 后 Damon 仍「刷新失败」，根因二连：①「补装/修复技能」只装技能**不升 dws CLI 本体**（错误提示指错了按钮）；②面板无退出登录出口（升级后旧登录态不兼容没法清）。修：①已登录态新增「重装 / 升级 dws」按钮（installDws 重跑，tooltip 注明用途）；②新增「退出登录」（确认框→dws auth logout→回待登录态，走 confirmDialog）；③enrichApprovalError 文案改指「重装/升级 dws，仍失败再退出重登」。**dws auth 命令族事实**：logout（默认清全部账号）/reset（清 token 触发重新授权）/status（认证健康 JSON）/export+import（迁移登录态）。本机实证：1.0.62+正常登录时 oa approval list-pending 输出标准 result.values（解析器无恙），审批单卡失败=dws 版本或登录态问题 |
