@@ -192,10 +192,25 @@ export function DwsPanel(): React.JSX.Element {
                 type="button"
                 disabled={busy !== null}
                 className={SECONDARY_BTN}
-                title="重装 dws CLI 到最新版（组件报「刷新失败」且提示版本过旧时用）"
-                onClick={() => void run('install', () => window.fundet.dwsInstall('gitee'))}
+                title="重装 dws CLI 到最新版（默认 Gitee 源，通常约 1 分钟，慢网络最长 10 分钟）"
+                onClick={() => void run('install', async () => {
+                  setNotice('正在下载安装 dws（Gitee 源，通常约 1 分钟，慢网络最长 10 分钟），期间请勿关闭应用…');
+                  return window.fundet.dwsInstall('gitee');
+                })}
               >
                 {busy === 'install' ? '重装中…' : '重装 / 升级 dws'}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                className="h-8 px-2 text-12 text-muted underline decoration-board underline-offset-2 hover:text-primary"
+                title="Gitee 源失败时换 GitHub 源重装（需能访问 raw.githubusercontent.com）"
+                onClick={() => void run('install', async () => {
+                  setNotice('正在从 GitHub 下载安装 dws（需能访问 GitHub，通常 1-2 分钟）…');
+                  return window.fundet.dwsInstall('github');
+                })}
+              >
+                用 GitHub 源
               </button>
               <button
                 type="button"
