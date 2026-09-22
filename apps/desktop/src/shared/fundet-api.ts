@@ -514,6 +514,8 @@ export interface FundetApi {
   dwsInstall(source: 'gitee' | 'github'): Promise<DwsActionResult>;
   /** 拉起可见终端窗口跑 dws auth login（浏览器自动开） */
   dwsLogin(): Promise<DwsActionResult>;
+  /** 退出登录（dws auth logout）：升级 dws 后旧登录态不兼容的自救入口 */
+  dwsLogout(): Promise<DwsActionResult>;
   /** 装配官方技能包到用户技能根（dingtalk-* 前缀目录） */
   dwsSkillSetup(): Promise<DwsActionResult>;
 

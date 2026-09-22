@@ -274,7 +274,7 @@ function enrichApprovalError(msg: string, version: string | null): string {
   if (!m) return msg;
   const [_, major, minor, patch] = m.map(Number);
   const tooOld = major! < 1 || (major === 1 && (minor! < 0 || (minor === 0 && patch! < 62)));
-  return tooOld ? `${msg}（dws ${version} 版本过旧，到钉钉工作台面板点「补装/修复技能」升级后重试）` : msg;
+  return tooOld ? `${msg}（dws ${version} 版本过旧：到钉钉工作台面板点「重装 / 升级 dws」，装完后如仍失败，再「退出登录」重新登录）` : msg;
 }
 
 async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {

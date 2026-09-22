@@ -365,5 +365,16 @@ export function registerDwsIpc(): void {
     installDws(source === 'github' ? 'github' : 'gitee'),
   );
   ipcMain.handle(FUNDET_INVOKE.DWS_LOGIN, async () => openDwsLogin());
+  ipcMain.handle(FUNDET_INVOKE.DWS_LOGOUT, async () => runDwsLogout());
   ipcMain.handle(FUNDET_INVOKE.DWS_SKILL_SETUP, async () => runDwsSkillSetup());
+}
+
+/** 退出登录：dws auth logout（默认清全部账号）。升级 dws 后旧登录态不兼容时
+ *  的自救路径（0.3.2：此前面板无出口，用户只能去终端跑）。 */
+export async function runDwsLogout(): Promise<{ ok: boolean; output: string }> {
+  const dws = await resolveDws();
+  if (!dws) return { ok: false, output: 'dws 未安装' };
+  const res = await execDws(dws, ['auth', 'logout'], 60_000);
+  const output = tail(`${res.stdout}\n${res.stderr}`.trim());
+  return { ok: res.code === 0, output };
 }

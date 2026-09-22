@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DwsStatusView, DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
 import { brand } from '../../../../shared/brand.ts';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
 import { DwsWidgets } from '../../components/dws/DwsWidgets';
 
 const SECONDARY_BTN = 'h-8 rounded-full border border-board px-3 text-12 text-primary disabled:opacity-40';
@@ -186,6 +187,32 @@ export function DwsPanel(): React.JSX.Element {
                 onClick={() => void run('skills', () => window.fundet.dwsSkillSetup())}
               >
                 {status.skills.length > 0 ? '补装 / 修复技能' : '一键装配官方技能'}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                className={SECONDARY_BTN}
+                title="重装 dws CLI 到最新版（组件报「刷新失败」且提示版本过旧时用）"
+                onClick={() => void run('install', () => window.fundet.dwsInstall('gitee'))}
+              >
+                {busy === 'install' ? '重装中…' : '重装 / 升级 dws'}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                className="h-8 px-3 text-12 text-secondary underline decoration-board underline-offset-2 hover:text-error"
+                onClick={() => void run('logout', async () => {
+                  const ok = await confirmDialog({
+                    title: '退出钉钉登录？',
+                    description: '清除本机钉钉登录态（dws auth logout）。升级 dws 后组件报「刷新失败」时，退出后重新登录即可恢复。',
+                    confirmText: '退出登录',
+                    danger: true,
+                  });
+                  if (!ok) return { ok: true, output: '' };
+                  return window.fundet.dwsLogout();
+                })}
+              >
+                {busy === 'logout' ? '退出中…' : '退出登录'}
               </button>
             </div>
           </>
