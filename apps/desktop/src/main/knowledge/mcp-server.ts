@@ -6,7 +6,7 @@
  */
 import { createServer, type Server } from 'node:http';
 import { brand } from '../../shared/brand.ts';
-import { KNOWLEDGE_MCP_TOOL_NAME } from '../../shared/knowledge.ts';
+import { KNOWLEDGE_MCP_TOOL_NAME, KNOWLEDGE_MCP_LIST_TOOL_NAME } from '../../shared/knowledge.ts';
 
 type KnowledgeMcpLogger = {
   info(msg: string, ctx?: Record<string, unknown>): void;
@@ -19,15 +19,27 @@ export interface KnowledgeToolOutput {
 }
 
 export type KnowledgeToolHandler = (args: Record<string, unknown>) => Promise<KnowledgeToolOutput>;
+export type KnowledgeHandlers = {
+  search: KnowledgeToolHandler;
+  list: KnowledgeToolHandler;
+};
 
 const BODY_MAX = 1 * 1024 * 1024;
+
+/** 消歧规则（用户实报："知识库有什么"有时走钉钉 aisearch 有时走本地）：
+ *  工具描述是 agent 选工具的唯一依据——本地/钉钉的选择规则写进两侧描述。 */
+const SCOPE_RULE =
+  `选源规则：用户说"知识库/我的文档/资料"默认指本地知识库（本 MCP 的工具）；` +
+  `明确提到"钉钉/公司/企业/组织"（如"公司文档"）才用钉钉侧工具（aisearch/doc），不要混用。`;
 
 const TOOL = {
   name: KNOWLEDGE_MCP_TOOL_NAME,
   description:
     `检索用户绑定的本地知识库（用户自己的文档：制度/手册/笔记等），返回带来源编号的原文片段。` +
     `涉及用户资料里的具体事实、条款、数据时必须先调用本工具，不要凭记忆回答。` +
-    `query 用与答案最相关的关键词（可多次调用换不同关键词）。`,
+    `query 用与答案最相关的关键词（可多次调用换不同关键词）。` +
+    `问"知识库里有什么/有哪些文档"用 ${KNOWLEDGE_MCP_LIST_TOOL_NAME} 列清单，不要用本工具。` +
+    SCOPE_RULE,
   inputSchema: {
     type: 'object',
     properties: {
@@ -38,13 +50,24 @@ const TOOL = {
   },
 };
 
+const LIST_TOOL = {
+  name: KNOWLEDGE_MCP_LIST_TOOL_NAME,
+  description:
+    `列出本会话绑定的本地知识库与全部文档名（含块数/字数）。` +
+    `用户问"知识库里有什么/有哪些文档/库里都存了什么"时用本工具，把清单直接告诉用户。`,
+  inputSchema: {
+    type: 'object',
+    properties: {},
+  },
+};
+
 function jsonRpcError(id: unknown, code: number, message: string): unknown {
   return { jsonrpc: '2.0', id: id ?? null, error: { code, message } };
 }
 
 async function dispatch(
   msg: { id?: unknown; method?: string; params?: unknown },
-  handler: KnowledgeToolHandler,
+  handlers: KnowledgeHandlers,
 ): Promise<unknown> {
   const id = msg.id;
   const method = msg.method ?? '';
@@ -63,14 +86,20 @@ async function dispatch(
     return { jsonrpc: '2.0', id, result: {} };
   }
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: [TOOL] } };
+    return { jsonrpc: '2.0', id, result: { tools: [TOOL, LIST_TOOL] } };
   }
   if (method === 'tools/call') {
     const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
-    if (params.name !== KNOWLEDGE_MCP_TOOL_NAME) {
+    const tool =
+      params.name === KNOWLEDGE_MCP_TOOL_NAME
+        ? handlers.search
+        : params.name === KNOWLEDGE_MCP_LIST_TOOL_NAME
+          ? handlers.list
+          : null;
+    if (!tool) {
       return jsonRpcError(id, -32601, `unknown tool: ${params.name ?? ''}`);
     }
-    const out = await handler(params.arguments ?? {});
+    const out = await tool(params.arguments ?? {});
     return {
       jsonrpc: '2.0',
       id,
@@ -87,7 +116,7 @@ async function dispatch(
 export function startKnowledgeMcpServer(
   token: string,
   logger: KnowledgeMcpLogger,
-  handler: KnowledgeToolHandler,
+  handlers: KnowledgeHandlers,
 ): Promise<{ url: string; dispose: () => void }> {
   return new Promise((resolve, reject) => {
     const server: Server = createServer((req, res) => {
@@ -134,7 +163,7 @@ export function startKnowledgeMcpServer(
             reply(202);
             return;
           }
-          const out = await dispatch(msg, handler);
+          const out = await dispatch(msg, handlers);
           reply(200, out ?? jsonRpcError(msg.id, -32603, 'empty'));
         } catch (err) {
           logger.warn('knowledge mcp 请求失败', { error: String(err) });

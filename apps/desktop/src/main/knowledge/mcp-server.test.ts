@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { KNOWLEDGE_MCP_TOOL_NAME } from '../../shared/knowledge.ts';
+import { KNOWLEDGE_MCP_TOOL_NAME, KNOWLEDGE_MCP_LIST_TOOL_NAME } from '../../shared/knowledge.ts';
 import { startKnowledgeMcpServer } from './mcp-server.ts';
 
 const logger = {
@@ -35,12 +35,18 @@ describe('knowledge MCP server', () => {
   it('rejects missing bearer, then initialize / list / call', async () => {
     const token = 'test-token';
     const calls: Array<Record<string, unknown>> = [];
-    const { url, dispose } = await startKnowledgeMcpServer(token, logger, async (args) => {
-      calls.push(args);
-      return {
-        text: '【1】来源：制度.docx（第 2 块）\n退货流程如下',
+    const { url, dispose } = await startKnowledgeMcpServer(token, logger, {
+      search: async (args) => {
+        calls.push(args);
+        return {
+          text: '【1】来源：制度.docx（第 2 块）\n退货流程如下',
+          isError: false,
+        };
+      },
+      list: async () => ({
+        text: '本会话绑定了 1 个本地知识库：\n\n## 制度库（1 份文档）\n- 制度.docx（5 块 / 12000 字）',
         isError: false,
-      };
+      }),
     });
     try {
       const denied = await fetch(url, {
@@ -57,7 +63,7 @@ describe('knowledge MCP server', () => {
 
       const list = await rpc(url, token, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
       const tools = (list.json as { result: { tools: Array<{ name: string }> } }).result.tools;
-      assert.deepEqual(tools.map((t) => t.name), [KNOWLEDGE_MCP_TOOL_NAME]);
+      assert.deepEqual(tools.map((t) => t.name), [KNOWLEDGE_MCP_TOOL_NAME, KNOWLEDGE_MCP_LIST_TOOL_NAME]);
 
       const call = await rpc(url, token, {
         jsonrpc: '2.0',
@@ -72,6 +78,17 @@ describe('knowledge MCP server', () => {
       assert.equal(result.isError, false);
       assert.match(result.content[0]!.text, /退货流程如下/);
       assert.deepEqual(calls[0], { query: '退货流程', limit: 3 });
+
+      const listCall = await rpc(url, token, {
+        jsonrpc: '2.0',
+        id: 3.5,
+        method: 'tools/call',
+        params: { name: KNOWLEDGE_MCP_LIST_TOOL_NAME, arguments: {} },
+      });
+      assert.match(
+        (listCall.json as { result: { content: Array<{ text: string }> } }).result.content[0]!.text,
+        /制度库（1 份文档）[\s\S]*制度\.docx/,
+      );
 
       const unknown = await rpc(url, token, {
         jsonrpc: '2.0',
@@ -90,10 +107,10 @@ describe('knowledge MCP server', () => {
 
   it('surfaces handler errors as isError results', async () => {
     const token = 't';
-    const { url, dispose } = await startKnowledgeMcpServer(token, logger, async () => ({
-      text: '当前会话没有绑定知识库。',
-      isError: true,
-    }));
+    const { url, dispose } = await startKnowledgeMcpServer(token, logger, {
+      search: async () => ({ text: '当前会话没有绑定知识库。', isError: true }),
+      list: async () => ({ text: '当前会话没有绑定知识库。', isError: true }),
+    });
     try {
       const call = await rpc(url, token, {
         jsonrpc: '2.0',

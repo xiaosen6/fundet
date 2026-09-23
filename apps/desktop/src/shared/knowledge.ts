@@ -4,6 +4,7 @@
 
 export const KNOWLEDGE_MCP_SERVER_NAME = 'knowledge';
 export const KNOWLEDGE_MCP_TOOL_NAME = 'knowledge_search';
+export const KNOWLEDGE_MCP_LIST_TOOL_NAME = 'knowledge_list';
 
 /** KB 级检索/分块参数（MCP 默认 limit、导入分块都用它） */
 export interface KnowledgeBaseParams {

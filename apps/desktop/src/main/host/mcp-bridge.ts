@@ -42,7 +42,7 @@ import { startSearchMcpServer } from '../search/mcp-server.ts';
 import { handleWebSearch } from '../search/tool.ts';
 import { getSessionKnowledgeKbs } from '../knowledge/store.js';
 import { startKnowledgeMcpServer } from '../knowledge/mcp-server.js';
-import { handleKnowledgeSearch } from '../knowledge/tool.js';
+import { handleKnowledgeSearch, handleKnowledgeList } from '../knowledge/tool.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
 import { startBrowserMcpServer } from '../browser/mcp-http.js';
 
@@ -432,9 +432,10 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
         const kbIds = ctx?.sessionId ? getSessionKnowledgeKbs(ctx.sessionId) : [];
         if (kbIds.length > 0) {
           const kbIdsSnapshot = [...kbIds];
-          const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), async (args) =>
-            handleKnowledgeSearch(kbIdsSnapshot, args),
-          );
+          const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), {
+            search: (args) => Promise.resolve(handleKnowledgeSearch(kbIdsSnapshot, args)),
+            list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
+          });
           disposers.push(knowledge.dispose);
           servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });
         }
