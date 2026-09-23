@@ -78,6 +78,14 @@ export interface SessionCreateInput {
   sessionId?: string;
 }
 
+/** 草稿预热入参（renderer 建草稿/改工作目录时后台预建会话） */
+export interface PrewarmInput {
+  sessionId: string;
+  providerId: string;
+  model: string;
+  workDir: string;
+}
+
 /** 发给 Pi 的用户附件：image 走多模态，file 走路径引用。 */
 export interface SessionAttachment {
   path: string;
@@ -399,6 +407,10 @@ export interface DirEntry {
 
 export interface FundetApi {
   createSession(input: SessionCreateInput): Promise<SessionMeta>;
+  /** 草稿预热：后台预建 pi 会话（失败静默，发送路径自动回落 lazy-create） */
+  sessionPrewarm(input: PrewarmInput): Promise<{ ok: boolean }>;
+  /** 弃预热：关闭预建会话并清理零消息行（删草稿时调） */
+  sessionPrewarmDiscard(sessionId: string): Promise<{ ok: boolean }>;
   listSessions(): Promise<SessionListItem[]>;
   getSession(id: string): Promise<SessionDetail | null>;
   deleteSession(id: string): Promise<void>;

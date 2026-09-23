@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   assertPreviewablePath,
   buildWin32SystemBlocklist,
+  isShellExecutablePath,
 } from './filePathPolicy.ts';
 
 const winDeps = {
@@ -83,4 +84,17 @@ test('buildWin32SystemBlocklist', async (t) => {
     const list = buildWin32SystemBlocklist({ SystemRoot: 'D:\\Windows' });
     assert.ok(list.includes('D:\\Windows'));
   });
+});
+
+test('isShellExecutablePath：可执行/脚本扩展拒绝，文档媒体放行', () => {
+  assert.equal(isShellExecutablePath('C:\out\tool.exe'), true);
+  assert.equal(isShellExecutablePath('C:\out\run.bat'), true);
+  assert.equal(isShellExecutablePath('C:\out\setup.MSI'), true);   // 大小写不敏感
+  assert.equal(isShellExecutablePath('C:\out\a.ps1'), true);
+  assert.equal(isShellExecutablePath('C:\out\page.js'), true);
+  assert.equal(isShellExecutablePath('C:\out\link.lnk'), true);
+  assert.equal(isShellExecutablePath('C:\out\report.pdf'), false);
+  assert.equal(isShellExecutablePath('C:\out\video.mp4'), false);
+  assert.equal(isShellExecutablePath('C:\out\noext'), false);
+  assert.equal(isShellExecutablePath('/tmp/sh.sh'), false);          // sh 不在闸内（系统默认查看器打开）
 });

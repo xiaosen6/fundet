@@ -63,7 +63,7 @@ import { BrandMark } from '../components/BrandMark';
 import { addRecentFolder } from '../lib/recentFolders';
 import { collectArtifacts, type Artifact } from '../lib/artifacts';
 import { fileKind } from '../../../shared/file-kind.ts';
-import { dataTransferHasFiles, filesFromDataTransfer } from '../lib/file-drop';
+import { dataTransferHasDirectory, dataTransferHasFiles, filesFromDataTransfer, firstDroppedDirectoryPath } from '../lib/file-drop';
 import { CanvasPane } from '../components/CanvasPane';
 import { hasFramelessControls } from '../components/WindowControls';
 import { Tooltip } from '../components/ui/Tooltip';
@@ -130,6 +130,7 @@ export function ChatPage(): React.JSX.Element {
   const [canvasPath, setCanvasPath] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<SessionAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [dragFolder, setDragFolder] = useState(false);
   const [renamingHeader, setRenamingHeader] = useState(false);
   const [headerTitleDraft, setHeaderTitleDraft] = useState('');
   const headerRenameCommitted = useRef(false);
@@ -261,9 +262,24 @@ export function ChatPage(): React.JSX.Element {
       setWorkDir(picked);
       if (activeId && isDraftSession(activeId)) {
         updateDraftSession(activeId, { workDir: picked });
+        // 工作目录进了预热指纹：重预热（main 侧弃旧建新）
+        const providerId = getDraftProviderId(activeId);
+        const provider = providerId
+          ? providers.find((p) => p.id === providerId)
+          : undefined;
+        const model =
+          provider?.models.find((m) => m.id === getLastModel())?.id ?? provider?.models[0]?.id;
+        if (providerId && model) {
+          void window.fundet.sessionPrewarm({
+            sessionId: activeId,
+            providerId,
+            model,
+            workDir: picked,
+          });
+        }
       }
     },
-    [activeId],
+    [activeId, providers],
   );
 
   const createSession = useCallback((): void => {
@@ -290,6 +306,13 @@ export function ChatPage(): React.JSX.Element {
     });
     rememberModelChoice(provider.id, model);
     setActiveId(meta.id);
+    // 草稿预热：打字期间后台把 pi 会话拉起来，首条消息免等冷启动（失败静默）
+    void window.fundet.sessionPrewarm({
+      sessionId: meta.id,
+      providerId: provider.id,
+      model,
+      workDir: dir,
+    });
   }, [providers, workDir]);
 
   /** 钉钉组件 AI 钩子：开新会话并预填 prompt（用户过目后手动发送） */
@@ -303,9 +326,10 @@ export function ChatPage(): React.JSX.Element {
 
   const deleteSession = useCallback(
     async (id: string): Promise<void> => {
-      // 草稿在 main/DB 里不存在，纯本地移除即可
+      // 草稿预热过的话回收 pi 会话与零消息行；纯本地草稿照旧直接移除
       if (isDraftSession(id)) {
         deleteDraftSession(id);
+        void window.fundet.sessionPrewarmDiscard(id).catch(() => undefined);
         if (activeId === id) setActiveId(null);
         return;
       }
@@ -709,6 +733,7 @@ export function ChatPage(): React.JSX.Element {
               e.preventDefault();
               e.stopPropagation();
               dragCountRef.current += 1;
+              setDragFolder(dataTransferHasDirectory(e.dataTransfer));
               setDragOver(true);
             }}
             onDragOver={(e) => {
@@ -729,8 +754,15 @@ export function ChatPage(): React.JSX.Element {
               e.stopPropagation();
               dragCountRef.current = 0;
               setDragOver(false);
-              const { files, skippedDirectory } = filesFromDataTransfer(e.dataTransfer);
-              if (skippedDirectory) setNotice('暂不支持拖入文件夹，请拖文件或改工作目录');
+              setDragFolder(false);
+              // 文件夹拖入 = 切工作目录（唯一目录优先；混拖文件按工作目录处理）
+              const dirPath = firstDroppedDirectoryPath(e.dataTransfer);
+              if (dirPath) {
+                applyWorkDir(dirPath);
+                toast.success(`工作目录已切换：${dirPath.split(/[\\/]/).pop() || dirPath}`);
+                return;
+              }
+              const { files } = filesFromDataTransfer(e.dataTransfer);
               if (files.length > 0) void addDroppedFiles(files);
             }}
           >
@@ -740,7 +772,7 @@ export function ChatPage(): React.JSX.Element {
                 style={{ backgroundColor: 'color-mix(in srgb, var(--focus-ring) 10%, transparent)' }}
               >
                 <div className="rounded-container border border-board bg-card px-4 py-2 text-13 text-primary">
-                  放到这里，发给助手
+                  {dragFolder ? '松手设为工作目录' : '放到这里，发给助手'}
                 </div>
               </div>
             )}

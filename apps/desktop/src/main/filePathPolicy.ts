@@ -129,3 +129,20 @@ export function assertPreviewablePath(
 
   return resolved;
 }
+
+/**
+ * 「用系统打开」（shell.openPath）的可执行类型闸：Windows shell 会直接执行
+ * 这些扩展名的载荷——agent 产出的 .exe/.bat 出现在产物列表里被点开即运行。
+ * 命中拒绝并给指引；文档/媒体类型不受影响。
+ */
+const SHELL_EXECUTABLE_EXTENSIONS = new Set([
+  '.exe', '.bat', '.cmd', '.com', '.ps1', '.psm1', '.psc1', '.msi', '.msp', '.mst',
+  '.scr', '.cpl', '.msc', '.hta', '.vbs', '.vbe', '.js', '.jse', '.ws', '.wsf', '.wsh',
+  '.lnk', '.pif', '.jar', '.reg', '.chm', '.url',
+]);
+
+/** 会被系统 shell 执行（而非打开查看）的扩展名 → true */
+export function isShellExecutablePath(filePath: string): boolean {
+  const ext = path.win32.extname(filePath).toLowerCase() || path.extname(filePath).toLowerCase();
+  return SHELL_EXECUTABLE_EXTENSIONS.has(ext);
+}

@@ -66,6 +66,15 @@ import {
 import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
+import {
+  cleanupOrphanPrewarmRows,
+  discardSessionPrewarm,
+  prewarmAttachDecision,
+  prewarmSession,
+  promotePrewarm,
+  setPrewarmDeps,
+} from '../host/session-prewarm.js';
+import type { PrewarmInput } from '../host/session-prewarm.js';
 import { createConsoleLogger } from '@fundet/agent-core';
 import { ensureBrowserRuntime, runExclusiveBrowserOp, stopManagedRuntime } from '../browser/host.js';
 import {
@@ -120,7 +129,7 @@ import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
-import { assertPreviewablePath } from '../filePathPolicy.js';
+import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
 import type {
@@ -280,7 +289,21 @@ export function wireSession(session: Session): void {
 async function ensureSession(input: SessionSendInput): Promise<Session> {
   const { maker } = getHost();
   const alive = maker.getSession(input.sessionId);
-  if (alive) return alive;
+  if (alive) {
+    // 草稿预热接驳：指纹漂移/超时清障后走重建；接上时模型有变就地热切
+    const decision = await prewarmAttachDecision(input.sessionId);
+    if (decision === 'attach') {
+      if (input.create?.model && input.create.model !== alive.model) {
+        await alive.setModel(input.create.model, { providerId: input.create.providerId });
+      }
+      return alive;
+    }
+    if (decision === 'discard') {
+      // 落到下方 create 重建
+    } else {
+      return alive;
+    }
+  }
 
   let create = input.create;
   if (!create) {
@@ -417,7 +440,26 @@ async function buildUserMessage(
 }
 
 export function registerIpcHandlers(): void {
+  // 草稿预热依赖注入（wireSession 在本文件；closeSession 走 Maker 单例）
+  setPrewarmDeps({
+    wireSession,
+    closeSession: (id) => getHost().maker.closeSession(id),
+    notifyListChanged: () => broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null),
+  });
+  // 上次运行残留的占位零消息预热行清障
+  const cleaned = cleanupOrphanPrewarmRows();
+  if (cleaned > 0) console.log(`[fundet:prewarm] 启动清理 ${cleaned} 个残留预热会话行`);
+
   // ---------- 会话 ----------
+  // 草稿预热：renderer 建草稿/改工作目录时后台先把 pi 会话拉起来（失败静默，
+  // 发送路径回落 lazy-create）。弃预热显式回收（删草稿）。
+  ipcMain.handle(FUNDET_INVOKE.SESSION_PREWARM, async (_e, input: PrewarmInput) => {
+    return { ok: await prewarmSession(input) };
+  });
+  ipcMain.handle(FUNDET_INVOKE.SESSION_PREWARM_DISCARD, async (_e, sessionId: string) => {
+    await discardSessionPrewarm(sessionId);
+    return { ok: true };
+  });
   ipcMain.handle(FUNDET_INVOKE.SESSION_CREATE, async (_e, input: SessionCreateInput) => {
     const { maker } = getHost();
     const session = await maker.createSession({
@@ -492,6 +534,8 @@ export function registerIpcHandlers(): void {
           session.id,
           input.text.trim() || attachments.map((a) => a.name).join(' ') || '',
         );
+        // 真实消息落库：预热记录转正（不再按 TTL 回收）
+        promotePrewarm(session.id);
       }
       // ④ 自动 RAG：会话开启「发送前自动检索」且绑定了知识库时，按用户原话
       // 检索 topN 片段拼进消息上下文（库里/DB 仍存用户原话，注入只影响发给
@@ -956,6 +1000,10 @@ ${input.text}`;
 
   ipcMain.handle(FUNDET_INVOKE.FS_OPEN_PATH, async (_e, filePath: string) => {
     const resolved = path.resolve(filePath);
+    // 类型闸：shell 会直接执行 exe/bat 等载荷（agent 产物被点开即运行的口子）
+    if (isShellExecutablePath(resolved)) {
+      throw new Error('这个文件是可执行/脚本类型，为安全不直接打开。可让助手说明文件内容，或手动到资源管理器中查看。');
+    }
     const err = await shell.openPath(resolved);
     if (err) throw new Error(err);
   });

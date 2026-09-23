@@ -10,6 +10,8 @@ export const FUNDET_INVOKE = {
   SESSION_LIST: 'session:list',
   SESSION_GET: 'session:get',
   SESSION_DELETE: 'session:delete',
+  SESSION_PREWARM: 'session:prewarm',
+  SESSION_PREWARM_DISCARD: 'session:prewarm-discard',
   SESSION_SEND: 'session:send',
   SESSION_ABORT: 'session:abort',
   SESSION_CLOSE: 'session:close',

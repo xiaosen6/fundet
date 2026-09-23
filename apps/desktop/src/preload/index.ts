@@ -63,6 +63,8 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 
 const api: FundetApi = {
   createSession: (input) => invoke(FUNDET_INVOKE.SESSION_CREATE, input),
+  sessionPrewarm: (input) => invoke(FUNDET_INVOKE.SESSION_PREWARM, input),
+  sessionPrewarmDiscard: (sessionId) => invoke(FUNDET_INVOKE.SESSION_PREWARM_DISCARD, sessionId),
   listSessions: () => invoke(FUNDET_INVOKE.SESSION_LIST),
   getSession: (id) => invoke(FUNDET_INVOKE.SESSION_GET, id),
   deleteSession: (id) => invoke(FUNDET_INVOKE.SESSION_DELETE, id),
