@@ -7,6 +7,7 @@ import {
   inferContextWindow,
   preferScannedContextWindow,
   resolveModelContextWindow,
+  contextTooSmallForTools,
 } from './context-window.ts';
 
 describe('asPositiveInt', () => {
@@ -66,5 +67,26 @@ describe('formatTokenCount', () => {
     assert.equal(formatTokenCount(200000), '200K');
     assert.equal(formatTokenCount(1_000_000), '1M');
     assert.equal(formatTokenCount(512), '512');
+  });
+});
+
+describe('contextTooSmallForTools', () => {
+  it('自动操作开：小于 32.7k 基线（含 15% 余量）预警', () => {
+    assert.equal(contextTooSmallForTools(32_768, true), true); // fundet-mini 实报场景
+    assert.equal(contextTooSmallForTools(37_604, true), true); // 32700*1.15=37605 边界内
+    assert.equal(contextTooSmallForTools(37_605, true), false); // 恰好等于阈值不报
+    assert.equal(contextTooSmallForTools(131_072, true), false);
+  });
+
+  it('自动操作全关：按 8.5k 核心基线判断', () => {
+    assert.equal(contextTooSmallForTools(8_192, false), true);
+    assert.equal(contextTooSmallForTools(9_775, true), true); // 开关开着仍按高基线
+    assert.equal(contextTooSmallForTools(16_384, false), false);
+  });
+
+  it('未知上下文 fail-open 不误报', () => {
+    assert.equal(contextTooSmallForTools(undefined, true), false);
+    assert.equal(contextTooSmallForTools(0, true), false);
+    assert.equal(contextTooSmallForTools(Number.NaN, true), false);
   });
 });

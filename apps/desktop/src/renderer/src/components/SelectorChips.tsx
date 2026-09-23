@@ -9,7 +9,7 @@
  *   --model-item-hover 底，选中额外只有 check + font-medium。
  * - 权限危险档只染文字：auto → #417CDD / bypass → #EA6B17（--perm-auto/--perm-bypass）。
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -21,9 +21,14 @@ import {
 } from 'lucide-react';
 import type { PermissionMode } from '@fundet/agent-core';
 import type { ProviderView } from '../../../shared/fundet-api.js';
-import { formatTokenCount, preferScannedContextWindow } from '../../../shared/context-window.js';
+import {
+  contextTooSmallForTools,
+  formatTokenCount,
+  preferScannedContextWindow,
+} from '../../../shared/context-window.js';
 import { cn } from '../lib/cn';
 import { MorphPopover } from './ui/MorphPopover';
+import { Tooltip } from './ui/Tooltip';
 import { ProviderLogoMark } from './icons/ProviderLogoMark';
 
 // ---------------------------------------------------------------------------
@@ -35,6 +40,8 @@ interface ChipShellProps {
   label: string;
   /** 危险档文字色（权限选择器用）：只染文字，不改底色 */
   toneClass?: string;
+  /** 标签后缀图标（模型 chip 的小上下文预警角标） */
+  suffixIcon?: React.ReactNode;
   panelWidth: number;
   panelAriaLabel: string;
   open: boolean;
@@ -46,6 +53,7 @@ function ChipShell({
   icon,
   label,
   toneClass,
+  suffixIcon,
   panelWidth,
   panelAriaLabel,
   open,
@@ -68,6 +76,7 @@ function ChipShell({
     >
       {icon}
       <span className="min-w-0 truncate text-13 font-normal text-current">{label}</span>
+      {suffixIcon}
       <ChevronDown size={14} className="shrink-0 pt-[2px] text-current" />
     </button>
   );
@@ -150,8 +159,24 @@ export function ModelSelector({
   onSelect,
 }: ModelSelectorProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  // 小上下文预警需要知道工具集大小：自动操作两开关任一开 → 基线 ~32.7k
+  const [automationOn, setAutomationOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([window.fundet.browserStatus(), window.fundet.computerStatus()])
+      .then(([b, c]) => {
+        if (alive) setAutomationOn(Boolean(b?.enabled || c?.enabled));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const currentProvider = providers.find((p) => p.models.some((m) => m.id === currentModel));
+  const currentModelMeta = currentProvider?.models.find((m) => m.id === currentModel);
+  const effectiveCtx = preferScannedContextWindow(currentModel, currentModelMeta?.contextWindow);
+  const ctxTooSmall = contextTooSmallForTools(effectiveCtx, automationOn);
 
   if (disabled || providers.length === 0) {
     return (
@@ -174,6 +199,19 @@ export function ModelSelector({
         />
       }
       label={currentModel || '选模型'}
+      suffixIcon={
+        ctxTooSmall ? (
+          <Tooltip
+            label={
+              automationOn
+                ? `上下文 ${formatTokenCount(effectiveCtx ?? 0)} 偏小：自动操作工具约占 3.3 万 token，容易超限报错。可到 设置→自动操作 关闭开关，或换更大上下文模型。`
+                : `上下文 ${formatTokenCount(effectiveCtx ?? 0)} 偏小：基础工具约占 1 万 token，长对话容易超限。建议换更大上下文模型。`
+            }
+          >
+            <TriangleAlert size={13} className="shrink-0 text-warning" aria-label="上下文偏小预警" />
+          </Tooltip>
+        ) : undefined
+      }
       panelWidth={320}
       panelAriaLabel="选择模型"
       open={open}

@@ -734,13 +734,6 @@ textarea:focus-visible {
   }
 }
 
-/* 消息条目视口外跳过布局与绘制（对齐 Cindy msg-stream-items）：长会话滚动/切换
-   不再随总条数线性变沉。intrinsic-size 给 240px 估值，渲染后由真实尺寸纠偏。 */
-.msg-stream-items > *:not([data-virtual]) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 240px;
-}
-
 /* 可点元素一律小手（Chromium 对 button 默认 cursor:default，体感像不可点）。
    输入类（text/number/textarea）保持文本光标，不在此列。 */
 button:not(:disabled),

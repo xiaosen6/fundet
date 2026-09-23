@@ -6,7 +6,7 @@
  *   agent:event / interaction 推送，按 sessionId 分发到各自 slice。
  *   多会话并行跑、切换页面不杀后台 turn 全靠这层与 React 树解耦。
  * - 切会话时 `ensureHistory()` 从 IPC 拉 DB 历史重建 items（只建一次）。
- * - 高频事件（text/thinking delta）100ms 节流通知，低频事件立即通知。
+ * - 高频事件（text/thinking delta）32ms 合帧通知，低频事件立即通知。
  *
  * slice 内 items 是按时间序的显示项（用户消息 / 助手文本 / 思考 / 工具卡 / 错误卡），
  * 流式文本未 final 时放在 streamingText，由 MessageStream 渲染成临时气泡。

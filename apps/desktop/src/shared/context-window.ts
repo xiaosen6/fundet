@@ -148,3 +148,27 @@ export function formatTokenCount(n: number): string {
   }
   return n.toString();
 }
+
+/**
+ * 工具集 token 基线（2026-09-20 本地代理解剖实测：66 个工具定义 + system
+ * ≈ 32.7k token，恰好顶死 fundet-mini 的 32768 上限报 400；关掉「浏览器自动化」
+ * +「电脑操作」两开关后 ≈ 8.5k）。留 15% 余量触发预警。
+ */
+export const TOOL_TOKEN_BASELINE_WITH_AUTOMATION = 32_700;
+export const TOOL_TOKEN_BASELINE_CORE_ONLY = 8_500;
+const TOOL_BASELINE_HEADROOM = 1.15;
+
+/** 选中模型上下文是否容不下工具集基线（自动操作开关任一开→高基线）。
+ *  未知 ctx 返回 false（fail-open，不误报）。 */
+export function contextTooSmallForTools(
+  contextWindow: number | undefined,
+  automationEnabled: boolean,
+): boolean {
+  if (typeof contextWindow !== 'number' || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+    return false;
+  }
+  const baseline = automationEnabled
+    ? TOOL_TOKEN_BASELINE_WITH_AUTOMATION
+    : TOOL_TOKEN_BASELINE_CORE_ONLY;
+  return contextWindow < baseline * TOOL_BASELINE_HEADROOM;
+}

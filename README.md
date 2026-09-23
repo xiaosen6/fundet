@@ -47,7 +47,9 @@ Pi 运行时不进 Git，需要单独准备（见下）。
 ```powershell
 cd D:\AI\Fundet
 pnpm install
-node tools\pi\update.mjs 0.83.0 --platform=win32-x64
+node tools\pi\update.mjs --platform=win32-x64
+# 版本自动读 tools\pi\latest.json 的 pin（当前 0.84.4）——别带版本参数，
+# 旧命令里的 0.83.0 会把 pi 降回有视觉发图 1210 事故的版本
 # 若 GitHub 超时：可走镜像 https://gh-proxy.com/ + 上面的完整 GitHub 下载地址
 # 解到 apps\pi-bin\win32-x64\（目录里要有 pi.exe 和 theme\）
 node tools\git\update.mjs
