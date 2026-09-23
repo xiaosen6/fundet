@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, Briefcase, CalendarClock, ChevronRight, CirclePlus, Folder, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { BookOpen, Bot, Briefcase, CalendarClock, ChevronRight, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -411,17 +411,6 @@ export function Sidebar({
     return [...pinned, ...sessions.filter((s) => !s.pinned)];
   }, [sessions, pinnedOrder]);
 
-  // 各组会话数（组头显示）
-  const groupCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const s of ordered) {
-      if (s.pinned) continue;
-      const k = groupKeyOf(s);
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [ordered]);
-
   // 服务端序刷新（非拖拽中）即视为权威，清本地覆盖
   useEffect(() => {
     if (!draggingRef.current) setPinnedOrder(null);
@@ -662,15 +651,13 @@ export function Sidebar({
                     type="button"
                     onClick={() => toggleGroup(key)}
                     title={s.workDir}
-                    className="mt-2 flex w-full items-center gap-1.5 px-3 pt-1.5 pb-1 text-12 text-muted select-none hover:text-primary"
+                    className="group/head mt-1.5 flex w-full items-center gap-1 px-3 pt-1 pb-0.5 text-11 font-medium text-muted/80 select-none hover:text-primary"
                   >
                     <ChevronRight
-                      size={12}
+                      size={10}
                       className={`shrink-0 transition-transform duration-[var(--motion-fast)] ${groupCollapsed ? '' : 'rotate-90'}`}
                     />
-                    <Folder size={12} className="shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">{groupNameOf(s)}</span>
-                    <span className="shrink-0 tabular-nums">{groupCounts.get(key) ?? 0}</span>
+                    <span className="min-w-0 flex-1 truncate text-left lowercase">{groupNameOf(s)}</span>
                   </button>
                 )}
                 {!groupCollapsed && (
