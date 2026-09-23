@@ -1,5 +1,5 @@
 import { brand } from '../../../shared/brand.js';
-const KEY = 'longma.profile';
+const KEY = 'fundet.profile';
 
 export interface LocalProfile {
   name: string;

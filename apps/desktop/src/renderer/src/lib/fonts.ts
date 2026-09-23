@@ -1,5 +1,5 @@
-const UI_KEY = 'longma.font.ui';
-const CODE_KEY = 'longma.font.code';
+const UI_KEY = 'fundet.font.ui';
+const CODE_KEY = 'fundet.font.code';
 
 export const DEFAULT_UI_FONT =
   "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";

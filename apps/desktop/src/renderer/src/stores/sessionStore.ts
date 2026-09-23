@@ -888,6 +888,45 @@ export async function sendMessage(
   }
 }
 
+/**
+ * 终态错误卡「重新发送」：原文已在 items 里，不重插用户气泡，只重走 IPC。
+ * 与 sendMessage 同样记录 lastSendInputs——此前 ChatPage 直连 IPC 绕过了它，
+ * 手动重发后再遇限流/网络错误不会触发自动重试。
+ */
+export async function resendTurn(
+  sessionId: string,
+  text: string,
+  create?: SessionCreateInput,
+  attachments?: SessionAttachment[],
+): Promise<void> {
+  patchSlice(sessionId, { isRunning: true, statusText: 'Working…', attention: null });
+  notifySlice(sessionId);
+  try {
+    const result = await window.fundet.sendMessage({ sessionId, text, create, attachments });
+    if (result.accepted) {
+      lastSendInputs.set(sessionId, { sessionId, text, create, attachments });
+      cancelAutoRetry(sessionId);
+      void refreshSessionList();
+    } else {
+      appendItem(sessionId, {
+        kind: 'error',
+        id: nextId('e'),
+        message: `发送未接受：${result.reason ?? '未知原因'}`,
+      });
+      patchSlice(sessionId, { isRunning: false });
+      notifySlice(sessionId);
+    }
+  } catch (err) {
+    appendItem(sessionId, {
+      kind: 'error',
+      id: nextId('e'),
+      message: `重新发送失败：${friendlyError(err instanceof Error ? err.message : String(err))}`,
+    });
+    patchSlice(sessionId, { isRunning: false });
+    notifySlice(sessionId);
+  }
+}
+
 export async function abortSession(sessionId: string): Promise<void> {
   // 即时反馈：pi 侧若卡死，abort RPC 要等主进程复核兜底（约 15s）才真正收口，
   // 期间不能让「正在中断」看起来像没点到。

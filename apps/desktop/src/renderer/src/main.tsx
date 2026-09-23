@@ -6,9 +6,22 @@ import './styles/globals.css';
 import { applyFonts } from './lib/fonts';
 import { initGlobalListeners } from './stores/sessionStore';
 
+// localStorage 键名品牌迁移（longma.* → fundet.*，一次性；在 fonts 等读取方初始化前跑）
+for (const [oldKey, newKey] of [
+  ['longma.font.ui', 'fundet.font.ui'],
+  ['longma.font.code', 'fundet.font.code'],
+  ['longma.profile', 'fundet.profile'],
+  ['longma.sidebar-width', 'fundet.sidebar-width'],
+] as const) {
+  const oldValue = localStorage.getItem(oldKey);
+  if (oldValue !== null) {
+    if (localStorage.getItem(newKey) === null) localStorage.setItem(newKey, oldValue);
+    localStorage.removeItem(oldKey);
+  }
+}
+
 applyFonts();
-import { ChatPage } from './pages/ChatPage';
-import { SettingsPage } from './pages/SettingsPage';
+import { ChatPage } from './pages/ChatPage';import { SettingsPage } from './pages/SettingsPage';
 import { DebugPage } from './pages/DebugPage';
 import { WindowControls } from './components/WindowControls';
 import { ToastContainer } from './components/ui/toast';

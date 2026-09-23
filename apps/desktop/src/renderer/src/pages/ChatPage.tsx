@@ -27,6 +27,7 @@ import {
   markSessionSeen,
   refreshSessionList,
   renameSession,
+  resendTurn,
   setSessionEffortLevel,
   resolvePermission,
   sendMessage,
@@ -105,7 +106,7 @@ export function ChatPage(): React.JSX.Element {
 
   // 侧栏宽度拖拽（200–400px 夹紧；持久化到 localStorage）
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = Number(localStorage.getItem('longma.sidebar-width'));
+    const saved = Number(localStorage.getItem('fundet.sidebar-width'));
     return saved >= 200 && saved <= 400 ? saved : 260;
   });
   const startSidebarResize = useCallback((e: React.PointerEvent) => {
@@ -115,7 +116,7 @@ export function ChatPage(): React.JSX.Element {
     const move = (ev: PointerEvent): void => {
       const next = Math.min(400, Math.max(200, startW + ev.clientX - startX));
       setSidebarWidth(next);
-      localStorage.setItem('longma.sidebar-width', String(next));
+      localStorage.setItem('fundet.sidebar-width', String(next));
     };
     const up = (): void => {
       window.removeEventListener('pointermove', move);
@@ -427,26 +428,19 @@ export function ChatPage(): React.JSX.Element {
     });
   }, [slice.isRunning, slice.pendingInteraction, queuedTexts, activeId, buildCreateParam]);
 
-  // 终态错误卡的「重新发送」：重发本轮最后一条用户消息（含附件路径引用）
+  // 终态错误卡的「重新发送」：重发本轮最后一条用户消息（含附件路径引用）。
+  // 走 store 的 resendTurn（记录重试参数，限流/网络错误仍可自动重试）。
   const resendLast = useCallback((): void => {
     if (!activeId) return;
     const lastUser = [...slice.items].reverse().find((it) => it.kind === 'user');
     if (!lastUser || lastUser.kind !== 'user') return;
-    void (async () => {
-      try {
-        const create = buildCreateParam();
-        await window.fundet.sendMessage({
-          sessionId: activeId,
-          text: lastUser.text,
-          ...(lastUser.attachments && lastUser.attachments.length > 0
-            ? { attachments: lastUser.attachments }
-            : {}),
-          ...(create ? { create } : {}),
-        });
-      } catch (err) {
-        setNotice(`重新发送失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    })();
+    const create = buildCreateParam();
+    void resendTurn(
+      activeId,
+      lastUser.text,
+      create ?? undefined,
+      lastUser.attachments && lastUser.attachments.length > 0 ? lastUser.attachments : undefined,
+    );
   }, [activeId, buildCreateParam, slice.items]);
 
   const pickFiles = useCallback(async (): Promise<void> => {
