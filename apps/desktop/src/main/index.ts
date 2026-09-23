@@ -166,6 +166,23 @@ function createWindow(): void {
   win.setMenuBarVisibility(false);
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
+  // 最大化时 UI 等比放大（用户拍板 2026-09-23：最大化后保持原大小=大片空白，
+  // 要跟全屏等比例放大）：内容宽度相对正常态的增幅映射为 zoomFactor，取 0.05
+  // 步进并封顶（1280 窗口在 1080p 全屏 → 1.25 档；恢复还原 1.0）。
+  // mac 走原生绿钮缩放语义，不掺和。
+  if (process.platform === 'win32') {
+    const MAXIMIZE_ZOOM_CAP = 1.25;
+    win.on('maximize', () => {
+      const normal = win.getNormalBounds();
+      const bounds = win.getBounds();
+      if (normal.width <= 0) return;
+      const ratio = bounds.width / normal.width;
+      const zoom = Math.min(MAXIMIZE_ZOOM_CAP, Math.max(1, Math.round(ratio * 20) / 20));
+      win.webContents.setZoomFactor(zoom > 1.01 ? zoom : 1);
+    });
+    win.on('unmaximize', () => win.webContents.setZoomFactor(1));
+  }
+
   // 链接不许顶替应用窗口：新窗口一律 deny，页面内跳转只放行应用自身页面
   // （dev server / 打包 file://），http(s) 交给系统浏览器。
   const devUrl = process.env['ELECTRON_RENDERER_URL'];

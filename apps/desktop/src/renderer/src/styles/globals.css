@@ -102,9 +102,9 @@
   --accent: #3c3f43;
   --accent-fg: #fcfcfc;
   --accent-hover: #2e3237;
-  /* 发送钮禁用态 */
-  --send-disabled-bg: #444242;
-  --send-disabled-icon: #585555;
+  /* 发送钮禁用态：浅灰底灰字（用户实报 #444242 在冷灰白界面太深，2026-09-23） */
+  --send-disabled-bg: #d1d1cc;
+  --send-disabled-icon: #96968f;
   /* 反相深钮上的 kbd 徽章 */
   --accent-kbd-bg: rgba(255, 255, 255, 0.16);
   --accent-kbd-border: rgba(255, 255, 255, 0.3);

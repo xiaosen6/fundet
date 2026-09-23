@@ -1011,14 +1011,6 @@ export function ChatPage(): React.JSX.Element {
                       ${slice.usage.costUsd.toFixed(4)}
                     </span>
                   )}
-                  {activeId && !activeId.startsWith('draft-') && (
-                    <span
-                      className="font-mono text-10 text-muted select-text"
-                      title={'会话 ID：' + activeId}
-                    >
-                      {activeId.slice(0, 8)}
-                    </span>
-                  )}
                   <ContextCapacityRing
                     contextTokens={slice.usage.contextTokens}
                     contextWindow={shownWindow}

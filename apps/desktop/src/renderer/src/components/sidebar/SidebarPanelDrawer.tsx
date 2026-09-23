@@ -6,6 +6,8 @@
  * 标题由各面板正文自带。MCP 服务器 0.2.29 起移回设置页（用户拍板），不在侧栏。
  */
 import { useEffect } from 'react';
+import { cn } from '../../lib/cn';
+import { hasFramelessControls } from '../WindowControls';
 import { ImBotPanel } from '../../pages/settings/ImBotPanel';
 import { SkillsPanel } from '../../pages/settings/SkillsPanel';
 import { KnowledgePanel } from '../../pages/settings/KnowledgePanel';
@@ -41,8 +43,15 @@ export function PanelView({
   const Body = PANELS[id];
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      {/* 顶部拖拽条：与聊天视图的 46px 页头等高，保持窗口拖动区与切换时布局稳定 */}
-      <div className="drag-region h-[46px] shrink-0 select-none" />
+      {/* 顶部拖拽条：与聊天视图的 46px 页头等高，保持窗口拖动区与切换时布局稳定。
+          必须在窗口按钮左侧截止（mr 而非 pr）：app-region 按元素矩形算，全宽条
+          会盖住右上角窗口按钮——Windows 上 hover/点击全无反应（0.3.11 实报） */}
+      <div
+        className={cn(
+          'drag-region h-[46px] shrink-0 select-none',
+          hasFramelessControls() && 'mr-[150px]',
+        )}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full min-w-0 max-w-[920px] px-1 pb-32">
           <Body />
