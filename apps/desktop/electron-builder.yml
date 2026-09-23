@@ -57,6 +57,8 @@ win:
       to: ripgrep-bin/win32-x64
     - from: ../../apps/cua-driver-bin/win32-x64
       to: cua-driver/win32-x64
+    - from: ../../apps/git-bin/win32-x64
+      to: git/win32-x64
 
 nsis:
   include: build/installer.nsh

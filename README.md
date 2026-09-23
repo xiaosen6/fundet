@@ -50,6 +50,9 @@ pnpm install
 node tools\pi\update.mjs 0.83.0 --platform=win32-x64
 # 若 GitHub 超时：可走镜像 https://gh-proxy.com/ + 上面的完整 GitHub 下载地址
 # 解到 apps\pi-bin\win32-x64\（目录里要有 pi.exe 和 theme\）
+node tools\git\update.mjs
+# 可选：随包 Git Bash（客户机没装 Git for Windows 时 pi 的 bash 工具与
+# 文件快照的兜底；直连超时设 $env:FUNDET_GH_PROXY='https://gh-proxy.com/'）
 
 pnpm dev:win
 ```
@@ -165,7 +168,7 @@ pnpm --filter @fundet/agent-core test
 ## 发版流程（0.2.19 起 GitHub 单线）
 
 1. 确认改动已提交、`pnpm test` 全绿；`apps/desktop/package.json` 升版本号
-2. `pnpm build && pnpm dist:win`（apps/desktop 下）——**EBUSY 失败是 Defender 锁新签名 exe 的高频项，重跑即过**（脚本带 3 次重试更稳）
+2. `pnpm build && pnpm dist:win`（apps/desktop 下）——出包前确认 `apps/pi-bin`、`apps/cua-driver-bin`、`apps/git-bin` 的 `win32-x64/VERSION`（或二进制）都在；**EBUSY 失败是 Defender 锁新签名 exe 的高频项，重跑即过**（脚本带 3 次重试更稳）
 3. `memory.md` 写版本行（内容、根因、验证方式）+ 在途事项清零
 4. `git tag -a v<版本> && git push github main && git push github v<版本>`（远端名是 **github**；origin 是已弃用的 GitLab）
 5. `gh release create v<版本> dist/Fundet-Setup-*.exe dist/*.blockmap dist/latest.yml --title ... --notes ...`

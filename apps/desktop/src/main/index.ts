@@ -7,7 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDatabase } from './db/client.js';
 import { getHost, shutdownHost } from './host/pi-host.js';
-import { resolvePiBinaryPath } from './host/pi-binary.js';
+import { resolvePiBinaryPath, resolveBundledGitRoot } from './host/pi-binary.js';
+import { setupBundledGitFallback } from './host/git-bash.js';
+import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
 import { registerIpcHandlers } from './ipc/register.js';
 import { registerImIpc, startSavedImBots, stopAllImBots } from './im/host.ts';
@@ -217,6 +219,12 @@ function bootstrap(): void {
     app.quit();
     return;
   }
+  // 2a) 随包 Git Bash 回退：客户机没装 Git 时 pi 的 bash 工具与快照/回滚全灭。
+  // 系统 Git（含注册表里装了没进 PATH 的）可见时不动作，随包版只做兜底。
+  setupBundledGitFallback({
+    bundledRoot: resolveBundledGitRoot(),
+    systemGitPathEntries: resolveWindowsGitPathEntries(),
+  });
   // 2b) pi 运行时预检：bun 系二进制在无 AVX2 的 CPU 上启动即崩（0xC000001D），
   // 与其等用户第一次发消息报错，不如启动就讲清楚。正常机器这一步 <500ms。
   void (async () => {

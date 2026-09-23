@@ -1,0 +1,11 @@
+{
+  "version": "2.55.0.5",
+  "tag_name": "v2.55.0.windows.5",
+  "asset": {
+    "name": "PortableGit-2.55.0.5-64-bit.7z.exe",
+    "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/PortableGit-2.55.0.5-64-bit.7z.exe",
+    "sha256": "5aa8a20f6e9abb2c755f0e73c91c687701a46b309ad84a0ca6509380fa4ae290",
+    "size": 58960208
+  },
+  "notes": "sha256 为本仓自算固定（git-for-windows 官方 release 不发布逐资产 digest）；升级时重算并替换。"
+}

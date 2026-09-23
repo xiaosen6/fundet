@@ -96,7 +96,8 @@ Fundet/
 │   │   └── dist/                # 安装包产物
 │   ├── pi-bin/<plat>-<arch>/    # Pi 运行时（gitignore；缺 theme 则 RPC 即崩）
 │   ├── ripgrep-bin/             # rg 二进制（gitignore，update.mjs 现下）
-│   └── cua-driver-bin/          # cua-driver（gitignore，update.mjs 现下）
+│   ├── cua-driver-bin/          # cua-driver（gitignore，update.mjs 现下）
+│   └── git-bin/win32-x64/       # 裁剪版便携 Git Bash（gitignore，update.mjs 现下；无 Git 客户机兜底）
 └── tools/                       # pi/ripgrep/cua-driver 下载器、pack-browser-deps、with-brand
 ```
 
@@ -124,6 +125,7 @@ Fundet/
 
 | 版本 | 日期 | 要点 |
 | --- | --- | --- |
+| 0.3.11（待发） | 09-23 | **随包 Git Bash（外部用户实报：没装 Git 的机器问会议室，agent 直接回「请安装 Git for Windows」——pi bash 工具全灭）**——根因链：pi 只认 bash.exe（解析序=settings.json shellPath → Program Files 两路径 → **PATH 搜索** → 报 No bash shell found），dws 技能/搜索兜底 curl 全走 bash；checkpoint 快照用 PATH 的 git，没装=快照回滚静默关闭（同病）。方案：①`tools/git/update.mjs` 下载 PortableGit 2.55.0.5（sha256 本仓自算 pin——官方不发逐资产 digest；FUNDET_GH_PROXY 可走镜像）→ 裁剪（去 vim/perl/mintty/mingw64 文档，351→264MB；**expand.exe/expr.exe 是 coreutils 不是 vim 家族，别误删**）→ `apps/git-bin/win32-x64/`；②electron-builder win extraResources +`git/win32-x64`（安装包 200→约 280MB）；③`main/host/git-bash.ts`：win32 且随包在场且系统 Git 全不可见（agent-core `resolveWindowsGitPathEntries` 已 barrel 导出复用 + PATH git 探测）时把 `<root>/cmd;<root>/bin` 前置进主进程 PATH——pi spawnEnv 拷贝 process.env 即继承，PATH 搜索命中 `bin/bash.exe`；**用户自装 Git（含装了没进 PATH 的注册表安装）永远优先，此时模块零动作**。实测：裁剪包 bash/coreutils/git init+commit/ls-remote/curl/tar/lfs/cmd 互操作全过；无 Git 机器全链路模拟（条目计算→PATH→pi 解析→bash 实跑）PASS；200/200（+git-bash 11 组）。开发机实测通道 `FUNDET_FORCE_BUNDLED_GIT=1`（无视系统 Git 强制启用）。**新坑：bash heredoc 写 .mjs 会四层剥转义（JSON→bash→文件→JS），连 `\\` 都保不住——探针必须 Write 工具写文件（铁律③又一次实证）** |
 | 0.3.10 | 09-23 | **钉钉知识库勾选（用户设计：选源交给用户，不靠语义理解）**——KnowledgeChip 面板顶部新增「钉钉知识库」开关（binding.dingtalk，JSON 向后兼容）；勾了注入 dingtalk_kb_search MCP 工具（handler 调 dws aisearch enterprise --queries，60s 超时，解析 errorCode/登录失效提示）；MCP server 改动态工具组合（handlers:{search?,list?,dingtalk?} 按绑定出现，tools/list 只列勾了的）——勾谁谁的工具在，消歧由用户显式完成；零依赖 dingtalk-format.ts（formatDingtalkResults 纯函数，样本=dws v1.0.62 实跑脱敏）；189/189（+钉钉解析 5 组+动态组合 1 组）。**②会话按文件夹分组（对齐 Cindy project 分组）**——组键=workDir 归一化（去尾斜杠/统一分隔符/小写）；组头=路径末段+会话计数（悬停显全路径；同名不同路径各自成组属正确行为）；组头可点击折叠/展开（localStorage `fundet.sidebar.collapsed-groups`）；置顶段独立不参与分组（拖拽排序不变）；组头替代原「会话」分隔行，组序随组内最新会话。**③厂商内置图标**——公司 logo 左侧球体（用户提供的干净版 PNG）→ logo-fundet-vendor.png；resolveVendorKind 加 fundet kind（providerId/name/baseUrl 任一含 fundet 即认），ProviderLogoMark 圆形 img 分支——模型下拉/弹层/chip 全生效（Fundet 系自定义 provider 自动有标，后续 V2 零配置继承）。**架构注意**：tool.ts import store 会拉 Electron 链（node-test 挂）——纯函数独立文件 |
 | 0.3.9 | 09-22 | **热补 9：知识库消歧 + knowledge_list**——用户实报「问知识库有什么，有时走钉钉 aisearch 有时走本地」：①search 工具描述加选源规则（「知识库/我的文档」→本地；明确说「钉钉/公司/企业」才走钉钉侧）——工具描述是 agent 选工具唯一依据；②新增 knowledge_list 工具（列绑定 KB+文档名/块数/字数），「有什么」类问题直接列清单不再 FTS 硬检索；MCP server 改双工具 dispatch（handlers:{search,list}）。**验证纪律**：协议层单测覆盖（tools/list 双工具+list 清单格式断言），agent 选工具效果靠用户日常实测（真模型验证已停——消耗 Fundet-CN-V1-flash 额度，用户两次提醒） |
 | 0.3.8 | 09-22 | **全量 review 三修（自动化模块 0.3.0 引入的隐性 bug）**：①**pi 进程泄漏**——auto- 会话从不 closeSession，interval 任务一天泄漏几十个 pi 子进程；修：sendFn 等 done 事件（run 状态由真完成落定，超时 10min 按失败终止）+ finally closeSession 回收。②**侧栏污染**——sessionRowsToList/session-search 均未过滤 auto- 前缀，每次定时触发用户侧栏多一个会话；双侧过滤（运行历史在自动化面板看）。③**渲染层孤儿 slice**——applyEvent 为 auto 会话建 slice 永不清理；入口丢弃。**教训**：跑长任务的隔离会话必须显式管理生命周期（等 done + close），「不进侧栏」要过滤列表+搜索+事件三面。dev 实测：立即运行→run 终态（种子库无 key 走 failed 路径=auth 闸生效）+ 侧栏无 auto |
@@ -270,7 +272,7 @@ Fundet/
 | pi 无 AVX2 启动崩（code 3221225501） | bun 硬要求；启动预检 + 中文弹窗。无解，除非 pi 出 baseline 构建 |
 | electron-updater ESM 炸 | CJS 包，`import pkg from 'electron-updater'` 再解构；**发版前冒烟打包产物** |
 | 沙箱渲染进程不支持 ESM preload | preload 必须 CJS（electron.vite 显式 format cjs） |
-| Windows bash 不可用 | pi 的 bash 工具只认 Git Bash；system-prompt 引导用户装 Git |
+| Windows bash 不可用 | pi 的 bash 工具只认 Git Bash；**0.3.11 起随包裁剪版 Git Bash 兜底**（git-bash.ts：系统 Git 全不可见才前置 PATH，用户自装优先）；system-prompt 引导装 Git 仅剩 dev 兜底 |
 | node --test 直跑链 import shared 模块用 `.ts` 后缀 | main/im、main/search、shared 直跑；vite bundle 链用 `.js` |
 | 单引号串里 `${...}` 是死文本 | 模板串用反引号；JSX 文本插值用花括号表达式 |
 | WSL Electron 窗口蓝点 / rollup 缺 linux binding | 开发构建打包全在 Windows PowerShell |
@@ -303,7 +305,7 @@ Fundet/
 
 1. 升 `apps/desktop/package.json` version；memory.md §3.5 补版本行；提交。
 2. `git tag vX.Y.Z && git push github main vX.Y.Z`。
-3. **PowerShell** `pnpm dist:win` 本地出包 → 拷一份到 `D:\` 根目录。pre 钩子自动跑 pack-browser-deps；**出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 存在**。Defender 慢日构建超 10 分钟属正常，斩死后无孤儿进程直接重跑；EBUSY 同理整体重跑。
+3. **PowerShell** `pnpm dist:win` 本地出包 → 拷一份到 `D:\` 根目录。pre 钩子自动跑 pack-browser-deps；**出包前确认 `apps/cua-driver-bin/win32-x64/VERSION` 与 `apps/git-bin/win32-x64/VERSION` 存在**。Defender 慢日构建超 10 分钟属正常，斩死后无孤儿进程直接重跑；EBUSY 同理整体重跑。
 4. 静默安装冒烟：`/S /D=<临时目录>` → 启动 → **查 MainWindowTitle ≠ "Error"** → 杀进程 → 清理临时目录 + HKCU 安装痕迹（`HKCU\Software\<卸载GUID>`、Uninstall\<GUID>、开始菜单/桌面 Fundet 快捷方式——不清会把冒烟临时路径写进安装器记忆）。
 5. `gh release create vX.Y.Z -R xiaosen6/fundet --title vX.Y.Z --notes "<说明>" <exe> <blockmap> <latest.yml>`——三资产挂 Release，electron-updater 读最新 Release 的 latest.yml。
 6. 发版前 `git merge-base --is-ancestor <commit> <tag>` 确认资产 commit 已进 tag。

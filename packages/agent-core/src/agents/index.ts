@@ -3,6 +3,10 @@ export { PiAgent } from './pi/index.js';
 export { scanPiCustomizations, buildPiSources } from './pi/customization-scanner.js';
 export { parseFrontmatter } from './shared/customization-scanner.js';
 export {
+  gitPathEntriesFromRoots,
+  resolveWindowsGitPathEntries,
+} from './pi/windows-git-path-lite.js';
+export {
   canReuseHostForCredentialMode,
   resolveAgentCredentialMode,
   resolveEffectiveCredentialModeFromAuthSource,

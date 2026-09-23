@@ -13,6 +13,8 @@ packages/browser-runtime/dist
 apps/desktop/resources-browser/
 apps/cua-driver-bin/
 tools/cua-driver/updates/
+apps/git-bin/
+tools/git/updates/
 
 # 参考项目只读快照（本地存在即可，不进版本库）
 cindy/
