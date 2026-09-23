@@ -438,9 +438,11 @@ pnpm -r --if-present run test
 
 **特例**：`packages/browser-runtime` 是 vendored 整包（上游 openclaw，经 Cindy），按 `upstream/browser-runtime.lock.json` 整体同步 + 跑 SSRF 契约测试，不手工挑提交、永不过 rollup（见 §5 僵死坑）。
 
-**上次同步点：c3fcefd49（feat(navigation) #4590，2026-09-18；窗口 f4422f816..c3fcefd49 已全部核查，裁决见下）**。
+**上次同步点：714ec5b1f（2026-09-23 全量核查完成；窗口 c3fcefd49..714ec5b1f 共 413 提交/326 非 merge 已全部裁决，见下）**。
 
-**节奏锚点**：下次 = 发版前增量 或 2026-09-25 周全量（先到者）。
+**节奏锚点**：下次 = 发版前增量 或 2026-09-30 周全量（先到者）。
+
+**2026-09-23 全量核查（c3fcefd49..714ec5b1f，413 提交）**：**P0/P1 = 无**（无安全修复落在同构代码上；#4518 类控制面守卫未复发）。大头全在红线/异构域：built-in skill/Learn 体系（账号云技能，~30 提交）、账号边界回滚（多账号体系，~20）、共享任务/伙伴、codex 专项修复、Cindy Make/ios-simulator/remote-desktop、worktree 回收族。**P2 条件触发项（勿主动做）**：①**工具循环熔断 loop-guard**（#4837/#4929：agent 死循环工具调用检测+正常日志轮询/子代理等待豁免——我们无此机制，上游实现在 agents/shared/loop-guard.ts 纯函数可移植；触发=真实出现循环烧 token 报障）；②pi 内核版本管理+正式版恢复（#4913：上游已动态化，0.85.x 线存在；触发=pi 升级频繁成痛点）；③Git 保存点三态策略（#4797：快照 on/ask/off；触发=用户抱怨快照频繁/占盘）；④分组头未读聚合灯（#2938 思路；触发=多分组下漏看未读）。**不适用/有意分歧（勿重查）**：未知图片能力默认 supported（#4854）与我们「只信库值+手选」拍板相反（default-on 会复发 glm 无视觉 1210 类事故）——有意分歧；无推理配置不生成档位（#4860）我们 EffortSelector 已有 reasoning||thinkingLevelMap 门槛等价覆盖；MessageStream 切换跳动两连删码（#48xx：删 shell-first 首帧+两段式窗口扩容）修的是渐进窗口体系——我们 0.2.20 已整体换 TanStack 真虚拟化，结构免疫（反向验证选型）；计划模式通知错位（#4753）渲染管线不同构；网关会话标识（#4755）无网关；切模缩窗闸门（#4835）无缩窗重建体系；消息跳动（#4584）无远程刷新/历史一次装载；侧栏空项目（#4679）我们分组由会话派生无空组；凭证后端恢复（#3960）BYOK 无 OAuth；更新后二进制校验（#4950）我们 getHost 启动已硬校验弹窗退出；HTTP 分类/重试豁免（#47xx/#4337）传输层与 OAuth 池不同构。**vendor lock b972feb3 窗口内零提交仍有效**；网络守卫竞态、MCP 懒加载上游仍未落地，继续挂 §7。
 
 **2026-09-18 核查（a15a240bf..c3fcefd49，23 提交）**：**已移植 1 项**——`2848dbf97` #4626 pi 启动失败诊断（pending 拒绝带脱敏+路径遮蔽的 stderr 尾部摘要；**本仓改造点**：sanitizeStartupDiagnostic 必须在 redactSensitiveText **之前**跑——本仓脱敏函数会吃反斜杠，顺序反了 Windows 路径先被搅碎；首个 RPC 响应到达即停收集；同日落地 efd9c70）。红线/不适用：navigation/teammates、remote-desktop 防窥屏、bots 伙伴通信、mobile、winget 入口（本仓 GitHub Releases+NSIS 无 winget 清单）、slider 家族统一（本仓 EffortSelector 是菜单形态非 slider）、「Cindy 项目管理工具」MCP 十连（任务/项目体系本仓无）。
 
