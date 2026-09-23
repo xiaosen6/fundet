@@ -369,7 +369,7 @@ Fundet/
 - **钉钉完整集成（2026-09-18 已移植，Cindy lizi-im 同机制）**：API 客户端 `im/dingtalk-api.ts`（token 双轨缓存+图片下载/上传+robot 主动发+webhook 过期回退）；入站纯函数 `im/dingtalk-inbound.ts`（text/richText/picture/audio/video/file）；图片收发全链（入站 downloadCode→下载→stage→image 块；出站本地图片→上传→单独发图）；**审批问答桥** `im/im-interaction.ts` + dispatcher（IM 会话 ask 档，交互转文本问答，回复旁路防死锁，9min 超时 deny）；per-bot 工作目录。29 IM 单测全绿。
 - **钉钉/IM 与 Cindy 差距裁决（2026-09-18 核查留案）**：协议层同款（同 dingtalk-stream SDK/个人凭证/TOPIC_ROBOT）；Cindy 多出的属边界裁剪非欠账——IM 内审批问答（interaction.ts 文本问答桥，P2：需要在 IM 跑 ask 档任务时做）、IM 图片收发与流式卡片（lizi-im 885 行适配层，P2：手机发图给机器人的真实需求出现时做）、per-bot 工作目录隔离（多 bot 同机时再做）。
 - IPC 错误已统一剥壳（2026-09-11）：preload `invoke()` helper 按 channel 精确剥 `Error invoking remote method <channel>: ` 前缀（`shared/friendly-error.ts` 的 `stripIpcErrorPrefix`，有单测），UI 只显业务原文。
-- 文件夹拖入 composer；Canvas 未覆盖类型仍「用系统打开」。
+- 文件夹拖入 composer；Canvas 未覆盖类型已有「用系统打开」兜底（CanvasPane 右上角常驻按钮，2026-09-23 核实非待办）。**遗留小洞**：`FS_OPEN_PATH` 无文件类型闸（register.ts 直接 shell.openPath）——agent 产出可执行文件被点开即执行，待加扩展名 deny-list。
 
 > **全仓代码研究盘点（2026-09-23，接手四路深挖，均已亲核）**：
 > - **规模修正**：browser-runtime src 实为 ~3.4 万行（`_generated/` 31k 同步自 openclaw + `shim/` 1.7k 垫片 + 根适配层 526 行）——"小包"印象作废；全仓 TS ≈11.4 万行（agent-core 源/测各 ~2 万）。IPC 通道共 ~128 个（invoke+push）。
