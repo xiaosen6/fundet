@@ -37,7 +37,7 @@ export const PROVIDER_LOGO_PATHS = {
     'M3.996 4.517h5.291L8.01 6.324 4.153 7.506a1.668 1.668 0 0 0-1.165 1.601v5.786a1.668 1.668 0 0 0 1.165 1.6l3.857 1.183 1.277 1.807H3.996A3.996 3.996 0 0 1 0 15.487V8.513a3.996 3.996 0 0 1 3.996-3.996m16.008 0h-5.291l1.277 1.807 3.857 1.182c.715.227 1.17.889 1.165 1.601v5.786a1.668 1.668 0 0 1-1.165 1.6l-3.857 1.183-1.277 1.807h5.291A3.996 3.996 0 0 0 24 15.487V8.513a3.996 3.996 0 0 0-3.996-3.996m-4.007 8.345H8.002v-1.804h7.995Z',
 } as const;
 
-export type ProviderLogoKind = keyof typeof PROVIDER_LOGO_PATHS | 'anthropic' | 'openai' | 'xd';
+export type ProviderLogoKind = keyof typeof PROVIDER_LOGO_PATHS | 'anthropic' | 'openai' | 'xd' | 'fundet';
 
 /** Device-link 等运行时边界不能信任静态 union；未知未来值应安全回退。 */
 export function isProviderLogoKind(value: unknown): value is ProviderLogoKind {
@@ -211,6 +211,10 @@ export function resolveVendorKind(input: {
   baseUrl?: string;
   modelId?: string;
 }): ProviderLogoKind | null {
+  // Fundet 内置厂牌：providerId/name/baseUrl 任一含 fundet 即认（内网 V1-flash/mini 系）
+  const probe = [input.providerId ?? '', input.name ?? '', input.baseUrl ?? ''].join(' ').toLowerCase();
+  if (probe.includes('fundet')) return 'fundet';
+
   const host = hostnameOf(input.baseUrl);
   if (host) {
     const fromHost = kindFromHost(host);

@@ -11,6 +11,7 @@ import {
 } from '../../lib/providerBranding';
 import { AnthropicMark } from './AnthropicMark';
 import { OpenAIMark } from './OpenAIMark';
+import fundetVendorLogo from '../../assets/logo-fundet-vendor.png';
 
 export interface ProviderLogoMarkProps {
   providerId?: string;
@@ -30,6 +31,18 @@ export function ProviderLogoMark({
   className,
 }: ProviderLogoMarkProps): React.JSX.Element {
   const kind = resolveVendorKind({ providerId, name, baseUrl, modelId });
+  // Fundet 厂牌：圆形红球（公司 logo 切割；自定义内网 provider 的唯一彩标特例）
+  if (kind === 'fundet') {
+    return (
+      <img
+        src={fundetVendorLogo}
+        width={size}
+        height={size}
+        className={cn('shrink-0 rounded-full object-cover', className)}
+        aria-hidden
+      />
+    );
+  }
   if (kind === 'anthropic') return <AnthropicMark size={size} className={className} />;
   if (kind === 'openai') return <OpenAIMark size={size} className={className} />;
   if (kind && kind !== 'xd' && Object.prototype.hasOwnProperty.call(PROVIDER_LOGO_PATHS, kind)) {
