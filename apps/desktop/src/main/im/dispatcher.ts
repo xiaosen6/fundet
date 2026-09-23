@@ -263,8 +263,10 @@ async function runTurn(msg: ImInbound, extras?: ImInboundExtras): Promise<string
       workingDir: workDir,
       model,
       providerId,
-      // ask 档 + 渠道问答桥（Cindy permissionPolicy 语义）；有桥兜底，不会卡死
-      permissionMode: 'ask',
+      // 完全放行（用户 2026-09-23 拍板）：IM 会话的审批卡在微信/钉钉侧看不到，
+      // ask 档会卡到超时 deny；IM 账号即用户本人，默认放行最顺。桥保留兜底
+      // ask_user_question 问答与控制面强制确认（agent-core #4518 守卫）两个通道。
+      permissionMode: 'bypassPermissions',
     });
     wireSession(session);
     setSetting(key, session.id);

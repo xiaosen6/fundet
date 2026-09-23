@@ -5,6 +5,9 @@
  * Maker），不搬网关/订阅/turn 录制。MCP 只走本机 preparePiExtraSpawnConfig（内置搜索 + 用户表）。
  */
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { app } from 'electron';
 import {
@@ -27,6 +30,7 @@ import { lookupKnownModel } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { createPreparePiExtraSpawnConfig } from './mcp-bridge.js';
 import systemPromptRaw from './system-prompt.md?raw';
+import dwsCheatSheetRaw from './dws-prompt.md?raw';
 import { brand } from '../../shared/brand.js';
 
 // 品牌化自我介绍：system-prompt.md 原文即 Fundet 终稿；下面两个 replace 是上游底座机制（对 Fundet 均为 no-op）
@@ -140,7 +144,11 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
 function buildRuntimeConfig(): AgentRuntimeConfig {
   return {
     // 无网关：endpoint 留空，所有会话走显式 BYOM providerId（pi 侧 fail-closed 保证不回落）
-    systemPrompt: systemPrompt.trim(),
+    // getter 每会话求值（agent-core startSession 现读）：dws CLI 已安装才追加钉钉速查段，
+    // 没装钉钉的用户零 token 开销；探测结果进程内缓存，应用内新装 dws 需重启生效
+    get systemPrompt() {
+      return isDwsCliInstalled() ? `${systemPrompt}\n\n${dwsCheatSheetRaw}`.trim() : systemPrompt.trim();
+    },
     managedExecutablePaths: { ripgrep: resolveRipgrepPath() },
     memoryEnabled: false,
     // 产品面已去掉记忆：固定关闭。内核仍装配 manager，避免改 agent-core。
@@ -148,6 +156,29 @@ function buildRuntimeConfig(): AgentRuntimeConfig {
       return false;
     },
   };
+}
+
+/**
+ * dws CLI 安装探测（轻量：官方 install.ps1 落点 + PATH，不起 dws 进程）。
+ * 只做 system prompt 速查段的门控；dws 真实可用性由各调用方自行探测。
+ */
+let dwsInstalledCache: boolean | null = null;
+function isDwsCliInstalled(): boolean {
+  if (dwsInstalledCache !== null) return dwsInstalledCache;
+  const fallback = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'dws.exe' : 'dws');
+  let installed = fs.existsSync(fallback);
+  if (!installed) {
+    try {
+      installed =
+        process.platform === 'win32'
+          ? spawnSync('cmd.exe', ['/d', '/c', 'where', 'dws'], { timeout: 3000, stdio: 'ignore', windowsHide: true }).status === 0
+          : spawnSync('which', ['dws'], { timeout: 3000, stdio: 'ignore' }).status === 0;
+    } catch {
+      installed = false;
+    }
+  }
+  dwsInstalledCache = installed;
+  return installed;
 }
 
 /** 每会话隔离的 pi 配置目录（PI_CODING_AGENT_DIR 的宿主侧根） */
