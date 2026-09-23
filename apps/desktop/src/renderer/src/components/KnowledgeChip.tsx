@@ -6,7 +6,7 @@
  * 字段，默认 false，后端能力不删）。
  */
 import { useEffect, useState } from 'react';
-import { ChevronDown, Library, Settings2 } from 'lucide-react';
+import { Briefcase, ChevronDown, Library, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/cn';
 import { MorphPopover } from './ui/MorphPopover';
@@ -33,6 +33,10 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
     void window.fundet.setSessionKnowledgeBinding(sessionId, next).catch(() => undefined);
   };
 
+  const toggleDingtalk = (): void => {
+    persist({ ...binding, dingtalk: !binding.dingtalk });
+  };
+
   const toggleKb = (id: string): void => {
     const ids = binding.ids.includes(id)
       ? binding.ids.filter((x) => x !== id)
@@ -50,11 +54,11 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       }}
       className={cn(
         'inline-flex h-[30px] items-center gap-2 rounded-full border border-transparent bg-transparent px-2.5 text-13 text-primary transition-colors select-none hover:border-board hover:bg-composer-pill',
-        (binding.ids.length > 0 || binding.auto) && 'border-board bg-composer-pill',
+        (binding.ids.length > 0 || binding.auto || binding.dingtalk) && 'border-board bg-composer-pill',
       )}
     >
       <Library size={14} className="shrink-0" />
-      <span>知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : ''}</span>
+      <span>知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : binding.dingtalk ? ' · 钉钉' : ''}</span>
       <ChevronDown size={14} className="shrink-0 text-muted" />
     </button>
   );
@@ -70,6 +74,26 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       trigger={trigger}
     >
       <div className="scrollbar-none flex flex-col">
+        {/* 钉钉知识库（企业文档/消息检索，走钉钉 AI 搜索；勾了即注入检索工具） */}
+        <button
+          type="button"
+          onClick={toggleDingtalk}
+          className="flex w-full items-center gap-3 rounded-inner px-3 py-2 text-left hover:bg-menu-item-hover"
+        >
+          <Briefcase size={16} className={cn('shrink-0', binding.dingtalk ? 'text-accent' : 'text-muted')} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-14 text-primary">钉钉知识库</span>
+            <span className="block text-11 text-muted">公司文档/消息（需钉钉已登录）</span>
+          </span>
+          <span
+            className={cn(
+              'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border text-[10px] leading-none',
+              binding.dingtalk ? 'border-accent bg-accent text-accent-fg' : 'border-board',
+            )}
+          >
+            {binding.dingtalk ? '✓' : ''}
+          </span>
+        </button>
         {kbs.length === 0 ? (
           <div className="px-3 py-2 text-12 leading-relaxed text-muted">
             还没有知识库。可先在

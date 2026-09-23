@@ -5,6 +5,7 @@
 export const KNOWLEDGE_MCP_SERVER_NAME = 'knowledge';
 export const KNOWLEDGE_MCP_TOOL_NAME = 'knowledge_search';
 export const KNOWLEDGE_MCP_LIST_TOOL_NAME = 'knowledge_list';
+export const KNOWLEDGE_MCP_DINGTALK_TOOL_NAME = 'dingtalk_kb_search';
 
 /** KB 级检索/分块参数（MCP 默认 limit、导入分块都用它） */
 export interface KnowledgeBaseParams {
@@ -20,6 +21,8 @@ export interface KnowledgeBaseParams {
 export interface KnowledgeSessionBinding {
   ids: string[];
   auto: boolean;
+  /** 同时勾选钉钉知识库（企业文档/消息检索，走 dws aisearch） */
+  dingtalk?: boolean;
 }
 
 export interface KnowledgeBaseView {

@@ -40,9 +40,11 @@ import { listMcpServers, type McpServerView } from '../db/mcp-servers.js';
 import { getBoolSetting } from '../db/settings.js';
 import { startSearchMcpServer } from '../search/mcp-server.ts';
 import { handleWebSearch } from '../search/tool.ts';
-import { getSessionKnowledgeKbs } from '../knowledge/store.js';
+import { getSessionKnowledgeBinding } from '../knowledge/store.js';
 import { startKnowledgeMcpServer } from '../knowledge/mcp-server.js';
 import { handleKnowledgeSearch, handleKnowledgeList } from '../knowledge/tool.js';
+import { formatDingtalkResults } from '../knowledge/dingtalk-format.js';
+import { resolveDws, execDws } from './dws.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
 import { startBrowserMcpServer } from '../browser/mcp-http.js';
 
@@ -425,16 +427,43 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
       }
     });
 
-    // 知识库（会话绑定了才注入）：knowledge_search 返回带来源编号的原文片段，
-    // 审批不进白名单——跟会话权限三档走。
+    // 知识库（会话绑定了才注入）：勾本地→search/list；勾钉钉→dingtalk_kb_search
+    // （用户显式选源，agent 不再靠语义理解猜——0.3.10 形态）。审批不进白名单。
     tasks.push(async () => {
       try {
-        const kbIds = ctx?.sessionId ? getSessionKnowledgeKbs(ctx.sessionId) : [];
-        if (kbIds.length > 0) {
+        const binding = ctx?.sessionId ? getSessionKnowledgeBinding(ctx.sessionId) : null;
+        const kbIds = binding?.ids ?? [];
+        const useDingtalk = binding?.dingtalk === true;
+        if (kbIds.length > 0 || useDingtalk) {
           const kbIdsSnapshot = [...kbIds];
           const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), {
-            search: (args) => Promise.resolve(handleKnowledgeSearch(kbIdsSnapshot, args)),
-            list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
+            ...(kbIds.length > 0
+              ? {
+                  search: (args: Record<string, unknown>) =>
+                    Promise.resolve(handleKnowledgeSearch(kbIdsSnapshot, args)),
+                  list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
+                }
+              : {}),
+            ...(useDingtalk
+              ? {
+                  dingtalk: async (args: Record<string, unknown>) => {
+                    const query = typeof args.query === 'string' ? args.query.trim() : '';
+                    const limit = typeof args.limit === 'number' ? args.limit : 5;
+                    if (!query) return { text: '缺少检索词（query）。', isError: true };
+                    const dws = await resolveDws();
+                    if (!dws) return { text: '还没安装 dws（钉钉工作台面板可一键安装）。', isError: true };
+                    const res = await execDws(
+                      dws,
+                      ['aisearch', 'enterprise', '--queries', query, '--format', 'json'],
+                      60_000,
+                    );
+                    if (res.code !== 0) {
+                      return { text: `钉钉检索命令失败：${res.stderr || res.stdout || res.code}`, isError: true };
+                    }
+                    return formatDingtalkResults(res.stdout, query, limit);
+                  },
+                }
+              : {}),
           });
           disposers.push(knowledge.dispose);
           servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });

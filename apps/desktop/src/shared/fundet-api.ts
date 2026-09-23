@@ -446,7 +446,7 @@ export interface FundetApi {
   searchKnowledge(kbIds: string[], query: string, limit?: number): Promise<KnowledgeSearchResult[]>;
   pickKnowledgeFiles(): Promise<string[]>;
   getSessionKnowledgeBinding(sessionId: string): Promise<KnowledgeSessionBinding>;
-  setSessionKnowledgeBinding(sessionId: string, binding: { ids: string[]; auto: boolean }): Promise<void>;
+  setSessionKnowledgeBinding(sessionId: string, binding: { ids: string[]; auto: boolean; dingtalk?: boolean }): Promise<void>;
 
   listMcpServers(): Promise<McpServerView[]>;
   createMcpServer(input: McpServerInput): Promise<McpServerView>;

@@ -360,6 +360,7 @@ export function getSessionKnowledgeBinding(sessionId: string): KnowledgeSessionB
       return {
         ids: (parsed as { ids: unknown[] }).ids.filter((v): v is string => typeof v === 'string'),
         auto: (parsed as { auto?: unknown }).auto === true,
+        dingtalk: (parsed as { dingtalk?: unknown }).dingtalk === true,
       };
     }
     return { ids: [], auto: false };
@@ -377,6 +378,7 @@ export function setSessionKnowledgeBinding(
   sessionId: string,
   ids: string[],
   auto: boolean,
+  dingtalk = false,
 ): void {
   ensureTables();
   const valid = new Set(
@@ -387,6 +389,6 @@ export function setSessionKnowledgeBinding(
     ).map((r) => r.id),
   );
   const filtered = [...new Set(ids)].filter((id) => valid.has(id));
-  const empty = filtered.length === 0 && !auto;
-  setSetting(bindingKey(sessionId), empty ? null : JSON.stringify({ ids: filtered, auto }));
+  const empty = filtered.length === 0 && !auto && !dingtalk;
+  setSetting(bindingKey(sessionId), empty ? null : JSON.stringify({ ids: filtered, auto, dingtalk }));
 }

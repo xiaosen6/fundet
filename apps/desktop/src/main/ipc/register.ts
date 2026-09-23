@@ -850,8 +850,8 @@ ${input.text}`;
 
   ipcMain.handle(
     FUNDET_INVOKE.KB_SESSION_SET,
-    async (_e, sessionId: string, binding: { ids?: string[]; auto?: boolean }) => {
-      setSessionKnowledgeBinding(sessionId, binding?.ids ?? [], binding?.auto === true);
+    async (_e, sessionId: string, binding: { ids?: string[]; auto?: boolean; dingtalk?: boolean }) => {
+      setSessionKnowledgeBinding(sessionId, binding?.ids ?? [], binding?.auto === true, binding?.dingtalk === true);
     },
   );
 

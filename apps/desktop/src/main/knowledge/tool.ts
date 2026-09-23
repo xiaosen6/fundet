@@ -3,7 +3,7 @@
  * 与 search/tool.ts 同职责切分：本文件可依赖 store（主进程），MCP 协议层不依赖。
  */
 import type { KnowledgeSearchResult } from '../../shared/knowledge.js';
-import { resolveDefaultTopK, searchKnowledgeChunks, listKnowledgeBases, listKnowledgeDocs } from './store.js';
+import { resolveDefaultTopK, searchKnowledgeChunks, listKnowledgeBases, listKnowledgeDocs } from './store.ts';
 
 /** 自动注入（④）：检索结果 → 拼进用户消息前的上下文块 */
 export function formatKnowledgeContextBlock(results: KnowledgeSearchResult[]): string {

@@ -32,6 +32,26 @@ async function rpc(
 }
 
 describe('knowledge MCP server', () => {
+  it('tools/list 按绑定动态组合（只勾钉钉 → 仅 dingtalk_kb_search）', async () => {
+    const { url, dispose } = await startKnowledgeMcpServer('t2', logger, {
+      dingtalk: async () => ({ text: '钉钉侧没有找到相关内容。', isError: false }),
+    });
+    try {
+      const list = await rpc(url, 't2', { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+      const tools = (list.json as { result: { tools: Array<{ name: string }> } }).result.tools;
+      assert.deepEqual(tools.map((t) => t.name), ['dingtalk_kb_search']);
+      const call = await rpc(url, 't2', {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'dingtalk_kb_search', arguments: { query: 'x' } },
+      });
+      assert.equal((call.json as { result: { isError: boolean } }).result.isError, false);
+    } finally {
+      dispose();
+    }
+  });
+
   it('rejects missing bearer, then initialize / list / call', async () => {
     const token = 'test-token';
     const calls: Array<Record<string, unknown>> = [];

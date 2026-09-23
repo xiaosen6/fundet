@@ -6,7 +6,7 @@
  */
 import { createServer, type Server } from 'node:http';
 import { brand } from '../../shared/brand.ts';
-import { KNOWLEDGE_MCP_TOOL_NAME, KNOWLEDGE_MCP_LIST_TOOL_NAME } from '../../shared/knowledge.ts';
+import { KNOWLEDGE_MCP_TOOL_NAME, KNOWLEDGE_MCP_LIST_TOOL_NAME, KNOWLEDGE_MCP_DINGTALK_TOOL_NAME } from '../../shared/knowledge.ts';
 
 type KnowledgeMcpLogger = {
   info(msg: string, ctx?: Record<string, unknown>): void;
@@ -19,9 +19,11 @@ export interface KnowledgeToolOutput {
 }
 
 export type KnowledgeToolHandler = (args: Record<string, unknown>) => Promise<KnowledgeToolOutput>;
+/** 按绑定按需给工具：勾本地→search/list，勾钉钉→dingtalk（未给的不出现在 tools/list） */
 export type KnowledgeHandlers = {
-  search: KnowledgeToolHandler;
-  list: KnowledgeToolHandler;
+  search?: KnowledgeToolHandler;
+  list?: KnowledgeToolHandler;
+  dingtalk?: KnowledgeToolHandler;
 };
 
 const BODY_MAX = 1 * 1024 * 1024;
@@ -45,6 +47,21 @@ const TOOL = {
     properties: {
       query: { type: 'string', description: '检索词，用文档里可能出现的原词，不要扩写' },
       limit: { type: 'number', description: '条数，默认 6，最大 20' },
+    },
+    required: ['query'],
+  },
+};
+
+const DINGTALK_TOOL = {
+  name: KNOWLEDGE_MCP_DINGTALK_TOOL_NAME,
+  description:
+    `检索钉钉侧企业知识（公司文档/消息/待办等，经钉钉 AI 搜索）。本会话用户显式勾选了钉钉知识库——` +
+    `涉及公司/组织内容（文档、制度、通知、聊天记录）时用本工具；本地个人文档用 knowledge_search。查询慢（数秒），一次一个问题焦点。`,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: '检索词（主题或关键词）' },
+      limit: { type: 'number', description: '条数，默认 5，最大 10' },
     },
     required: ['query'],
   },
@@ -86,7 +103,12 @@ async function dispatch(
     return { jsonrpc: '2.0', id, result: {} };
   }
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: [TOOL, LIST_TOOL] } };
+    const tools = [
+      ...(handlers.search ? [TOOL] : []),
+      ...(handlers.list ? [LIST_TOOL] : []),
+      ...(handlers.dingtalk ? [DINGTALK_TOOL] : []),
+    ];
+    return { jsonrpc: '2.0', id, result: { tools } };
   }
   if (method === 'tools/call') {
     const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
@@ -95,7 +117,9 @@ async function dispatch(
         ? handlers.search
         : params.name === KNOWLEDGE_MCP_LIST_TOOL_NAME
           ? handlers.list
-          : null;
+          : params.name === KNOWLEDGE_MCP_DINGTALK_TOOL_NAME
+            ? handlers.dingtalk
+            : null;
     if (!tool) {
       return jsonRpcError(id, -32601, `unknown tool: ${params.name ?? ''}`);
     }
