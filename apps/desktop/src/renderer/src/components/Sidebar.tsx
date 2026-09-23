@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, Briefcase, CalendarClock, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { BookOpen, Bot, Briefcase, CalendarClock, ChevronRight, CirclePlus, Folder, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -364,6 +364,44 @@ export function Sidebar({
   const [pinnedOrder, setPinnedOrder] = useState<string[] | null>(null);
   const draggingRef = useRef(false);
 
+  // ---- 会话按工作目录（文件夹）分组（对齐 Cindy project 分组）----
+  // 组键 = workDir 规范化；组头 = 路径末段；折叠态存 localStorage。
+  // 置顶段跨组置顶不参与分组；组出现顺序随组内最新会话（ordered 已按 updatedAt）。
+  const COLLAPSED_KEY = 'fundet.sidebar.collapsed-groups';
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleGroup = useCallback((key: string): void => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+      } catch {
+        /* 记忆失败不影响当次 */
+      }
+      return next;
+    });
+  }, []);
+  const groupKeyOf = (s: SessionListItem): string =>
+    (s.workDir ?? '')
+      .replace(/[\\/]+$/, '')
+      .replace(/\\/g, '/')
+      .toLowerCase() || '(none)';
+  const groupNameOf = (s: SessionListItem): string => {
+    const seg = (s.workDir ?? '')
+      .replace(/[\\/]+$/, '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean);
+    return seg[seg.length - 1] ?? '未分组';
+  };
+
   const ordered = useMemo(() => {
     if (!pinnedOrder) return sessions;
     const rank = new Map(pinnedOrder.map((id, i) => [id, i]));
@@ -372,6 +410,17 @@ export function Sidebar({
       .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
     return [...pinned, ...sessions.filter((s) => !s.pinned)];
   }, [sessions, pinnedOrder]);
+
+  // 各组会话数（组头显示）
+  const groupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of ordered) {
+      if (s.pinned) continue;
+      const k = groupKeyOf(s);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [ordered]);
 
   // 服务端序刷新（非拖拽中）即视为权威，清本地覆盖
   useEffect(() => {
@@ -599,11 +648,32 @@ export function Sidebar({
             {ordered.length === 0 && (
               <div className="px-3 pt-1 text-13 text-muted select-none">还没有会话</div>
             )}
-            {visible.map((s, i) => (
+            {visible.map((s, i) => {
+              // 组头：非置顶段、组键变化处渲染（替代原「会话」分隔行；折叠组成员跳过）
+              const key = groupKeyOf(s);
+              const prev = visible[i - 1];
+              const showGroupHeader = !s.pinned && (!prev || prev.pinned || groupKeyOf(prev) !== key);
+              const groupCollapsed = !s.pinned && collapsedGroups.has(key);
+              if (groupCollapsed && !showGroupHeader) return null;
+              return (
               <Fragment key={s.id}>
-                {hasPinned && !s.pinned && !visible[i - 1]?.pinned && (
-                  <div className="mt-2 px-3 pt-1 pb-1 text-13 text-muted select-none">会话</div>
+                {showGroupHeader && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(key)}
+                    title={s.workDir}
+                    className="mt-2 flex w-full items-center gap-1.5 px-3 pt-1.5 pb-1 text-12 text-muted select-none hover:text-primary"
+                  >
+                    <ChevronRight
+                      size={12}
+                      className={`shrink-0 transition-transform duration-[var(--motion-fast)] ${groupCollapsed ? '' : 'rotate-90'}`}
+                    />
+                    <Folder size={12} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-left">{groupNameOf(s)}</span>
+                    <span className="shrink-0 tabular-nums">{groupCounts.get(key) ?? 0}</span>
+                  </button>
                 )}
+                {!groupCollapsed && (
                 <SessionRow
                   ref={(el) => registerRow(s.id, el)}
                   session={s}
@@ -633,8 +703,10 @@ export function Sidebar({
                       : (pinned) => void setSessionPinned(s.id, pinned)
                   }
                 />
+                )}
               </Fragment>
-            ))}
+              );
+            })}
             {visible.length < ordered.length && <div ref={sentinelRef} aria-hidden className="h-1 shrink-0" />}
           </>
         )}
