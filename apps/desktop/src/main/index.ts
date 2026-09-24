@@ -167,16 +167,17 @@ function createWindow(): void {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
   // 最大化时 UI 等比放大（用户拍板 2026-09-23：最大化后保持原大小=大片空白，
-  // 要跟全屏等比例放大）：内容宽度相对正常态的增幅映射为 zoomFactor，取 0.05
-  // 步进并封顶（1280 窗口在 1080p 全屏 → 1.25 档；恢复还原 1.0）。
+  // 要跟全屏等比例放大）。锚定设计基线 1280（默认窗宽）而非「当前窗宽」：
+  // 窗口本就接近全屏时按当前宽算比率≈1，会出现「最大化没放大」（09-24 实报）；
+  // 基线锚定让效果稳定——最大化 CSS 宽 / 1280，0.05 步进、封顶 1.25，还原回 1.0。
   // mac 走原生绿钮缩放语义，不掺和。
   if (process.platform === 'win32') {
     const MAXIMIZE_ZOOM_CAP = 1.25;
+    const DESIGN_BASE_WIDTH = 1280;
     win.on('maximize', () => {
-      const normal = win.getNormalBounds();
       const bounds = win.getBounds();
-      if (normal.width <= 0) return;
-      const ratio = bounds.width / normal.width;
+      if (bounds.width <= 0) return;
+      const ratio = bounds.width / DESIGN_BASE_WIDTH;
       const zoom = Math.min(MAXIMIZE_ZOOM_CAP, Math.max(1, Math.round(ratio * 20) / 20));
       win.webContents.setZoomFactor(zoom > 1.01 ? zoom : 1);
     });
