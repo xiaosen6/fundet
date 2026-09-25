@@ -95,8 +95,13 @@ test('validateManifest：缺 SKILL.md / 路径穿越 / 上限 / 下划线打头�
   assert.match(validateManifest(ok.slice(1))!, /SKILL\.md/);
   assert.match(validateManifest([{ path: '../evil.md', sha256: 'a'.repeat(64), size: 1 }, ...ok])!, /非法/);
   assert.match(
-    validateManifest([{ path: 'SKILL.md', sha256: 'a'.repeat(64), size: 10 }, ...Array.from({ length: 60 }, (_, i) => ({ path: `f${i}.md`, sha256: 'c'.repeat(64), size: 1 }))])!,
+    validateManifest([{ path: 'SKILL.md', sha256: 'a'.repeat(64), size: 10 }, ...Array.from({ length: 400 }, (_, i) => ({ path: `f${i}.md`, sha256: 'c'.repeat(64), size: 1 }))])!,
     /文件数/,
+  );
+  // 官方大包（dingtalk-misc 实测 122 文件）必须放行
+  assert.equal(
+    validateManifest([{ path: 'SKILL.md', sha256: 'a'.repeat(64), size: 10 }, ...Array.from({ length: 122 }, (_, i) => ({ path: `references/f${i}.md`, sha256: 'c'.repeat(64), size: 10 }))]),
+    null,
   );
 });
 

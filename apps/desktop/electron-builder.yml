@@ -48,6 +48,10 @@ linux:
 
 win:
   icon: resources/fundet/icon.ico
+  # 关掉 eb 的 signtool 版本资源编辑（无证书时这步只改 exe 属性版本说明）：
+  # 它逐个锁 exe，与 extraResources 拷贝重试竞态，慢日确定性 EBUSY（2026-09-25
+  # 四连挂根因）；更新链不依赖 exe 资源段（走 latest.yml）。
+  signAndEditExecutable: false
   target:
     - nsis
   extraResources:

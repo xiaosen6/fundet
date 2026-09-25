@@ -31,9 +31,9 @@ const API_BASE = 'https://api.skillhub.cn/api/v1';
 /** 列表/搜索缓存：防抖 + 对上游友好 */
 const LIST_TTL_MS = 10 * 60_000;
 const FETCH_TIMEOUT_MS = 15_000;
-/** 安装护栏 */
-const MAX_FILES = 50;
-const MAX_TOTAL_BYTES = 5 * 1024 * 1024;
+/** 安装护栏：官方 dingtalk-misc 实测 122 文件/1.5MB——上限按其 2 倍余量放（09-25 用户实报 50 拦正规包） */
+const MAX_FILES = 300;
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const DOWNLOAD_CONCURRENCY = 4;
 /** 落盘目录名：skillhub slug 已是 [a-z0-9-]，防御性再清洗 */
 const DIR_NAME_RE = /^[a-z0-9][a-z0-9-]{0,100}$/;
