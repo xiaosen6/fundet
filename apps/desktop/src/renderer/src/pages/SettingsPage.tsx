@@ -8,9 +8,7 @@
  *
  * 功能：主题 / 默认工作目录 / provider CRUD（BYOK）/ 搜索 / IM 机器人 / 技能导入。
  */
-import { useEffect, useState } from 'react';
-import * as Switch from '@radix-ui/react-switch';
-import { toast } from '../components/ui/toast';
+import { useState } from 'react';
 import { ArrowLeft, Monitor, Moon, Sun } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { UserProfileCard } from '../components/settings/UserProfileCard';
@@ -95,13 +93,6 @@ export function SettingsPage(): React.JSX.Element {
     requestedTab && requestedTab in TAB_LABELS ? requestedTab : 'general',
   );
   const [workDir, setWorkDir] = useState(getDefaultWorkDir());
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [gatewayUrl, setGatewayUrl] = useState('');
-  const [gatewayProbe, setGatewayProbe] = useState('');
-  useEffect(() => {
-    void window.fundet.voiceEnabled().then(setVoiceEnabled).catch(() => undefined);
-    void window.fundet.voiceGatewayStatus().then((s) => setGatewayUrl(s.url)).catch(() => undefined);
-  }, []);
   const [uiFont, setUiFontState] = useState(getUiFont);
   const [codeFont, setCodeFontState] = useState(getCodeFont);
   return (
@@ -146,45 +137,6 @@ export function SettingsPage(): React.JSX.Element {
               <div className="flex flex-col gap-[14px]">
                 <SectionTitle>通用</SectionTitle>
                 <UserProfileCard />
-
-                {/* 语音与服务网关（0.3.14：语音输入/朗读/知识库语义检索共用） */}
-                <SectionCard>
-                  <p className="text-13 font-medium text-secondary">语音与语义服务</p>
-                  <div className="mt-3 flex flex-col gap-3">
-                    <label className="flex items-center justify-between gap-3">
-                      <span className="text-13 text-primary">语音输入（输入框麦克风，录音转文字）</span>
-                      <Switch.Root checked={voiceEnabled} onCheckedChange={(v) => { setVoiceEnabled(v); void window.fundet.voiceSetEnabled(v); }} className="h-[20px] w-[36px] shrink-0 cursor-pointer rounded-full bg-chip data-[state=checked]:bg-accent"><Switch.Thumb className="block h-[16px] w-[16px] translate-x-[2px] rounded-full bg-card transition-transform data-[state=checked]:translate-x-[18px]" /></Switch.Root>
-                    </label>
-                    <div className="flex items-end gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="mb-1 text-11 text-muted">服务网关地址（语音转写 / 朗读 / 知识库向量化共用）</p>
-                        <input
-                          type="text"
-                          value={gatewayUrl}
-                          onChange={(e) => setGatewayUrl(e.target.value)}
-                          placeholder="http://111.34.136.32:16668"
-                          className="h-8 w-full rounded-inner border border-board bg-surface px-2 text-13 text-primary outline-none focus:border-focus"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="h-8 shrink-0 rounded-inner border border-board px-3 text-12 text-secondary transition-colors hover:text-primary"
-                        onClick={() => {
-                          void window.fundet.voiceGatewaySetUrl(gatewayUrl).then(() =>
-                            window.fundet.voiceGatewayStatus().then((s) => {
-                              setGatewayProbe(s.detail);
-                              if (s.ok) toast.success(s.detail + '：' + s.url);
-                              else toast.error(s.detail);
-                            }),
-                          );
-                        }}
-                      >
-                        保存并测试
-                      </button>
-                    </div>
-                    {gatewayProbe && <p className="text-11 text-muted">{gatewayProbe}</p>}
-                  </div>
-                </SectionCard>
 
                 {/* 主题 */}
                 <SectionCard>

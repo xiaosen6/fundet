@@ -95,11 +95,8 @@ export function ChatInput({
   /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
 
-  // 语音输入（0.3.14）：设置开关默认开；转写文本插到光标处
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  useEffect(() => {
-    void window.fundet.voiceEnabled().then(setVoiceEnabled).catch(() => undefined);
-  }, []);
+  // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
+  const voiceEnabled = true as const;
   const insertAtCursor = useCallback(
     (text: string): void => {
       const el = textareaRef.current;

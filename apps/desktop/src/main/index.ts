@@ -175,13 +175,17 @@ function createWindow(): void {
   if (process.platform === 'win32') {
     const MAXIMIZE_ZOOM_CAP = 1.25;
     const DESIGN_BASE_WIDTH = 1280;
-    win.on('maximize', () => {
+    const applyZoom = (): void => {
       const bounds = win.getBounds();
       if (bounds.width <= 0) return;
       const ratio = bounds.width / DESIGN_BASE_WIDTH;
       const zoom = Math.min(MAXIMIZE_ZOOM_CAP, Math.max(1, Math.round(ratio * 20) / 20));
       win.webContents.setZoomFactor(zoom > 1.01 ? zoom : 1);
-    });
+    };
+    // Chromium 按域名持久化 zoom：上次最大化设置的 1.25 会被记住，重启后普通
+    // 窗口也顶着大字体（09-25 实报）——每次加载完成按当前窗口状态复位。
+    win.webContents.on('did-finish-load', () => applyZoom());
+    win.on('maximize', applyZoom);
     win.on('unmaximize', () => win.webContents.setZoomFactor(1));
   }
 
