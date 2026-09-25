@@ -9,6 +9,7 @@ import { initDatabase } from './db/client.js';
 import { getHost, shutdownHost } from './host/pi-host.js';
 import { resolvePiBinaryPath, resolveBundledGitRoot } from './host/pi-binary.js';
 import { setupBundledGitFallback } from './host/git-bash.js';
+import { ensureBundledGitRuntime } from './host/git-runtime.js';
 import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
 import { registerIpcHandlers } from './ipc/register.js';
@@ -237,12 +238,8 @@ function bootstrap(): void {
     app.quit();
     return;
   }
-  // 2a) 随包 Git Bash 回退：客户机没装 Git 时 pi 的 bash 工具与快照/回滚全灭。
-  // 系统 Git（含注册表里装了没进 PATH 的）可见时不动作，随包版只做兜底。
-  setupBundledGitFallback({
-    bundledRoot: resolveBundledGitRoot(),
-    systemGitPathEntries: resolveWindowsGitPathEntries(),
-  });
+  // 2a) 随包 Git Bash 回退（首启解压挪到窗口创建后、Splash 遮面进行——见
+  // bootstrap 尾部）：这里只做轻量目录探测，系统 Git 可见时零成本跳过。
   // 2b) pi 运行时预检：bun 系二进制在无 AVX2 的 CPU 上启动即崩（0xC000001D），
   // 与其等用户第一次发消息报错，不如启动就讲清楚。正常机器这一步 <500ms。
   void (async () => {
@@ -272,6 +269,14 @@ function bootstrap(): void {
   initUpdater();
 
   createWindow();
+  // 首启解压随包 git（tar.gz → userData/runtime/git，Splash 遮面；幂等按版本
+  // 标记，之后启动零开销）+ PATH 回退装配。pi 会话最早在首条消息才创建，
+  // 这里同步完成不竞态。
+  ensureBundledGitRuntime();
+  setupBundledGitFallback({
+    bundledRoot: resolveBundledGitRoot(),
+    systemGitPathEntries: resolveWindowsGitPathEntries(),
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

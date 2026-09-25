@@ -65,15 +65,16 @@ export function resolveRipgrepPath(): string | undefined {
 }
 
 /**
- * 随包 Git Bash 根目录（tools/git/update.mjs 准备的裁剪版 PortableGit）。
- * 打包：extraResources git/win32-x64/；dev：仓库 apps/git-bin/win32-x64/。
- * 不存在（非 Windows / 未准备）返回 null，回退逻辑不动作。
+ * 随包 Git Bash 根目录。打包版：resources/runtime/git.tar.gz 在首次启动解压到
+ * userData/runtime/git（ensureBundledGitRuntime），目录存在即用；dev：仓库
+ * apps/git-bin/win32-x64 原样目录。不存在返回 null，回退逻辑不动作。
  */
 export function resolveBundledGitRoot(): string | null {
   if (process.platform !== 'win32') return null;
-  const platformDir = 'win32-x64';
-  const root = app.isPackaged
-    ? path.join(process.resourcesPath, 'git', platformDir)
-    : path.join(app.getAppPath(), '..', '..', 'apps', 'git-bin', platformDir);
+  if (app.isPackaged) {
+    const root = path.join(app.getPath('userData'), 'runtime', 'git');
+    return fs.existsSync(path.join(root, 'bin', 'bash.exe')) ? root : null;
+  }
+  const root = path.join(app.getAppPath(), '..', '..', 'apps', 'git-bin', 'win32-x64');
   return fs.existsSync(path.join(root, 'bin', 'bash.exe')) ? root : null;
 }

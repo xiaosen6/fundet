@@ -61,8 +61,12 @@ win:
       to: ripgrep-bin/win32-x64
     - from: ../../apps/cua-driver-bin/win32-x64
       to: cua-driver/win32-x64
-    - from: ../../apps/git-bin/win32-x64
-      to: git/win32-x64
+    # git 以单文件 tar.gz 随包（安装期免 2500+ 文件写盘/杀软扫描），首启由
+    # 主进程解到 userData/runtime/git——见 host/git-bash.ts
+    - from: ../../apps/git-bin/win32-x64-runtime.tar.gz
+      to: runtime/git.tar.gz
+    - from: ../../apps/git-bin/win32-x64/VERSION
+      to: runtime/git.version
 
 nsis:
   include: build/installer.nsh

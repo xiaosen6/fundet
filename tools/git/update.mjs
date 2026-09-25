@@ -141,13 +141,15 @@ function main() {
 
   const archive = path.join(UPDATES_DIR, PIN.asset.name);
   const versionFile = path.join(OUT_DIR, 'VERSION');
+  const tgzPath = path.join(path.dirname(OUT_DIR), 'win32-x64-runtime.tar.gz');
   if (
     !force &&
     fs.existsSync(versionFile) &&
     fs.readFileSync(versionFile, 'utf8').trim() === PIN.version &&
-    fs.existsSync(path.join(OUT_DIR, 'bin', 'bash.exe'))
+    fs.existsSync(path.join(OUT_DIR, 'bin', 'bash.exe')) &&
+    fs.existsSync(tgzPath)
   ) {
-    console.log(`apps/git-bin/win32-x64 已是 ${PIN.version}，跳过（--force 重下）。`);
+    console.log(`apps/git-bin/win32-x64 已是 ${PIN.version}（含 tar.gz），跳过（--force 重下）。`);
     return;
   }
 
@@ -181,7 +183,20 @@ function main() {
     fs.mkdirSync(path.dirname(OUT_DIR), { recursive: true });
     fs.renameSync(staging, OUT_DIR);
     fs.writeFileSync(path.join(OUT_DIR, 'VERSION'), PIN.version + '\n');
-    console.log(`完成: apps/git-bin/win32-x64（${(dirSize(OUT_DIR) / 1024 / 1024).toFixed(0)}MB，版本 ${PIN.version}）`);
+    // 随包分发产物：单文件 tar.gz（安装期免 2500+ 文件的写盘+杀软扫描，
+    // 首次启动由主进程解到 userData/runtime/git——见 host/git-bash.ts）
+    const tgz = path.join(path.dirname(OUT_DIR), 'win32-x64-runtime.tar.gz');
+    console.log('生成随包 tar.gz…');
+    const r = spawnSync(
+      process.platform === 'win32' ? 'C:\\Windows\\System32\\tar.exe' : 'tar',
+      ['-czf', tgz, '-C', OUT_DIR, '.'],
+      { stdio: 'ignore', timeout: 10 * 60_000 },
+    );
+    if (r.status !== 0) throw new Error('tar.gz 生成失败 exit=' + r.status);
+    console.log(
+      `完成: apps/git-bin/win32-x64（${(dirSize(OUT_DIR) / 1024 / 1024).toFixed(0)}MB，版本 ${PIN.version}）` +
+        ` + win32-x64-runtime.tar.gz（${(fs.statSync(tgz).size / 1024 / 1024).toFixed(0)}MB）`,
+    );
   }
 }
 
