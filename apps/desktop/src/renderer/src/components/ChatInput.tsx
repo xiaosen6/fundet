@@ -9,8 +9,8 @@
  * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接；图片附件带缩略图。
  * @ 引用：输入 @ 唤出工作目录文件候选（FileMentionPanel），选中 stage 成附件。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Mic, Paperclip, Square, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FileText, Loader2, Mic, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -117,6 +117,18 @@ export function ChatInput({
   useEffect(() => {
     if (voice.error) toast.error(voice.error);
   }, [voice.error]);
+
+  // 录音胶囊宽度形变（Cindy pillLabelRef 同款）：量标签实际宽 → 30px 圆 ↔ 胶囊
+  const pillLabelRef = useRef<HTMLSpanElement>(null);
+  const [pillWidth, setPillWidth] = useState(30);
+  useLayoutEffect(() => {
+    if (voice.state === 'idle') {
+      setPillWidth(30);
+      return;
+    }
+    const label = pillLabelRef.current;
+    if (label) setPillWidth(30 + label.scrollWidth);
+  }, [voice.state, voice.seconds]);
 
   const autoResize = (): void => {
     const el = textareaRef.current;
@@ -463,46 +475,51 @@ export function ChatInput({
                 </button>
               </Tooltip>
             )}
-            {voiceEnabled && (
-              <Tooltip
-                label={
-                  voice.state === 'recording'
-                    ? `录音中 ${voice.seconds}s（点击结束，Esc 取消）`
-                    : voice.state === 'transcribing'
-                      ? '转写中…'
-                      : '语音输入'
-                }
-                side="top"
-              >
-                <button
-                  type="button"
-                  disabled={disabled || voice.state === 'transcribing'}
-                  onClick={voice.toggle}
-                  aria-label="语音输入"
-                  className={cn(
-                    'relative flex h-7 items-center justify-center rounded-full transition-colors',
-                    'text-muted hover:bg-hover hover:text-primary disabled:opacity-40',
-                    voice.state === 'recording' && 'bg-error/10 text-error hover:bg-error/15 hover:text-error',
-                    voice.state === 'transcribing' && 'text-secondary',
-                  )}
-                  style={voice.state === 'idle' ? undefined : { width: 'auto', padding: '0 10px', gap: 6 }}
-                >
-                  {voice.state === 'recording' ? <Square size={12} /> : <Mic size={14} />}
-                  {(voice.state === 'recording' || voice.state === 'transcribing') && (
-                    <span className="text-12 tabular-nums">
-                      {voice.state === 'recording' ? `${voice.seconds}s` : '转写中'}
-                    </span>
-                  )}
-                  {voice.state === 'recording' && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-error" />
-                  )}
-                </button>
-              </Tooltip>
-            )}
             {leadingControls}
           </div>
           <div className="flex min-w-0 shrink items-center justify-end gap-2">
             {trailingControls}
+            {/* 语音按钮（Cindy 原版形态：常驻描边圆钮，发送键左侧；录音红点+计时、
+                宽度形变展开成胶囊 ≤220ms；转写中 spinner） */}
+            <button
+              type="button"
+              disabled={disabled || voice.state === 'transcribing'}
+              onClick={voice.toggle}
+              aria-label="语音输入"
+              aria-pressed={voice.state === 'recording'}
+              className={cn(
+                'flex h-[30px] shrink-0 items-center justify-start overflow-hidden rounded-full p-0',
+                'border border-board bg-composer-pill text-muted',
+                'transition-[width] duration-[220ms] ease-[var(--motion-ease-move)]',
+                'hover:text-primary focus-visible:outline-none',
+                'disabled:cursor-not-allowed disabled:opacity-40',
+                voice.state === 'recording' && 'text-primary',
+              )}
+              style={{ width: pillWidth }}
+            >
+              <span className="flex h-[28px] w-[28px] shrink-0 items-center justify-center">
+                {voice.state === 'transcribing' ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : voice.state === 'recording' ? (
+                  <span className="inline-flex animate-pulse motion-reduce:animate-none">
+                    <span className="h-2 w-2 rounded-full bg-error" />
+                  </span>
+                ) : (
+                  <Mic size={15} />
+                )}
+              </span>
+              <span
+                ref={pillLabelRef}
+                className={cn(
+                  'whitespace-nowrap pr-3 text-12 tabular-nums',
+                  '-translate-x-1 opacity-0 transition-[opacity,transform] duration-[180ms] ease-out',
+                  voice.state !== 'idle' && 'translate-x-0 opacity-100',
+                  'motion-reduce:transition-none',
+                )}
+              >
+                {voice.state === 'recording' ? `${voice.seconds}s` : voice.state === 'transcribing' ? '转写中' : ''}
+              </span>
+            </button>
             {isRunning ? (
               <SendButton disabled={false} onClick={onAbort} isStreaming />
             ) : (
