@@ -9,7 +9,7 @@ import { initDatabase } from './db/client.js';
 import { getHost, shutdownHost } from './host/pi-host.js';
 import { resolvePiBinaryPath, resolveBundledGitRoot } from './host/pi-binary.js';
 import { setupBundledGitFallback } from './host/git-bash.js';
-import { ensureBundledGitRuntime } from './host/git-runtime.js';
+import { ensureBundledGitRuntime, ensureBrowserRuntimeExtracted } from './host/git-runtime.js';
 import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
 import { registerIpcHandlers } from './ipc/register.js';
@@ -212,12 +212,19 @@ function createWindow(): void {
 
 function bootstrap(): void {
   app.whenReady().then(() => {
-  session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
-    return permission === 'clipboard-sanitized-write' || permission === 'clipboard-read';
-  });
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'clipboard-sanitized-write' || permission === 'clipboard-read');
+    // media = 语音输入麦克风（0.3.14）；其余维持只放行剪贴板
+    callback(
+      permission === 'clipboard-sanitized-write' ||
+        permission === 'clipboard-read' ||
+        permission === 'media',
+    );
   });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
+    permission === 'clipboard-sanitized-write' ||
+    permission === 'clipboard-read' ||
+    permission === 'media',
+  );
   // 1) 数据库（含 better-sqlite3 原生模块自查日志）
   initDatabase();
   // 1b) 安装包预制技能 → ~/.agents/skills（Pi 启动后即可 /skill: 点名）
@@ -269,10 +276,11 @@ function bootstrap(): void {
   initUpdater();
 
   createWindow();
-  // 首启解压随包 git（tar.gz → userData/runtime/git，Splash 遮面；幂等按版本
-  // 标记，之后启动零开销）+ PATH 回退装配。pi 会话最早在首条消息才创建，
-  // 这里同步完成不竞态。
+  // 首启解压随包运行时（git tar.gz → userData/runtime/git；浏览器依赖 tar.gz →
+  // resources/node_modules，ESM 解析依赖原位）+ PATH 回退装配。pi 会话最早在
+  // 首条消息才创建，这里同步完成不竞态。
   ensureBundledGitRuntime();
+  ensureBrowserRuntimeExtracted();
   setupBundledGitFallback({
     bundledRoot: resolveBundledGitRoot(),
     systemGitPathEntries: resolveWindowsGitPathEntries(),

@@ -445,6 +445,8 @@ export interface FundetApi {
   fetchProviderModels(input: FetchModelsInput): Promise<FetchModelsResult>;
 
   listKnowledgeBases(): Promise<KnowledgeBaseView[]>;
+  /** 语义检索回填：向量化 KB 缺嵌入的块（进度走 kb:embed-progress push） */
+  backfillKnowledgeEmbeddings(kbId: string): Promise<{ total: number; done: number }>;
   createKnowledgeBase(name: string, params?: Partial<KnowledgeBaseParams>): Promise<KnowledgeBaseView>;
   updateKnowledgeBaseParams(id: string, params: Partial<KnowledgeBaseParams>): Promise<void>;
   importKnowledgeDir(kbId: string, dirPath: string): Promise<KnowledgeImportResult[]>;
@@ -491,6 +493,16 @@ export interface FundetApi {
   automationsSetPaused(id: string, paused: boolean): Promise<AutomationView[]>;
 
   searchStatus(): Promise<SearchStatus>;
+  /** 语音转写：wav（base64）→ 文本（网关 ASR） */
+  voiceTranscribe(wavBase64: string): Promise<{ text: string }>;
+  /** 文本转语音：返回 wav 的 base64（网关 TTS，供朗读） */
+  voiceSpeak(text: string): Promise<{ wavBase64: string }>;
+  /** 网关连通性（ASR/TTS 任一通即 ok） */
+  voiceGatewayStatus(): Promise<{ ok: boolean; detail: string; url: string }>;
+  voiceGatewaySetUrl(url: string): Promise<{ ok: boolean }>;
+  /** 语音输入开关（含查询） */
+  voiceEnabled(): Promise<boolean>;
+  voiceSetEnabled(enabled: boolean): Promise<void>;
   setSearchEngineKey(id: SearchEngineId, key: string): Promise<void>;
   clearSearchEngineKey(id: SearchEngineId): Promise<void>;
   setDefaultSearchEngine(id: SearchEngineId | null): Promise<void>;
@@ -584,6 +596,7 @@ export interface FundetApi {
   onSessionListChanged(cb: () => void): () => void;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
+  onKbEmbedProgress(cb: (payload: KbImportProgress) => void): () => void;
   onFindResult(cb: (payload: FindResultPayload) => void): () => void;
   onUpdateStatusChanged(cb: (payload: UpdateState) => void): () => void;
 }

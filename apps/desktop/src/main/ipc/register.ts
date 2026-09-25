@@ -66,6 +66,20 @@ import {
 import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
+import { transcribeAudio, synthesizeSpeech, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
+import { embedKbChunks } from '../knowledge/embeddings.js';
+
+/** 导入/笔记/快照后的后台向量化（失败静默——检索自动降级纯关键词，面板可手动回填） */
+function embedKbInBackground(kbId: string): void {
+  void embedKbChunks(kbId, {
+    onProgress: (p) => broadcast(FUNDET_PUSH.KB_EMBED_PROGRESS, { kbId, completed: p.done, total: p.total }),
+  }).catch((err: unknown) => {
+    console.warn(
+      '[fundet:kb] 导入后向量化未完成（可在知识库面板点「升级语义检索」重试）：',
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+}
 import {
   cleanupOrphanPrewarmRows,
   discardSessionPrewarm,
@@ -544,7 +558,7 @@ export function registerIpcHandlers(): void {
       let sendText = input.text;
       if (binding.auto && binding.ids.length > 0 && input.text.trim()) {
         // 检索条数与 knowledge MCP 工具同源：读各绑定 KB 的 topK（多库取最大）
-        const hits = searchKnowledgeChunks(binding.ids, input.text, resolveDefaultTopK(binding.ids));
+        const hits = await searchKnowledgeChunks(binding.ids, input.text, resolveDefaultTopK(binding.ids));
         if (hits.length > 0) {
           sendText = `${formatKnowledgeContextBlock(hits)}
 
@@ -820,6 +834,7 @@ ${input.text}`;
         results.push({ name, path: p, ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    if (results.some((r) => r.ok)) embedKbInBackground(kbId);
     return results;
   });
 
@@ -837,6 +852,7 @@ ${input.text}`;
     FUNDET_INVOKE.KB_NOTE_SAVE,
     async (_e, kbId: string, noteId: string | null, title: string, content: string) => {
       const imported = saveKnowledgeNote(kbId, noteId, String(title ?? ''), String(content ?? ''));
+      embedKbInBackground(kbId);
       const docs = listKnowledgeDocs(kbId);
       return docs.find((d) => d.id === imported.docId) ?? null;
     },
@@ -850,6 +866,7 @@ ${input.text}`;
     const { title, text } = await fetchPageText(String(url ?? ''));
     const name = `网页：${title}`;
     const { chunks } = importDocumentChunks(kbId, name, text);
+    embedKbInBackground(kbId);
     const docs = listKnowledgeDocs(kbId);
     return docs.find((d) => d.name === name && d.chars === text.length) ?? null;
   });
@@ -868,7 +885,16 @@ ${input.text}`;
         results.push({ name, path: p, ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    if (results.some((r) => r.ok)) embedKbInBackground(kbId);
     return results;
+  });
+
+  // 语义检索回填：把 KB 缺嵌入的块批量向量化（存量库升级入口）
+  ipcMain.handle(FUNDET_INVOKE.KB_BACKFILL_EMBEDDINGS, async (_e, kbId: string) => {
+    const progress = await embedKbChunks(kbId, {
+      onProgress: (p) => broadcast(FUNDET_PUSH.KB_EMBED_PROGRESS, { kbId, completed: p.done, total: p.total }),
+    });
+    return { total: progress.total, done: progress.done };
   });
 
   ipcMain.handle(
@@ -1019,6 +1045,32 @@ ${input.text}`;
       throw new Error('只允许打开 http(s) 链接');
     }
     await shell.openExternal(parsed.toString());
+  });
+
+  // ---------- 语音 / 统一服务网关（0.3.14） ----------
+  ipcMain.handle(FUNDET_INVOKE.VOICE_TRANSCRIBE, async (_e, wavBase64: string) => {
+    const bytes = Buffer.from(wavBase64, 'base64');
+    if (bytes.length === 0) throw new Error('录音数据为空');
+    if (bytes.length > 64 * 1024 * 1024) throw new Error('录音过大（上限 64MB）');
+    return transcribeAudio(bytes, 'input.wav');
+  });
+  ipcMain.handle(FUNDET_INVOKE.VOICE_TTS, async (_e, text: string) => {
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) throw new Error('没有可朗读的文本');
+    if (trimmed.length > 2000) throw new Error('文本过长（朗读上限 2000 字）');
+    const { wav } = await synthesizeSpeech(trimmed);
+    return { wavBase64: wav.toString('base64') };
+  });
+  ipcMain.handle(FUNDET_INVOKE.VOICE_GATEWAY_STATUS, () => probeGateway());
+  ipcMain.handle(FUNDET_INVOKE.VOICE_GATEWAY_SET_URL, (_e, url: string) => {
+    const trimmed = (url ?? '').trim().replace(/\/+$/, '');
+    if (trimmed && !/^https?:\/\/\S+$/i.test(trimmed)) throw new Error('地址需以 http(s):// 开头');
+    setSetting(SERVICE_GATEWAY_SETTING, trimmed || null);
+    return { ok: true };
+  });
+  ipcMain.handle(FUNDET_INVOKE.VOICE_ENABLED, () => getBoolSetting('voice.enabled', true));
+  ipcMain.handle(FUNDET_INVOKE.VOICE_SET_ENABLED, (_e, enabled: boolean) => {
+    setBoolSetting('voice.enabled', Boolean(enabled));
   });
 
   ipcMain.handle(FUNDET_INVOKE.SEARCH_STATUS, async () => ({

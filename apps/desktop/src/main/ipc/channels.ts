@@ -48,6 +48,7 @@ export const FUNDET_INVOKE = {
   KB_DOC_REMOVE: 'kb:doc-remove',
   KB_IMPORT: 'kb:import',
   KB_SEARCH: 'kb:search',
+  KB_BACKFILL_EMBEDDINGS: 'kb:backfill-embeddings',
   KB_PICK: 'kb:pick',
   KB_SESSION_GET: 'kb:session-get',
   KB_SESSION_SET: 'kb:session-set',
@@ -91,6 +92,12 @@ export const FUNDET_INVOKE = {
   CLIPBOARD_CAPTURE_RECT: 'clipboard:capture-rect',
   CLIPBOARD_WRITE_PNG: 'clipboard:write-png',
   SEARCH_STATUS: 'search:status',
+  VOICE_TRANSCRIBE: 'voice:transcribe',
+  VOICE_TTS: 'voice:tts',
+  VOICE_GATEWAY_STATUS: 'voice:gateway-status',
+  VOICE_GATEWAY_SET_URL: 'voice:gateway-set-url',
+  VOICE_ENABLED: 'voice:enabled',
+  VOICE_SET_ENABLED: 'voice:set-enabled',
   SEARCH_SET_KEY: 'search:set-key',
   SEARCH_CLEAR_KEY: 'search:clear-key',
   SEARCH_SET_DEFAULT: 'search:set-default',
@@ -146,6 +153,7 @@ export const FUNDET_PUSH = {
   DWS_INSTALL_PROGRESS: 'dws:install-progress',
   /** 知识库导入进度：payload { kbId, completed, total, current } */
   KB_IMPORT_PROGRESS: 'kb:import-progress',
+  KB_EMBED_PROGRESS: 'kb:embed-progress',
   /** 更新状态变化：payload = UpdateState */
   UPDATE_STATUS_CHANGED: 'update:status-changed',
   /** 页内搜索结果（webContents found-in-page）：payload { activeMatchOrdinal, matches, finalUpdate } */

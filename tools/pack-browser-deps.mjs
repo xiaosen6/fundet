@@ -13,6 +13,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -147,3 +148,25 @@ fs.writeFileSync(
 );
 console.log('  + @fundet/browser-runtime (dist)');
 console.log(`完成：${seen.size + 1} 个包 → ${path.relative(ROOT, OUT)}`);
+
+// ---- 0.3.14 安装提速第三刀：单文件 tar.gz 随包（安装期免 ~5000 文件写盘/杀软
+// 扫描），首启由主进程解回 resources/node_modules（ESM 向上解析原样命中，见
+// host/runtime-extract.ts）。目录保留给本地排查，extraResources 只带 tgz。
+const TGZ = path.join(path.dirname(OUT), 'browser-runtime.tar.gz');
+const VERSION_FILE = path.join(path.dirname(OUT), 'BROWSER_RUNTIME_VERSION');
+// 注意：fs.existsSync 判定用正斜杠写法（heredoc 反斜杠被吞的历史坑）
+const tarBin = process.platform === 'win32' && fs.existsSync('C:/Windows/System32/tar.exe')
+  ? 'C:/Windows/System32/tar.exe'
+  : 'tar';
+// bsdtar 经 node spawn 时反斜杠参数路径 exit=2——参数一律转正斜杠
+const posix = (p) => p.replace(/\\/g, '/');
+fs.rmSync(TGZ, { force: true });
+const tar = spawnSync(tarBin, ['-czf', posix(TGZ), '-C', posix(OUT), '.'], { stdio: 'ignore', timeout: 600_000 });
+if (tar.status !== 0) {
+  console.error('browser-runtime.tar.gz 生成失败 exit=' + tar.status);
+  process.exit(1);
+}
+fs.writeFileSync(VERSION_FILE, String(Date.now()) + '\n');
+console.log(
+  `tar.gz: ${path.relative(ROOT, TGZ)}（${(fs.statSync(TGZ).size / 1048576).toFixed(1)}MB）`,
+);

@@ -30,6 +30,8 @@ export interface KnowledgeBaseView {
   name: string;
   docCount: number;
   chunkCount: number;
+  /** 已向量化块数（语义检索就绪度；< chunkCount 时可回填升级） */
+  embeddedChunks?: number;
   createdAt: number;
   params?: KnowledgeBaseParams;
 }

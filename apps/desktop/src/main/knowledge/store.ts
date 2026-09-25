@@ -14,6 +14,7 @@ import { getSqlite } from '../db/client.js';
 import { getSetting, setSetting } from '../db/settings.js';
 import { chunkText } from './chunk.js';
 import { indexText, matchExpression, queryTerms } from './tokenize.js';
+import { cosineSimilarity, embedQuery, loadEmbeddedChunks, mergeRrf } from './embeddings.ts';
 import type {
   KnowledgeBaseParams,
   KnowledgeBaseView,
@@ -24,7 +25,7 @@ import type {
 
 let tablesReady = false;
 
-function ensureTables(): void {
+export function ensureTables(): void {
   if (tablesReady) return;
   const db = getSqlite();
   db.exec(`
@@ -72,6 +73,11 @@ function ensureTables(): void {
   );
   if (!docCols.has('kind')) db.exec("ALTER TABLE knowledge_docs ADD COLUMN kind TEXT NOT NULL DEFAULT 'file'");
   if (!docCols.has('content')) db.exec('ALTER TABLE knowledge_docs ADD COLUMN content TEXT');
+  // 语义检索（0.3.14）：块嵌入向量 BLOB（Float32Array；回填见 embeddings.ts）
+  const chunkCols = new Set(
+    (db.prepare('PRAGMA table_info(kb_chunks)').all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!chunkCols.has('embedding')) db.exec('ALTER TABLE kb_chunks ADD COLUMN embedding BLOB');
   tablesReady = true;
 }
 
@@ -101,7 +107,8 @@ export function listKnowledgeBases(): KnowledgeBaseView[] {
     .prepare(
       `SELECT b.id, b.name, b.created_at, b.top_k, b.chunk_size, b.chunk_overlap,
               (SELECT COUNT(*) FROM knowledge_docs d WHERE d.kb_id = b.id) AS doc_count,
-              (SELECT COUNT(*) FROM kb_chunks c WHERE c.kb_id = b.id) AS chunk_count
+              (SELECT COUNT(*) FROM kb_chunks c WHERE c.kb_id = b.id) AS chunk_count,
+              (SELECT COUNT(*) FROM kb_chunks c WHERE c.kb_id = b.id AND c.embedding IS NOT NULL) AS embedded_count
        FROM knowledge_bases b ORDER BY b.created_at DESC`,
     )
     .all() as Array<{
@@ -113,12 +120,14 @@ export function listKnowledgeBases(): KnowledgeBaseView[] {
     chunk_overlap: number;
     doc_count: number;
     chunk_count: number;
+    embedded_count: number;
   }>;
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     docCount: r.doc_count,
     chunkCount: r.chunk_count,
+    embeddedChunks: r.embedded_count,
     createdAt: r.created_at,
     params: { topK: r.top_k, chunkSize: r.chunk_size, chunkOverlap: r.chunk_overlap },
   }));
@@ -292,12 +301,53 @@ export function removeKnowledgeDoc(docId: string): void {
 
 // ---------- 检索 ----------
 
-export function searchKnowledgeChunks(
+/**
+ * 混合检索（0.3.14）：FTS5 关键词 + 向量余弦 RRF 融合；向量侧不可达时
+ * 自动降级纯 FTS5。async（向量查询走网关）。
+ */
+export async function searchKnowledgeChunks(
   kbIds: string[],
   query: string,
   limit = 6,
-): KnowledgeSearchResult[] {
+): Promise<KnowledgeSearchResult[]> {
   ensureTables();
+  const fts = ftsSearch(kbIds, query, limit);
+  try {
+    const queryVec = await embedQuery(query);
+    const chunks = loadEmbeddedChunks(kbIds);
+    if (chunks.length === 0) return fts;
+    const terms = queryTerms(query);
+    const scored = chunks
+      .filter((c) => c.embedding)
+      .map((c) => ({
+        item: {
+          docName: c.docName,
+          ord: c.ord,
+          snippet: buildSnippetLocal(c.text, terms),
+          score: 0,
+        } as KnowledgeSearchResult,
+        key: `${c.docName}#${c.ord}`,
+        sim: cosineSimilarity(queryVec, c.embedding!),
+      }))
+      .sort((a, b) => b.sim - a.sim)
+      .slice(0, limit);
+    const merged = mergeRrf<KnowledgeSearchResult>([
+      fts.map((r) => ({ item: r, key: `${r.docName}#${r.ord}` })),
+      scored.map((s) => ({ item: s.item, key: s.key })),
+    ]).slice(0, limit);
+    return merged.map((m) => ({ ...m.item, score: m.score }));
+  } catch {
+    // 嵌入服务不可达：降级纯关键词（检索永不死）
+    return fts;
+  }
+}
+
+/** 原 FTS5 关键词检索（同步，混合检索的一路 + 降级态） */
+function ftsSearch(
+  kbIds: string[],
+  query: string,
+  limit: number,
+): KnowledgeSearchResult[] {
   const expr = matchExpression(query);
   if (!expr || kbIds.length === 0) return [];
   const db = getSqlite();

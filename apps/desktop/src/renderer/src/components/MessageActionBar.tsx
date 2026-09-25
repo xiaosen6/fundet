@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Ellipsis, MessageSquarePlus, Pen, Share, Split, Trash2, Undo2 } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  Ellipsis,
+  Loader2,
+  MessageSquarePlus,
+  Pen,
+  Share,
+  Split,
+  Trash2,
+  Undo2,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Tooltip } from './ui/Tooltip';
+import { toast } from './ui/toast';
 
 export interface TurnUsage {
   tokenUsage: number;
@@ -39,6 +53,7 @@ export function MessageActionBar({
   hovered,
   pinned,
   onShare,
+  speakText,
   onFork,
   onAddToChat,
   onDelete,
@@ -52,6 +67,8 @@ export function MessageActionBar({
   hovered: boolean;
   /** 本轮刚完成：操作栏常显，不必等悬停 */
   pinned?: boolean;
+  /** 朗读文本（assistant 文本消息传入；0.3.14 网关 TTS） */
+  speakText?: string;
   onShare?: () => void;
   onFork?: () => Promise<void>;
   onAddToChat?: () => void;
@@ -65,6 +82,39 @@ export function MessageActionBar({
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
+  // 朗读：合成中 spinner / 播放中可停（同一按钮三态）
+  const [speaking, setSpeaking] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stopSpeaking = useCallback(() => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeaking('idle');
+  }, []);
+  useEffect(() => () => stopSpeaking(), [stopSpeaking]);
+  const toggleSpeak = useCallback(() => {
+    if (speaking !== 'idle') {
+      stopSpeaking();
+      return;
+    }
+    if (!speakText?.trim()) return;
+    setSpeaking('loading');
+    void window.fundet
+      .voiceSpeak(speakText)
+      .then(({ wavBase64 }) => {
+        const audio = new Audio(`data:audio/wav;base64,${wavBase64}`);
+        audioRef.current = audio;
+        audio.onended = () => {
+          audioRef.current = null;
+          setSpeaking('idle');
+        };
+        audio.play().catch(() => setSpeaking('idle'));
+        setSpeaking('playing');
+      })
+      .catch((err: unknown) => {
+        setSpeaking('idle');
+        toast.error(err instanceof Error ? err.message : '朗读失败');
+      });
+  }, [speakText, speaking, stopSpeaking]);
   const [forking, setForking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -147,6 +197,25 @@ export function MessageActionBar({
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </Tooltip>
+      {speakText ? (
+        <Tooltip label={speaking === 'playing' ? '停止朗读' : speaking === 'loading' ? '合成中…' : '朗读'} side="top">
+          <button
+            type="button"
+            className={ICON_BTN}
+            aria-label="朗读"
+            onClick={toggleSpeak}
+            disabled={speaking === 'loading'}
+          >
+            {speaking === 'playing' ? (
+              <VolumeX size={14} />
+            ) : speaking === 'loading' ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Volume2 size={14} />
+            )}
+          </button>
+        </Tooltip>
+      ) : null}
       {onShare ? (
         <Tooltip label="分享为图片" side="top">
           <button type="button" className={ICON_BTN} aria-label="分享为图片" onClick={onShare}>

@@ -440,7 +440,7 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
             ...(kbIds.length > 0
               ? {
                   search: (args: Record<string, unknown>) =>
-                    Promise.resolve(handleKnowledgeSearch(kbIdsSnapshot, args)),
+                    handleKnowledgeSearch(kbIdsSnapshot, args),
                   list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
                 }
               : {}),

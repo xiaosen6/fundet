@@ -18,6 +18,7 @@ import {
   Pencil,
   Plus,
   RotateCw,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import type {
@@ -55,6 +56,8 @@ export function KnowledgePanel(): React.JSX.Element {
   const [noteDraft, setNoteDraft] = useState<{ id: string | null; title: string; content: string } | null>(null);
   const [snapshotUrl, setSnapshotUrl] = useState('');
   const [importProgress, setImportProgress] = useState<KbImportProgress | null>(null);
+  const [embedProgress, setEmbedProgress] = useState<KbImportProgress | null>(null);
+  const [embeddingKb, setEmbeddingKb] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -67,6 +70,16 @@ export function KnowledgePanel(): React.JSX.Element {
 
   // 大目录导入时主进程逐文件推送进度；runImport 结束统一清空
   useEffect(() => window.fundet.onKbImportProgress(setImportProgress), []);
+
+  // 语义向量化进度（导入后自动跑 + 手动回填共用）
+  useEffect(() => window.fundet.onKbEmbedProgress(setEmbedProgress), []);
+  useEffect(() => {
+    if (embedProgress && embedProgress.completed >= embedProgress.total && embedProgress.total > 0) {
+      const t = setTimeout(() => setEmbedProgress(null), 1500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [embedProgress]);
 
   const loadDocs = useCallback(async (kbId: string): Promise<void> => {
     setDocs(await window.fundet.listKnowledgeDocs(kbId));
@@ -327,6 +340,43 @@ export function KnowledgePanel(): React.JSX.Element {
                         </button>
                         <span className="text-11 text-muted/70">PDF / DOCX / TXT / MD</span>
                       </div>
+
+                      {/* 语义检索就绪度 + 回填（0.3.14：FTS5+向量混合，服务断自动降级关键词） */}
+                      {(kb.embeddedChunks ?? 0) < kb.chunkCount && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={busy || embeddingKb === kb.id}
+                            onClick={() => {
+                              setEmbeddingKb(kb.id);
+                              void window.fundet
+                                .backfillKnowledgeEmbeddings(kb.id)
+                                .then(() => refresh())
+                                .catch((err: unknown) =>
+                                  toast.error(err instanceof Error ? err.message : '向量化失败，请确认服务网关可用'),
+                                )
+                                .finally(() => setEmbeddingKb(null));
+                            }}
+                            className={ACTION_PILL}
+                          >
+                            <Sparkles size={13} />
+                            升级语义检索
+                          </button>
+                          <span className="text-11 text-muted/70">
+                            {embeddingKb === kb.id || embedProgress?.kbId === kb.id
+                              ? embedProgress
+                                ? `向量化 ${embedProgress.completed}/${embedProgress.total}…`
+                                : '准备向量化…'
+                              : `语义检索就绪 ${kb.embeddedChunks ?? 0}/${kb.chunkCount} 块（点此补齐，需服务网关）`}
+                          </span>
+                        </div>
+                      )}
+                      {(kb.embeddedChunks ?? 0) >= kb.chunkCount && kb.chunkCount > 0 && (
+                        <span className="flex items-center gap-1 text-11 text-muted/70 select-none">
+                          <Sparkles size={12} />
+                          语义检索就绪（{kb.chunkCount} 块已向量化；服务不可用时自动回退关键词检索）
+                        </span>
+                      )}
 
                       {/* 导入进度（多文件/目录导入时主进程逐文件推送） */}
                       {busy && importProgress && importProgress.kbId === kb.id && importProgress.total > 1 && (

@@ -9,10 +9,12 @@
  * 附件：回形针选择 + 粘贴图片/文件；拖入由外层会话列承接；图片附件带缩略图。
  * @ 引用：输入 @ 唤出工作目录文件候选（FileMentionPanel），选中 stage 成附件。
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Paperclip, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, Mic, Paperclip, Square, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { toast } from './ui/toast';
 import { SendButton } from './SendButton';
 import { SlashPalette, type SlashItem } from './SlashPalette';
 import { FileMentionPanel, useDirEntries } from './FileMentionPanel';
@@ -92,6 +94,32 @@ export function ChatInput({
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
+
+  // 语音输入（0.3.14）：设置开关默认开；转写文本插到光标处
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  useEffect(() => {
+    void window.fundet.voiceEnabled().then(setVoiceEnabled).catch(() => undefined);
+  }, []);
+  const insertAtCursor = useCallback(
+    (text: string): void => {
+      const el = textareaRef.current;
+      const caret = el ? (el.selectionStart ?? value.length) : value.length;
+      const before = value.slice(0, caret);
+      const after = value.slice(caret);
+      const glue = before && !/\s$/.test(before) ? ' ' : '';
+      onChange(`${before}${glue}${text} ${after}`);
+      requestAnimationFrame(() => {
+        const pos = (before + glue + text).length + 1;
+        el?.focus();
+        el?.setSelectionRange(pos, pos);
+      });
+    },
+    [onChange, value],
+  );
+  const voice = useVoiceInput(insertAtCursor);
+  useEffect(() => {
+    if (voice.error) toast.error(voice.error);
+  }, [voice.error]);
 
   const autoResize = (): void => {
     const el = textareaRef.current;
@@ -423,7 +451,7 @@ export function ChatInput({
           )}
         />
 
-        {/* 底部工具行：左侧 回形针 + chip 组（知识库/权限…）/ 右侧 chip + 发送 */}
+        {/* 底部工具行：左侧 回形针 + 语音 + chip 组（知识库/权限…）/ 右侧 chip + 发送 */}
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex min-w-0 shrink items-center gap-2">
             {onPickFiles && (
@@ -435,6 +463,42 @@ export function ChatInput({
                   className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary disabled:opacity-40"
                 >
                   <Paperclip size={14} />
+                </button>
+              </Tooltip>
+            )}
+            {voiceEnabled && (
+              <Tooltip
+                label={
+                  voice.state === 'recording'
+                    ? `录音中 ${voice.seconds}s（点击结束，Esc 取消）`
+                    : voice.state === 'transcribing'
+                      ? '转写中…'
+                      : '语音输入'
+                }
+                side="top"
+              >
+                <button
+                  type="button"
+                  disabled={disabled || voice.state === 'transcribing'}
+                  onClick={voice.toggle}
+                  aria-label="语音输入"
+                  className={cn(
+                    'relative flex h-7 items-center justify-center rounded-full transition-colors',
+                    'text-muted hover:bg-hover hover:text-primary disabled:opacity-40',
+                    voice.state === 'recording' && 'bg-error/10 text-error hover:bg-error/15 hover:text-error',
+                    voice.state === 'transcribing' && 'text-secondary',
+                  )}
+                  style={voice.state === 'idle' ? undefined : { width: 'auto', padding: '0 10px', gap: 6 }}
+                >
+                  {voice.state === 'recording' ? <Square size={12} /> : <Mic size={14} />}
+                  {(voice.state === 'recording' || voice.state === 'transcribing') && (
+                    <span className="text-12 tabular-nums">
+                      {voice.state === 'recording' ? `${voice.seconds}s` : '转写中'}
+                    </span>
+                  )}
+                  {voice.state === 'recording' && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-error" />
+                  )}
                 </button>
               </Tooltip>
             )}

@@ -35,8 +35,12 @@ extraResources:
     to: icon.png
   - from: resources/fundet/icon.ico
     to: icon.ico
-  - from: resources-browser/node_modules
-    to: node_modules
+  # 浏览器运行时依赖：单文件 tar.gz（安装期免 ~5000 文件写盘/杀软扫描），
+  # 首启解回 resources/node_modules（ESM 向上解析原样命中）——host/git-runtime.ts
+  - from: resources-browser/browser-runtime.tar.gz
+    to: runtime/browser.tar.gz
+  - from: resources-browser/BROWSER_RUNTIME_VERSION
+    to: runtime/browser.version
   - from: ../../apps/cua-driver-bin/win32-x64
     to: cua-driver/win32-x64
     filter:

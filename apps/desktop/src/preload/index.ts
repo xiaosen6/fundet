@@ -108,6 +108,7 @@ const api: FundetApi = {
   checkMcpServer: (id) => invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
   listKnowledgeBases: () => invoke(FUNDET_INVOKE.KB_LIST),
+  backfillKnowledgeEmbeddings: (kbId) => invoke(FUNDET_INVOKE.KB_BACKFILL_EMBEDDINGS, kbId),
   createKnowledgeBase: (name, params) => invoke(FUNDET_INVOKE.KB_CREATE, name, params),
   updateKnowledgeBaseParams: (id, params) =>
     invoke(FUNDET_INVOKE.KB_UPDATE_PARAMS, id, params),
@@ -150,6 +151,12 @@ const api: FundetApi = {
   automationsSetPaused: (id, paused) => invoke(FUNDET_INVOKE.AUTOMATIONS_SET_PAUSED, id, paused),
 
   searchStatus: () => invoke(FUNDET_INVOKE.SEARCH_STATUS),
+  voiceTranscribe: (wavBase64) => invoke(FUNDET_INVOKE.VOICE_TRANSCRIBE, wavBase64),
+  voiceSpeak: (text) => invoke(FUNDET_INVOKE.VOICE_TTS, text),
+  voiceGatewayStatus: () => invoke(FUNDET_INVOKE.VOICE_GATEWAY_STATUS),
+  voiceGatewaySetUrl: (url) => invoke(FUNDET_INVOKE.VOICE_GATEWAY_SET_URL, url),
+  voiceEnabled: () => invoke(FUNDET_INVOKE.VOICE_ENABLED),
+  voiceSetEnabled: (enabled) => invoke(FUNDET_INVOKE.VOICE_SET_ENABLED, enabled),
   setSearchEngineKey: (id, key) => invoke(FUNDET_INVOKE.SEARCH_SET_KEY, id, key),
   clearSearchEngineKey: (id) => invoke(FUNDET_INVOKE.SEARCH_CLEAR_KEY, id),
   setDefaultSearchEngine: (id) => invoke(FUNDET_INVOKE.SEARCH_SET_DEFAULT, id),
@@ -234,6 +241,7 @@ const api: FundetApi = {
   onDwsInstallProgress: (cb) => subscribe(FUNDET_PUSH.DWS_INSTALL_PROGRESS, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
+  onKbEmbedProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_EMBED_PROGRESS, cb),
   onFindResult: (cb) => subscribe<FindResultPayload>(FUNDET_PUSH.FIND_RESULT, cb),
 };
 
