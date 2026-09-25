@@ -15,6 +15,7 @@ const { autoUpdater } = electronUpdater;
 import { brand } from '../shared/brand.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './ipc/channels.js';
 import type { UpdateState } from '../shared/fundet-api.js';
+import { decideUpdateAction, githubFeedConfig, proxyFeedUrl, proxyLatestApiUrl } from '../shared/updater-source.js';
 
 const RELEASES_URL = `https://github.com/${brand.updater.owner}/${brand.updater.repo}/releases`;
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -48,9 +49,41 @@ async function checkMac(): Promise<void> {
   }
 }
 
+/** gh-proxy 中转查询最新版（8s 超时；失败返回 null 走回落） */
+async function queryProxyLatestTag(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(proxyLatestApiUrl(brand.updater.owner, brand.updater.repo), {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const j = (await res.json()) as { tag_name?: string };
+    return j.tag_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function checkWin(): Promise<void> {
   setState({ status: 'checking' });
+  // 国内加速：gh-proxy 中转查+下载（Range/断点实测可用）；不可用或失败回落
+  // GitHub 原生 provider——回落态与旧版行为完全一致，不会更差
+  const proxyTag = await queryProxyLatestTag();
+  const action = decideUpdateAction({ currentVersion: app.getVersion(), proxyTag });
   try {
+    if (action === 'proxy-feed' && proxyTag) {
+      autoUpdater.setFeedURL({ provider: 'generic', url: proxyFeedUrl(brand.updater.owner, brand.updater.repo, proxyTag) });
+    } else {
+      // no-update（代理确认无新版，信任之）与回落态都把 feed 复位到 GitHub：
+      // 代理下次不可用时旧 feed 语义不漂移
+      autoUpdater.setFeedURL(githubFeedConfig(brand.updater.owner, brand.updater.repo));
+    }
+    if (action === 'no-update') {
+      setState({ status: 'latest' });
+      return;
+    }
     await autoUpdater.checkForUpdates();
     // 没检测到新版时 electron-updater 走 update-not-available 事件收口
   } catch (err) {
