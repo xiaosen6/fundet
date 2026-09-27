@@ -9,7 +9,7 @@ import { initDatabase } from './db/client.js';
 import { getHost, shutdownHost } from './host/pi-host.js';
 import { resolvePiBinaryPath, resolveBundledGitRoot } from './host/pi-binary.js';
 import { setupBundledGitFallback } from './host/git-bash.js';
-import { ensureBundledGitRuntime, ensureBrowserRuntimeExtracted } from './host/git-runtime.js';
+import { ensureBundledGitRuntime } from './host/git-runtime.js';
 import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
 import { registerIpcHandlers } from './ipc/register.js';
@@ -280,11 +280,10 @@ function bootstrap(): void {
   initUpdater();
 
   createWindow();
-  // 首启解压随包运行时（git tar.gz → userData/runtime/git；浏览器依赖 tar.gz →
-  // resources/node_modules，ESM 解析依赖原位）+ PATH 回退装配。pi 会话最早在
-  // 首条消息才创建，这里同步完成不竞态。
+  // 首启解压随包 git（tar.gz → userData/runtime/git，Splash 遮面；幂等按版本
+  // 标记）+ PATH 回退装配。pi 会话最早在首条消息才创建，同步完成不竞态。
+  // （浏览器依赖 tar.gz 方案已回滚：ESM 静态 import 在启动即解析，解压来不及。）
   ensureBundledGitRuntime();
-  ensureBrowserRuntimeExtracted();
   setupBundledGitFallback({
     bundledRoot: resolveBundledGitRoot(),
     systemGitPathEntries: resolveWindowsGitPathEntries(),

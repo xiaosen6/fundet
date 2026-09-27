@@ -35,12 +35,12 @@ extraResources:
     to: icon.png
   - from: resources/fundet/icon.ico
     to: icon.ico
-  # 浏览器运行时依赖：单文件 tar.gz（安装期免 ~5000 文件写盘/杀软扫描），
-  # 首启解回 resources/node_modules（ESM 向上解析原样命中）——host/git-runtime.ts
-  - from: resources-browser/browser-runtime.tar.gz
-    to: runtime/browser.tar.gz
-  - from: resources-browser/BROWSER_RUNTIME_VERSION
-    to: runtime/browser.version
+  # 浏览器运行时依赖：恢复散装目录（0.3.14 tar.gz 方案致启动崩溃已回滚——
+  # 主 bundle 是 ESM，MCP SDK 静态 import 在入口文件头部，进程启动即解析，
+  # 首启解压来不及跑；散装目录保证解析常在。安装提速由 asar 瘦身 + git
+  # tar.gz 承担）
+  - from: resources-browser/node_modules
+    to: node_modules
   - from: ../../apps/cua-driver-bin/win32-x64
     to: cua-driver/win32-x64
     filter:
