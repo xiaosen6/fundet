@@ -4,6 +4,7 @@
 # （0.3.0 曾改「未灵」一日，09-21 用户拍板回退 Fundet 全部展示名与打包名。）
 appId: com.fundet.app
 productName: Fundet
+afterPack: build/after-pack.cjs
 directories:
   output: dist
   buildResources: resources
@@ -52,7 +53,7 @@ linux:
 
 win:
   icon: resources/fundet/icon.ico
-  # 关掉 eb 的 signtool 版本资源编辑（无证书时这步只改 exe 属性版本说明）：
+  # 关掉 eb 的 signtool 版本资源编辑（图标/版本资源由 afterPack 钩子的 rcedit 补——只处理主 exe，无全目录锁风暴）：
   # 它逐个锁 exe，与 extraResources 拷贝重试竞态，慢日确定性 EBUSY（2026-09-25
   # 四连挂根因）；更新链不依赖 exe 资源段（走 latest.yml）。
   signAndEditExecutable: false
@@ -63,8 +64,7 @@ win:
       to: pi/win32-x64
     - from: ../../apps/ripgrep-bin/win32-x64
       to: ripgrep-bin/win32-x64
-    - from: ../../apps/cua-driver-bin/win32-x64
-      to: cua-driver/win32-x64
+    # cua-driver 改由 afterPack 钩子带重试拷贝（Defender 扫描锁窗，eb 裸拷四连 EBUSY）
     # git 以单文件 tar.gz 随包（安装期免 2500+ 文件写盘/杀软扫描），首启由
     # 主进程解到 userData/runtime/git——见 host/git-bash.ts
     - from: ../../apps/git-bin/win32-x64-runtime.tar.gz
