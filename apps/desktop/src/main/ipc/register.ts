@@ -894,6 +894,23 @@ ${input.text}`;
   });
 
 
+  ipcMain.handle(
+    FUNDET_INVOKE.KB_SEARCH,
+    async (_e, kbIds: string[], query: string, limit?: number) =>
+      searchKnowledgeChunks(kbIds, query, limit),
+  );
+
+  ipcMain.handle(FUNDET_INVOKE.KB_PICK, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const opts = {
+      title: '导入知识库文档',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [{ name: '文档', extensions: ['pdf', 'docx', 'txt', 'md'] }],
+    };
+    const result = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    return result.canceled ? [] : result.filePaths;
+  });
+
   ipcMain.handle(FUNDET_INVOKE.KB_SESSION_GET, async (_e, sessionId: string) =>
     getSessionKnowledgeBinding(sessionId),
   );
