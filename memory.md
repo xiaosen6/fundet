@@ -231,6 +231,12 @@ Fundet/
 
 ---
 
+### 4.11 桌宠（规划中，素材已备 2026-09-28）
+- **素材**：红色机器人 IP（用户提供的公司形象），网关 Qwen-Image-2.1 图生图批量生成（参考图保证一致性）。已备 4 状态 27 帧（256×256 透明底）：idle 呼吸 8 帧 + blink 眨眼 3 帧 + thinking 思考 8 帧 + notify 通知 8 帧。资产在 apps/desktop/resources/pet/。
+- **生图参数**：idle 4096×1024/80 步/CFG 2.0（最高画质，**单张就会打崩 GPU 引擎**——日常用 3072×1024/60 步/无 CFG 是可持续上限）；seed 42 固定。sprite sheet 横条布局 + 提示词强调完整身体（含腿脚）防裁切。
+- **实现规划（未开工）**：透明置顶小窗（~128px）+ RAF 帧动画 + 状态机联动 agent 事件（isRunning→thinking、TTS→speaking、pendingInteractions→notify）；双击=新对话、拖文件=发送；代码正弦漂浮+scaleX 翻转省帧。MVP 约 4-5 天。
+- 二期候选：行走/拖拽/睡觉/庆祝/倾听/出错 六状态（+44 帧待生成）。
+
 ### 4.9 本地知识库
 
 - **纯语义检索（0.3.14 混合 → 0.3.16 纯语义，均用户拍板）**：`knowledge/embeddings(-logic).ts`——kb_chunks.embedding BLOB（2560×f32=10KB/块，暴力余弦 TopN）；查询侧指令前缀（Qwen3 官方建议）。**关键词检索（FTS5 榜+kb_fts 写入+回填按钮+RRF）已于 0.3.16 整体移除**；服务不可达 → 返回空（调用方提示未命中）。导入/笔记/快照后自动后台向量化（进度条 kb:embed-progress，完成自动刷新计数）；queryTerms 仅存片段定位用。分块（800/120）不变；tokenize 模块仍被 messages-fts 复用。
