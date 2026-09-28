@@ -1,5 +1,5 @@
 /**
- * 桌宠面板：桌面助手显示开关（主进程持久化 pet.enabled，切换即时生效）。
+ * 桌宠面板：桌宠显示开关（主进程持久化 pet.enabled，切换即时生效）。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '../../lib/cn';
@@ -28,20 +28,20 @@ export function PetPanel(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <h2 className="text-16 leading-[1.2] font-medium text-primary">桌面助手</h2>
+      <h2 className="text-16 leading-[1.2] font-medium text-primary">桌宠</h2>
       <div className="rounded-xl border border-board bg-card-ivory p-5">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-13 font-medium text-primary">显示桌面助手</p>
+            <p className="text-13 font-medium text-primary">显示桌宠</p>
             <p className="mt-1 text-12 leading-relaxed text-secondary">
-              在桌面显示 Fundet 桌宠：左键打开新对话、右键截图问答、拖动会跟着奔跑。
+              在桌面显示 Fundet 桌宠：左键打开新对话，右键截图问答。
             </p>
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={enabled === true}
-            aria-label="显示桌面助手"
+            aria-label="显示桌宠"
             disabled={enabled === null || busy}
             onClick={() => void toggle()}
             className={cn(

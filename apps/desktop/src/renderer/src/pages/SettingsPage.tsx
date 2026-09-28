@@ -61,7 +61,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   automation: '自动操作',
   usage: '用量历史',
   search: '搜索',
-  pet: '桌面助手',
+  pet: '桌宠',
 };
 
 /** 表单字段样式（对齐 Cindy 设置字段：h-10 + 12px 圆角 + Card 底 + 1px Board；
