@@ -1,14 +1,13 @@
 /**
- * PetHost —— 桌宠主进程宿主：窗口创建/销毁、状态桥、右键菜单、截图问答。
+ * PetHost —— 桌宠主进程宿主：窗口创建/销毁、状态桥、截图问答。
  *
  * 窗口：128×128 透明置顶，skipTaskbar，点击穿透（hover 恢复交互）。
  * 状态桥：sessionStore 的 agent 事件 → pet:state push。
  * 截图：desktopCapturer 全屏 → base64 → 主窗口 composer 注入。
  */
-import { BrowserWindow, screen, ipcMain, Menu, desktopCapturer, app } from 'electron';
+import { BrowserWindow, screen, ipcMain, desktopCapturer, app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import { brand } from '../../shared/brand.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from '../ipc/channels.js';
 
 export const PET_STATE = 'pet:state';
@@ -120,17 +119,7 @@ export function createPetWindow(): void {
   }
 }
 
-/** 聚焦主窗口（桌宠外的那个窗口） */
-function focusMainWindow(): void {
-  const main = BrowserWindow.getAllWindows().find((w) => w !== petWindow);
-  if (main) {
-    if (main.isMinimized()) main.restore();
-    main.show();
-    main.focus();
-  }
-}
-
-/** 双击 → 新对话（打开主窗口+通知渲染层新建会话） */
+/** 单击 → 新对话（打开主窗口+通知渲染层新建会话） */
 async function petNewChat(): Promise<void> {
   const main = BrowserWindow.getAllWindows().find((w) => w !== petWindow);
   if (main) {
@@ -225,21 +214,6 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
     const [wx, wy] = petWindow.getPosition();
     savePetPos(wx, wy);
   });
-  // 右键菜单（渲染层 contextmenu → IPC → popup，透明穿透小窗上 webContents context-menu 事件不可靠）
-  ipcMain.on('pet:context-menu', () => {
-    if (!petWindow || petWindow.isDestroyed()) return;
-    const menu = Menu.buildFromTemplate([
-      { label: '截图问答', click: () => void petScreenshot() },
-      { label: '新对话', click: () => void petNewChat() },
-      { type: 'separator' },
-      { label: `打开 ${brand.name}`, click: () => focusMainWindow() },
-      { type: 'separator' },
-      { label: '隐藏桌面助手', click: () => togglePet(false) },
-    ]);
-    menu.popup({ window: petWindow });
-  });
-  // 单击 → 聚焦主窗口
-  ipcMain.on('pet:focus-main', () => focusMainWindow());
   ipcMain.handle(PET_TOGGLE, (_e, show: boolean) => {
     togglePet(show);
     return { ok: true };

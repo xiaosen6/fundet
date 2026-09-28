@@ -21,17 +21,19 @@ const imgB = document.getElementById('pet-img-b') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
 let frontIsA = true;
 
-/** 帧展示：双 img 交叉淡化（80ms），跳变动画变柔和 */
+/** 帧展示：双 img 交叉淡化（40ms）柔化跳变；等新帧 onload 再过渡，避免半加载闪白 */
 function showFrame(framePath: string): void {
   const front = frontIsA ? imgA : imgB;
   const back = frontIsA ? imgB : imgA;
-  if (front.getAttribute('src') === framePath) return;
-  back.src = framePath;
-  frontIsA = !frontIsA;
-  requestAnimationFrame(() => {
+  const abs = new URL(framePath, location.href).href;
+  if (front.src === abs) return;
+  back.onload = () => {
+    back.onload = null;
     back.style.opacity = '1';
     front.style.opacity = '0';
-  });
+    frontIsA = !frontIsA;
+  };
+  back.src = abs;
 }
 
 // ---------- 帧动画 + 漂浮（RAF 主循环） ----------
@@ -137,27 +139,16 @@ root.addEventListener('pointerup', () => {
   if (dragMoved) window.fundet?.petDragEnd?.();
 });
 
-// ---------- 点击：单击聚焦主窗，双击新对话；拖动后不触发 ----------
-let clickCount = 0;
-let clickTimer: ReturnType<typeof setTimeout> | null = null;
+// ---------- 点击/右键：左键=打开主窗口并新建对话，右键=截图问答 ----------
 root.addEventListener('click', () => {
-  if (dragMoved) return;
-  clickCount++;
-  if (clickTimer) clearTimeout(clickTimer);
-  clickTimer = setTimeout(() => {
-    if (clickCount >= 2) {
-      void window.fundet?.petNewChat?.();
-    } else if (clickCount === 1) {
-      window.fundet?.petFocusMain?.();
-    }
-    clickCount = 0;
-  }, 260);
+  if (dragMoved) return; // 拖动结束不当作点击
+  window.fundet?.petNewChat?.();
 });
 
 // 右键菜单：显式通知主进程（透明穿透小窗上 webContents context-menu 事件不可靠）
 document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  window.fundet?.petContextMenu?.();
+  window.fundet?.petScreenshot?.();
 });
 
 // ---------- 启动 ----------

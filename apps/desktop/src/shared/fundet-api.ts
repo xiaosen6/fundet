@@ -605,8 +605,7 @@ export interface FundetApi {
   petSetHover(hovering: boolean): void;
   petDragStart(): void;
   petDragEnd(): void;
-  petContextMenu(): void;
-  petFocusMain(): void;
+  petScreenshot(): void;
   petToggle(show: boolean): Promise<{ ok: boolean }>;
   petVisible(): Promise<boolean>;
   onFindResult(cb: (payload: FindResultPayload) => void): () => void;

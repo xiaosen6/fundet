@@ -894,6 +894,17 @@ ${input.text}`;
   });
 
 
+  ipcMain.handle(FUNDET_INVOKE.SEARCH_STATUS, async () => ({
+    engines: SEARCH_ENGINES.map((meta) => ({
+      id: meta.id,
+      name: meta.name,
+      hint: meta.hint,
+      signupUrl: meta.signupUrl,
+      hasKey: hasSearchKey(meta.id),
+    })),
+    defaultEngine: getDefaultSearchEngine(),
+  }));
+
   ipcMain.handle(FUNDET_INVOKE.SEARCH_SET_KEY, async (_e, id: string, key: string) => {
     if (!isSearchEngineId(id)) throw new Error('未知搜索引擎');
     writeSearchKey(id, key);
