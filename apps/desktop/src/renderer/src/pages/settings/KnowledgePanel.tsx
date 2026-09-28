@@ -75,6 +75,7 @@ export function KnowledgePanel(): React.JSX.Element {
   useEffect(() => window.fundet.onKbEmbedProgress(setEmbedProgress), []);
   useEffect(() => {
     if (embedProgress && embedProgress.completed >= embedProgress.total && embedProgress.total > 0) {
+      void refresh(); // 后台向量化完成：KB 列表的就绪计数自动更新
       const t = setTimeout(() => setEmbedProgress(null), 1500);
       return () => clearTimeout(t);
     }
