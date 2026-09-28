@@ -47,11 +47,10 @@ function showFrame(framePath: string, fadeMs: number): void {
 }
 
 // ---------- RAF 主循环：帧轮播 + 漂浮 + 代码动画 ----------
-let floatAmp = 1; // 漂浮幅度（拖动时平滑归零，避免"拖不住、发飘"）
 function tick(now: number): void {
   requestAnimationFrame(tick);
 
-  const st = PET_STATES[currentState];
+  const st = PET_STATES[dragMoved ? 'running' : currentState];
 
   // 定长状态（眨眼）到时回落
   if (st.duration && now - stateStart >= st.duration) {
@@ -60,7 +59,7 @@ function tick(now: number): void {
   }
 
   // 帧推进（单帧状态纯代码动画，无帧可推）
-  let fadeMs = 40;
+  const fadeMs = st.fadeMs ?? 40;
   if (st.frames.length > 1) {
     if (now - lastFrameTime >= st.interval) {
       lastFrameTime = now;
@@ -80,22 +79,23 @@ function tick(now: number): void {
   // 每 tick 都确保画面是当前状态当前帧（去重由 showFrame 内部处理）
   showFrame(st.frames[currentFrame], fadeMs);
 
-  // 正弦漂浮（拖动时平滑衰减到 0，松手恢复）
-  floatAmp += ((dragMoved ? 0 : 1) - floatAmp) * 0.15;
-  const floatY = Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE * floatAmp;
+  // 拖动（跑步）时无漂浮，交给跑步帧动画
+  const floatY = dragMoved ? 0 : Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE;
 
   // 单帧状态的代码动画（极轻——待机以静为主，相位用全局 now 保证连续）
   let sx = 1;
   let sy = 1;
   let rot = 0;
-  if (st.anim === 'breath') {
-    const p = Math.sin((now / 2400) * Math.PI * 2);
-    sy = 1 + 0.01 * p;
-    sx = 1 - 0.006 * p;
-  } else if (st.anim === 'sway') {
-    rot = 1.5 * Math.sin((now / 2600) * Math.PI * 2);
+  if (!dragMoved) {
+    if (st.anim === 'breath') {
+      const p = Math.sin((now / 2400) * Math.PI * 2);
+      sy = 1 + 0.01 * p;
+      sx = 1 - 0.006 * p;
+    } else if (st.anim === 'sway') {
+      rot = 1.5 * Math.sin((now / 2600) * Math.PI * 2);
+    }
   }
-  root.style.transform = `translateY(${floatY}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
+  root.style.transform = `translateY(${floatY}px) rotate(${rot}deg) scale(${sx * facing}, ${sy})`;
 }
 
 // ---------- 待机偶发动作：随机眨眼 / 随机跳跃（生命感来源） ----------
@@ -139,29 +139,46 @@ document.addEventListener('mousemove', (e: MouseEvent) => {
 // ---------- 拖拽：确立拖动后交主进程轮询光标平移窗口 ----------
 let downX = 0;
 let downY = 0;
+let lastX = 0;
+let facing = 1; // 1=面朝右，-1=面朝左（水平翻转由 root transform 应用）
 
 root.addEventListener('pointerdown', (e: PointerEvent) => {
   if (e.button !== 0) return;
   dragging = true;
   dragMoved = false;
-  downX = e.screenX;
+  downX = lastX = e.screenX;
   downY = e.screenY;
   try { root.setPointerCapture(e.pointerId); } catch { /* noop */ }
 });
 
 root.addEventListener('pointermove', (e: PointerEvent) => {
-  if (!dragging || dragMoved) return;
-  if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
-  dragMoved = true;
-  root.style.cursor = 'grabbing';
-  window.fundet?.petDragStart?.();
+  if (!dragging) return;
+  if (!dragMoved) {
+    if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
+    dragMoved = true;
+    root.style.cursor = 'grabbing';
+    currentFrame = 0;
+    lastFrameTime = 0;
+    window.fundet?.petDragStart?.();
+  }
+  // 拖动方向 → 跑步朝向
+  const dx = e.screenX - lastX;
+  if (dx > 2) facing = 1;
+  else if (dx < -2) facing = -1;
+  lastX = e.screenX;
 });
 
 root.addEventListener('pointerup', () => {
   if (!dragging) return;
   dragging = false;
   root.style.cursor = 'grab';
-  if (dragMoved) window.fundet?.petDragEnd?.();
+  // dragMoved 保持到下次 pointerdown 再复位（click 抑制依赖它）
+  if (dragMoved) {
+    facing = 1;
+    currentFrame = 0;
+    lastFrameTime = 0;
+    window.fundet?.petDragEnd?.();
+  }
 });
 
 // ---------- 点击/右键：左键=打开主窗口并新建对话，右键=截图问答 ----------

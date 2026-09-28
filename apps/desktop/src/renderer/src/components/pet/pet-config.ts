@@ -6,13 +6,15 @@
  * 生命感由偶发动作提供（随机眨眼、随机跳跃）；notify 单次动作保留快速轮播。
  */
 
-export type PetStateId = 'idle' | 'blink' | 'thinking' | 'notify';
+export type PetStateId = 'idle' | 'blink' | 'thinking' | 'notify' | 'running';
 
 export interface PetStateVisual {
   frames: string[];
   /** 帧间隔 ms（仅多帧状态） */
   interval: number;
   loop: boolean;
+  /** 帧间交叉淡化 ms（默认 40） */
+  fadeMs?: number;
   /** 单帧状态的代码动画：呼吸缩放 / 轻微摇摆 */
   anim?: 'breath' | 'sway';
   /** 一次性状态定长（ms）；notify 用 loop=false 播完即回 */
@@ -35,6 +37,8 @@ export const PET_STATES: Record<PetStateId, PetStateVisual> = {
   },
   thinking: { frames: [frame('thinking_00')], interval: 0, loop: true, anim: 'sway' },
   notify: { frames: frames('notify', 11), interval: 80, loop: false, fallback: 'idle' },
+  // 拖动中：向右奔跑循环（向左拖时整体水平翻转），素材面朝右
+  running: { frames: frames('run', 14), interval: 90, loop: true, fadeMs: 40 },
 };
 
 /** 待机偶发动作间隔（ms，随机区间） */
