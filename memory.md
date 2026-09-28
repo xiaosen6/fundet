@@ -232,10 +232,12 @@ Fundet/
 ---
 
 ### 4.11 桌宠（MVP 已实现 2026-09-28，待发版）
-- **素材**：红色机器人 IP（用户提供的公司形象），网关 Qwen-Image-2.1 图生图批量生成（参考图保证一致性）。已备 4 状态 27 帧（256×256 透明底）：idle 呼吸 8 帧 + blink 眨眼 3 帧 + thinking 思考 8 帧 + notify 通知 8 帧。资产在 apps/desktop/resources/pet/。
+- **素材**：红色机器人 IP（用户提供的公司形象），网关 Qwen-Image-2.1 图生图批量生成（参考图保证一致性）。**4 状态 21 帧（256×256 透明底）：idle 6 帧 + blink 3 帧 + thinking 6 帧 + notify 6 帧**。资产在 apps/desktop/src/renderer/public/pet/sprites/（生成与切帧工具在 C:/temp/fundet-pet-sprites/）。
 - **生图参数**：idle 4096×1024/80 步/CFG 2.0（最高画质，**单张就会打崩 GPU 引擎**——日常用 3072×1024/60 步/无 CFG 是可持续上限）；seed 42 固定。sprite sheet 横条布局 + 提示词强调完整身体（含腿脚）防裁切。
-- **MVP 已实现（0.3.18 待发）**：`host/pet-host.ts`（窗口创建/销毁/右键菜单/截图 desktopCapturer）+ `pet-state-bridge.ts`（agent 事件→桌宠状态：isRunning→thinking/done→notify+回 idle/interaction→notify/error→notify）+ 渲染层 `pet/pet-window.ts` + `pet-config.ts`（帧动画引擎 RAF 10FPS + 正弦漂浮 ±6px/2.5s + 状态淡入 180ms + 眨眼随机 3-7s 插播）+ `pet.html`（vite 双入口，public/pet/sprites 经 vite 拷贝）。交互：双击=新对话、右键菜单（截图问答/新对话/打开/隐藏）、拖拽+贴边+位置记忆 localStorage、hover 穿透切换 setIgnoreMouseEvents(forward)。**截图问答**：desktopCapturer 全屏→base64→主窗口 stageBytes→composer 附件注入。设置开关 pet.enabled 默认开。dev 实测：窗口/帧动画/漂浮/IPC 全通。
-- 二期候选：行走/拖拽/睡觉/庆祝/倾听/出错 六状态（+44 帧待生成）。
+- **切帧必须内容感知（0.3.18 拉纸条事故教训）**：生图 sheet **不是严格网格**——idle 4096 宽实际只有 6 个机器人且间距不均，按 8 等分硬切会把机器人拦腰切两半（=用户看到的"拉纸条"）。正确做法（resplit.mjs）：列投影找非白区段 → 贪心合并最小 gap 到目标帧数 → 每帧行投影取内容包围盒 → **每帧内容高度归一+底部对齐+水平居中**（各 sheet 机器人画幅大小不一，全局统一缩放会让眨眼/通知时机器人突变大小）。白转透明必须**泛洪填充**（只抠与画布边界连通的背景白）；按亮度全局抠白会把白色装甲一起抠成半透明发灰。
+- **穿透模型（0.3.18 点击无反应事故教训）**：`setIgnoreMouseEvents(true,{forward:true})` 只转发 **mousemove**，`mouseenter/mouseleave` 在穿透状态下永不触发——靠它恢复交互的写法窗口永久穿透。正确：渲染层 document mousemove + `elementFromPoint` 判定指针是否在宠物上 → `pet:hover` IPC 切换穿透。
+- **MVP 已实现（0.3.18 待发）**：`host/pet-host.ts`（窗口创建/销毁/右键菜单/截图 desktopCapturer）+ `pet-state-bridge.ts`（agent 事件→桌宠状态：isRunning→thinking/done→notify+回 idle/interaction→notify/error→notify）+ 渲染层 `pet/pet-window.ts` + `pet-config.ts`（帧动画引擎 RAF + 正弦漂浮 ±6px/2.5s + 状态淡入 180ms + 眨眼随机 3-7s 插播）+ `pet.html`（vite 双入口，public/pet/sprites 经 vite 拷贝）。交互：**单击=聚焦主窗口、双击=新对话**、右键菜单（截图问答/新对话/打开/隐藏）、拖拽=IPC 平移窗口本体（阈值 6px 内不算拖动，松手贴边+位置持久化 userData/pet-window.json）。**拖拽必须移动窗口本体**（148×168 小窗内 root 位移会被裁剪）。帧路径用 `./pet/sprites/...` 原样赋 src（`'../'+frame` 在打包态指向 out/pet 必 404）。**截图问答**：desktopCapturer 全屏→base64→主窗口 stageBytes→composer 附件注入。设置开关 pet.enabled 默认开。
+- 二期候选：行走/拖拽/睡觉/庆祝/倾听/出错 六状态（待生成帧）。
 
 ### 4.9 本地知识库
 
