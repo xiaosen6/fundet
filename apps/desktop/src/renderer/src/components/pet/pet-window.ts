@@ -1,16 +1,19 @@
 /**
- * PetWindow 渲染层：单帧 + 代码动画（呼吸/摇摆/弹跳）+ 漂浮 + 交互。
+ * PetWindow 渲染层：密集帧轮播（ping-pong）+ 漂浮 + 交互。
  * 挂载在独立 HTML（pet.html），非主窗口 React 树。
  *
  * 穿透模型：主进程 setIgnoreMouseEvents(true,{forward:true}) 时只有 mousemove 能到达页面，
  * hover 判定用 mousemove + elementFromPoint（mouseenter/leave 在穿透状态下不会触发）。
  * 拖拽 = 主进程轮询光标平移窗口本体；root 在窗口内固定居中，不做渲染层位移。
- * 动画全部 RAF 数学连续驱动（素材帧间不连贯，不用多帧轮播避免抖动）。
+ * 帧切换走双 img 交叉淡化（等 onload + 绝对 URL 去重，避免半加载闪白）。
  */
 import { PET_STATES, FLOAT_AMPLITUDE, FLOAT_PERIOD, type PetStateId } from './pet-config.js';
 
 // ---------- 状态 ----------
 let currentState: keyof typeof PET_STATES = 'idle';
+let currentFrame = 0;
+let frameDir = 1; // ping-pong 方向
+let lastFrameTime = 0;
 let stateStart = 0;
 let dragging = false; // 按下即 true
 let dragMoved = false; // 位移超阈值才算拖动（区分单击）
@@ -19,7 +22,7 @@ const imgB = document.getElementById('pet-img-b') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
 let frontIsA = true;
 
-/** 帧展示：双 img 交叉淡化（80ms）；等新帧 onload 再过渡，避免半加载闪白 */
+/** 帧展示：双 img 交叉淡化（40ms）柔化跳变；等新帧 onload 再过渡，避免半加载闪白 */
 function showFrame(framePath: string): void {
   const front = frontIsA ? imgA : imgB;
   const back = frontIsA ? imgB : imgA;
@@ -34,48 +37,56 @@ function showFrame(framePath: string): void {
   back.src = abs;
 }
 
-// ---------- RAF 主循环：漂浮 + 状态内代码动画 ----------
+// ---------- RAF 主循环：帧轮播（ping-pong）+ 漂浮 ----------
 let floatAmp = 1; // 漂浮幅度（拖动时平滑归零，避免"拖不住、发飘"）
 function tick(now: number): void {
   requestAnimationFrame(tick);
 
   const st = PET_STATES[currentState];
 
-  // 一次性状态（眨眼/通知）到时回落
+  // 定长状态（眨眼）到时回落
   if (st.duration && now - stateStart >= st.duration) {
     setState(st.fallback ?? 'idle');
     return;
   }
 
-  showFrame(st.frame);
+  // 帧推进
+  if (now - lastFrameTime >= st.interval) {
+    lastFrameTime = now;
+    const last = st.frames.length - 1;
+    if (st.pingpong) {
+      if (currentFrame + frameDir > last) { frameDir = -1; currentFrame = last - 1; }
+      else if (currentFrame + frameDir < 0) { frameDir = 1; currentFrame = 1; }
+      else currentFrame += frameDir;
+    } else {
+      currentFrame++;
+      if (currentFrame > last) {
+        if (st.loop) {
+          currentFrame = 0;
+        } else if (st.fallback) {
+          setState(st.fallback);
+          return;
+        } else {
+          currentFrame = last;
+        }
+      }
+    }
+    showFrame(st.frames[currentFrame]);
+  }
 
   // 正弦漂浮（拖动时平滑衰减到 0，松手恢复）
   floatAmp += ((dragMoved ? 0 : 1) - floatAmp) * 0.15;
   const floatY = Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE * floatAmp;
-
-  // 状态内动画（transform-origin 在脚底，缩放/摆动不离地）
-  const t = now - stateStart;
-  let sx = 1;
-  let sy = 1;
-  let rot = 0;
-  if (st.anim === 'breath') {
-    const p = Math.sin((t / 1600) * Math.PI * 2);
-    sy = 1 + 0.02 * p;
-    sx = 1 - 0.012 * p;
-  } else if (st.anim === 'sway') {
-    rot = 2.5 * Math.sin((t / 2200) * Math.PI * 2);
-  } else if (st.anim === 'bounce') {
-    const p = Math.abs(Math.sin((t / 450) * Math.PI));
-    sy = 1 + 0.06 * p;
-    sx = 1 - 0.04 * p;
-  }
-  root.style.transform = `translateY(${floatY}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
+  root.style.transform = `translateY(${floatY}px)`;
 }
 
 // ---------- 状态切换 ----------
 function setState(id: PetStateId): void {
   if (currentState === id) return;
   currentState = id;
+  currentFrame = 0;
+  frameDir = 1;
+  lastFrameTime = 0;
   stateStart = performance.now();
 }
 
@@ -83,9 +94,6 @@ function setState(id: PetStateId): void {
 window.fundet?.onPetState?.((state: string) => {
   if (state in PET_STATES) setState(state as PetStateId);
 });
-
-// 首帧渲染（onPetState 异步，先本地起 idle）
-setState('idle');
 
 // ---------- hover 穿透切换（穿透下只有 mousemove 可达） ----------
 let hoverActive = false;
@@ -141,6 +149,7 @@ document.addEventListener('contextmenu', (e) => {
 
 // ---------- 启动 ----------
 setState('idle');
+showFrame(PET_STATES.idle.frames[0]);
 requestAnimationFrame(tick);
 
 // 通知主进程渲染层就绪
