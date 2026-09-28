@@ -217,24 +217,53 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
     if (!petWindow || petWindow.isDestroyed()) return;
     petWindow.setIgnoreMouseEvents(!isHover, { forward: true });
   });
-  // 拖拽：渲染层上报鼠标位移，主进程平移窗口（clamp 在工作区内）
-  ipcMain.on('pet:drag', (_e, dx: number, dy: number) => {
+  // 拖拽：主进程本地轮询光标平移窗口（不经渲染层 IPC，拖动更跟手）
+  let dragTimer: ReturnType<typeof setInterval> | null = null;
+  let dragGrabX = 0;
+  let dragGrabY = 0;
+  let snapTimer: ReturnType<typeof setInterval> | null = null;
+  const stopDrag = (): void => {
+    if (dragTimer) { clearInterval(dragTimer); dragTimer = null; }
+  };
+  ipcMain.on('pet:drag-start', () => {
     if (!petWindow || petWindow.isDestroyed()) return;
-    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+    if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
+    const p = screen.getCursorScreenPoint();
     const [wx, wy] = petWindow.getPosition();
-    const nx = Math.max(-PET_W / 2, Math.min(sw - PET_W / 2, wx + dx));
-    const ny = Math.max(0, Math.min(sh - PET_H / 2, wy + dy));
-    petWindow.setPosition(Math.round(nx), Math.round(ny));
+    dragGrabX = p.x - wx;
+    dragGrabY = p.y - wy;
+    stopDrag();
+    dragTimer = setInterval(() => {
+      if (!petWindow || petWindow.isDestroyed()) { stopDrag(); return; }
+      const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+      const c = screen.getCursorScreenPoint();
+      const nx = Math.max(-PET_W / 2, Math.min(sw - PET_W / 2, c.x - dragGrabX));
+      const ny = Math.max(0, Math.min(sh - PET_H / 2, c.y - dragGrabY));
+      petWindow.setPosition(Math.round(nx), Math.round(ny));
+    }, 16);
   });
-  // 拖拽结束：贴边吸附 + 持久化窗口位置
+  // 拖拽结束：贴边吸附（滑动动画）+ 持久化窗口位置
   ipcMain.on('pet:drag-end', () => {
+    stopDrag();
     if (!petWindow || petWindow.isDestroyed()) return;
     const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
     const [wx, wy] = petWindow.getPosition();
     const nx = wx + PET_W / 2 < sw / 2 ? 8 : sw - PET_W - 8;
-    petWindow.setPosition(nx, wy);
-    savePetPos(nx, wy);
+    if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
+    if (nx === wx) { savePetPos(nx, wy); return; }
+    const steps = 8;
+    const stepDx = (nx - wx) / steps;
+    let i = 0;
+    snapTimer = setInterval(() => {
+      i++;
+      if (!petWindow || petWindow.isDestroyed() || i >= steps) {
+        if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
+        if (petWindow && !petWindow.isDestroyed()) petWindow.setPosition(nx, wy);
+        savePetPos(nx, wy);
+        return;
+      }
+      petWindow.setPosition(Math.round(wx + stepDx * i), wy);
+    }, 16);
   });
   // 单击 → 聚焦主窗口
   ipcMain.on('pet:focus-main', () => focusMainWindow());

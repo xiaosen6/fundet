@@ -15,10 +15,13 @@ let lastFrameTime = 0;
 let blinkTimer: ReturnType<typeof setTimeout> | null = null;
 let blinkOverride = false;
 let fadeStart = 0;
+let dragging = false; // 按下即 true
+let dragMoved = false; // 位移超阈值才算拖动（区分单击）
 const img = document.getElementById('pet-img') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
 
 // ---------- 帧动画 + 漂浮（RAF 主循环） ----------
+let floatAmp = 1; // 漂浮幅度（拖动时平滑归零，避免"拖不住、发飘"）
 function tick(now: number): void {
   requestAnimationFrame(tick);
 
@@ -43,8 +46,9 @@ function tick(now: number): void {
     img.src = framePath;
   }
 
-  // 正弦漂浮
-  const floatY = Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE;
+  // 正弦漂浮（拖动时平滑衰减到 0，松手恢复）
+  floatAmp += ((dragMoved ? 0 : 1) - floatAmp) * 0.15;
+  const floatY = Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE * floatAmp;
 
   // 淡入过渡
   const fadeProgress = Math.min(1, (now - fadeStart) / FADE_MS);
@@ -89,6 +93,7 @@ window.fundet?.onPetState?.((state: string) => {
 // ---------- hover 穿透切换（穿透下只有 mousemove 可达） ----------
 let hoverActive = false;
 document.addEventListener('mousemove', (e: MouseEvent) => {
+  if (dragging) return; // 拖动中穿透已解除，跳过 hit-test
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const over = !!el && (el === root || root.contains(el));
   if (over !== hoverActive) {
@@ -97,32 +102,24 @@ document.addEventListener('mousemove', (e: MouseEvent) => {
   }
 });
 
-// ---------- 拖拽：通知主进程平移窗口本体 ----------
-let dragging = false;
-let dragMoved = false;
-let downX = 0, downY = 0, lastX = 0, lastY = 0;
+// ---------- 拖拽：确立拖动后交主进程轮询光标平移窗口 ----------
+let downX = 0, downY = 0;
 
 root.addEventListener('pointerdown', (e: PointerEvent) => {
   if (e.button !== 0) return;
   dragging = true;
   dragMoved = false;
-  downX = lastX = e.screenX;
-  downY = lastY = e.screenY;
+  downX = e.screenX;
+  downY = e.screenY;
   try { root.setPointerCapture(e.pointerId); } catch { /* noop */ }
-  root.style.cursor = 'grabbing';
 });
 
 root.addEventListener('pointermove', (e: PointerEvent) => {
-  if (!dragging) return;
-  if (!dragMoved) {
-    if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
-    dragMoved = true;
-  }
-  const dx = e.screenX - lastX;
-  const dy = e.screenY - lastY;
-  lastX = e.screenX;
-  lastY = e.screenY;
-  window.fundet?.petDrag?.(dx, dy);
+  if (!dragging || dragMoved) return;
+  if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
+  dragMoved = true;
+  root.style.cursor = 'grabbing';
+  window.fundet?.petDragStart?.();
 });
 
 root.addEventListener('pointerup', () => {

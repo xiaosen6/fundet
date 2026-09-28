@@ -603,7 +603,7 @@ export interface FundetApi {
   petReady(): void;
   petNewChat(): void;
   petSetHover(hovering: boolean): void;
-  petDrag(dx: number, dy: number): void;
+  petDragStart(): void;
   petDragEnd(): void;
   petFocusMain(): void;
   petToggle(show: boolean): Promise<{ ok: boolean }>;
