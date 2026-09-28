@@ -1,8 +1,12 @@
 /**
- * PetWindow 渲染层：帧动画引擎 + 漂浮 + 拖拽 + 交互。
+ * PetWindow 渲染层：帧动画引擎 + 漂浮 + 交互。
  * 挂载在独立 HTML（pet.html），非主窗口 React 树。
+ *
+ * 穿透模型：主进程 setIgnoreMouseEvents(true,{forward:true}) 时只有 mousemove 能到达页面，
+ * hover 判定用 mousemove + elementFromPoint（mouseenter/leave 在穿透状态下不会触发）。
+ * 拖拽 = 通知主进程平移窗口本体；root 在窗口内固定居中，不做渲染层位移。
  */
-import { PET_STATES, PET_SIZE, FADE_MS, FLOAT_AMPLITUDE, FLOAT_PERIOD, BLINK_MIN, BLINK_MAX } from './pet-config.js';
+import { PET_STATES, FADE_MS, FLOAT_AMPLITUDE, FLOAT_PERIOD, BLINK_MIN, BLINK_MAX } from './pet-config.js';
 
 // ---------- 状态 ----------
 let currentState = 'idle';
@@ -10,10 +14,6 @@ let currentFrame = 0;
 let lastFrameTime = 0;
 let blinkTimer: ReturnType<typeof setTimeout> | null = null;
 let blinkOverride = false;
-let isDragging = false;
-let petX = 0;
-let petY = 0;
-let fadeOpacity = 1;
 let fadeStart = 0;
 const img = document.getElementById('pet-img') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
@@ -21,7 +21,6 @@ const root = document.getElementById('pet-root') as HTMLDivElement;
 // ---------- 帧动画 + 漂浮（RAF 主循环） ----------
 function tick(now: number): void {
   requestAnimationFrame(tick);
-  if (isDragging) return;
 
   // 帧切换
   const state = PET_STATES[currentState as keyof typeof PET_STATES];
@@ -39,9 +38,9 @@ function tick(now: number): void {
       }
     }
     const framePath = blinkOverride && currentState === 'idle'
-      ? PET_STATES.blink.frames[Math.min(currentFrame, 2)]
+      ? PET_STATES.blink.frames[Math.min(currentFrame, PET_STATES.blink.frames.length - 1)]
       : state.frames[currentFrame];
-    img.src = `../${framePath}`;
+    img.src = framePath;
   }
 
   // 正弦漂浮
@@ -49,11 +48,10 @@ function tick(now: number): void {
 
   // 淡入过渡
   const fadeProgress = Math.min(1, (now - fadeStart) / FADE_MS);
-  fadeOpacity = fadeProgress;
-  img.style.opacity = String(fadeOpacity);
+  img.style.opacity = String(fadeProgress);
 
-  // 应用位置
-  root.style.transform = `translate(${petX}px, ${petY + floatY}px)`;
+  // 应用漂浮位移
+  root.style.transform = `translateY(${floatY}px)`;
 }
 
 // ---------- 状态切换 ----------
@@ -83,86 +81,73 @@ function scheduleBlink(): void {
   }, delay);
 }
 
-// ---------- 位置持久化 ----------
-const POS_KEY = 'fundet.pet.position';
-function savePos(): void {
-  localStorage.setItem(POS_KEY, JSON.stringify({ x: petX, y: petY }));
-}
-function loadPos(): void {
-  try {
-    const raw = localStorage.getItem(POS_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as { x: number; y: number };
-      petX = p.x; petY = p.y;
-    } else {
-      // 默认右下角
-      petX = window.innerWidth - PET_SIZE - 24;
-      petY = window.innerHeight - PET_SIZE - 60;
-    }
-  } catch { petX = 24; petY = 100; }
-}
-
 // ---------- IPC：接收状态指令 ----------
 window.fundet?.onPetState?.((state: string) => {
   setState(state);
 });
 
-// hover 穿透切换
-root.addEventListener('mouseenter', () => {
-  window.fundet?.petSetHover?.(true);
-});
-root.addEventListener('mouseleave', () => {
-  window.fundet?.petSetHover?.(false);
+// ---------- hover 穿透切换（穿透下只有 mousemove 可达） ----------
+let hoverActive = false;
+document.addEventListener('mousemove', (e: MouseEvent) => {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const over = !!el && (el === root || root.contains(el));
+  if (over !== hoverActive) {
+    hoverActive = over;
+    window.fundet?.petSetHover?.(over);
+  }
 });
 
-// ---------- 交互 ----------
-let dragStartX = 0, dragStartY = 0, dragOffsetX = 0, dragOffsetY = 0;
-let clickCount = 0;
-let clickTimer: ReturnType<typeof setTimeout> | null = null;
+// ---------- 拖拽：通知主进程平移窗口本体 ----------
+let dragging = false;
+let dragMoved = false;
+let downX = 0, downY = 0, lastX = 0, lastY = 0;
 
 root.addEventListener('pointerdown', (e: PointerEvent) => {
   if (e.button !== 0) return;
-  isDragging = true;
-  dragStartX = e.screenX;
-  dragStartY = e.screenY;
-  dragOffsetX = petX;
-  dragOffsetY = petY;
-  root.setPointerCapture(e.pointerId);
+  dragging = true;
+  dragMoved = false;
+  downX = lastX = e.screenX;
+  downY = lastY = e.screenY;
+  try { root.setPointerCapture(e.pointerId); } catch { /* noop */ }
   root.style.cursor = 'grabbing';
 });
 
 root.addEventListener('pointermove', (e: PointerEvent) => {
-  if (!isDragging) return;
-  petX = dragOffsetX + (e.screenX - dragStartX);
-  petY = dragOffsetY + (e.screenY - dragStartY);
-  // 限制在屏幕内
-  petX = Math.max(-PET_SIZE / 2, Math.min(window.innerWidth - PET_SIZE / 2, petX));
-  petY = Math.max(0, Math.min(window.innerHeight - PET_SIZE / 2, petY));
+  if (!dragging) return;
+  if (!dragMoved) {
+    if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
+    dragMoved = true;
+  }
+  const dx = e.screenX - lastX;
+  const dy = e.screenY - lastY;
+  lastX = e.screenX;
+  lastY = e.screenY;
+  window.fundet?.petDrag?.(dx, dy);
 });
 
 root.addEventListener('pointerup', () => {
-  isDragging = false;
+  if (!dragging) return;
+  dragging = false;
   root.style.cursor = 'grab';
-  // 贴边吸附（松手时靠哪边就贴哪边）
-  const centerX = petX + PET_SIZE / 2;
-  if (centerX < window.innerWidth / 2) {
-    petX = 8; // 左贴
-  } else {
-    petX = window.innerWidth - PET_SIZE - 8; // 右贴
-  }
-  savePos();
+  // 拖动过才贴边归位，纯点击不动
+  if (dragMoved) window.fundet?.petDragEnd?.();
 });
 
+// ---------- 点击：单击聚焦主窗，双击新对话；拖动后不触发 ----------
+let clickCount = 0;
+let clickTimer: ReturnType<typeof setTimeout> | null = null;
 root.addEventListener('click', () => {
+  if (dragMoved) return;
   clickCount++;
   if (clickTimer) clearTimeout(clickTimer);
   clickTimer = setTimeout(() => {
     if (clickCount >= 2) {
-      // 双击 → 新对话
       void window.fundet?.petNewChat?.();
+    } else if (clickCount === 1) {
+      window.fundet?.petFocusMain?.();
     }
     clickCount = 0;
-  }, 250);
+  }, 260);
 });
 
 // 右键菜单（原生 contextMenu 由主进程处理）
@@ -171,7 +156,6 @@ root.addEventListener('contextmenu', (e) => {
 });
 
 // ---------- 启动 ----------
-loadPos();
 scheduleBlink();
 requestAnimationFrame(tick);
 

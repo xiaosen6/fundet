@@ -603,6 +603,9 @@ export interface FundetApi {
   petReady(): void;
   petNewChat(): void;
   petSetHover(hovering: boolean): void;
+  petDrag(dx: number, dy: number): void;
+  petDragEnd(): void;
+  petFocusMain(): void;
   petToggle(show: boolean): Promise<{ ok: boolean }>;
   petVisible(): Promise<boolean>;
   onFindResult(cb: (payload: FindResultPayload) => void): () => void;

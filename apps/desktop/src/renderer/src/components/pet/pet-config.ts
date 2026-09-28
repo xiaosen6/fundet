@@ -8,7 +8,7 @@
 
 export type PetStateId = 'idle' | 'blink' | 'thinking' | 'notify';
 
-/** 状态配置：帧序列 + 循环/单次 + 帧间 ms */
+/** 状态配置：帧序列 + 循环/单次 + 帧间 ms（idle/thinking/notify 各 6 帧、blink 3 帧，与素材一致） */
 export const PET_STATES: Record<PetStateId, {
   frames: string[];
   loop: boolean;
@@ -17,9 +17,9 @@ export const PET_STATES: Record<PetStateId, {
   fallback?: PetStateId;
 }> = {
   idle: {
-    frames: Array.from({ length: 8 }, (_, i) => `./pet/sprites/idle_${String(i).padStart(2, '0')}.png`),
+    frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/idle_${String(i).padStart(2, '0')}.png`),
     loop: true,
-    interval: 120,
+    interval: 140,
   },
   blink: {
     frames: Array.from({ length: 3 }, (_, i) => `./pet/sprites/blink_${String(i).padStart(2, '0')}.png`),
@@ -28,14 +28,14 @@ export const PET_STATES: Record<PetStateId, {
     fallback: 'idle',
   },
   thinking: {
-    frames: Array.from({ length: 8 }, (_, i) => `./pet/sprites/thinking_${String(i).padStart(2, '0')}.png`),
+    frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/thinking_${String(i).padStart(2, '0')}.png`),
     loop: true,
-    interval: 100,
+    interval: 120,
   },
   notify: {
-    frames: Array.from({ length: 8 }, (_, i) => `./pet/sprites/notify_${String(i).padStart(2, '0')}.png`),
+    frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/notify_${String(i).padStart(2, '0')}.png`),
     loop: false,
-    interval: 90,
+    interval: 110,
     fallback: 'idle',
   },
 };
