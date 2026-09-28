@@ -108,7 +108,6 @@ const api: FundetApi = {
   checkMcpServer: (id) => invoke(FUNDET_INVOKE.MCP_STATUS, id),
 
   listKnowledgeBases: () => invoke(FUNDET_INVOKE.KB_LIST),
-  backfillKnowledgeEmbeddings: (kbId) => invoke(FUNDET_INVOKE.KB_BACKFILL_EMBEDDINGS, kbId),
   createKnowledgeBase: (name, params) => invoke(FUNDET_INVOKE.KB_CREATE, name, params),
   updateKnowledgeBaseParams: (id, params) =>
     invoke(FUNDET_INVOKE.KB_UPDATE_PARAMS, id, params),

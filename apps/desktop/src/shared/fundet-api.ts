@@ -445,8 +445,6 @@ export interface FundetApi {
   fetchProviderModels(input: FetchModelsInput): Promise<FetchModelsResult>;
 
   listKnowledgeBases(): Promise<KnowledgeBaseView[]>;
-  /** 语义检索回填：向量化 KB 缺嵌入的块（进度走 kb:embed-progress push） */
-  backfillKnowledgeEmbeddings(kbId: string): Promise<{ total: number; done: number }>;
   createKnowledgeBase(name: string, params?: Partial<KnowledgeBaseParams>): Promise<KnowledgeBaseView>;
   updateKnowledgeBaseParams(id: string, params: Partial<KnowledgeBaseParams>): Promise<void>;
   importKnowledgeDir(kbId: string, dirPath: string): Promise<KnowledgeImportResult[]>;

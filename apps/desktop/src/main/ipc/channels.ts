@@ -48,7 +48,6 @@ export const FUNDET_INVOKE = {
   KB_DOC_REMOVE: 'kb:doc-remove',
   KB_IMPORT: 'kb:import',
   KB_SEARCH: 'kb:search',
-  KB_BACKFILL_EMBEDDINGS: 'kb:backfill-embeddings',
   KB_PICK: 'kb:pick',
   KB_SESSION_GET: 'kb:session-get',
   KB_SESSION_SET: 'kb:session-set',

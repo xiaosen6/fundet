@@ -52,7 +52,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 | 浏览器自动化 | 内置能力开关（默认关）；托管 Chrome 持久 profile「Fundet」 |
 | 视觉发图 | 预设标注 + 编辑对话框「视觉」勾选，只信库值，无推断 |
 | 电脑操作 | 内置能力开关（默认关）；cua-driver 外部二进制，遥测已关 |
-| 知识库 | **混合检索（0.3.14 起）**：FTS5 关键词 + 向量语义（RRF 融合；曾拍板纯 FTS5，09-25 用户主动升级）；导入 PDF/DOCX/TXT/MD，会话绑定后注入内置 knowledge MCP |
+| 知识库 | **纯语义检索（0.3.16 起）**：向量余弦 TopN（演进史：纯 FTS5 → 混合 RRF → 纯语义，均用户拍板）；导入 PDF/DOCX/TXT/MD，会话绑定后注入内置 knowledge MCP |
 | 约束 | 保持 `@fundet/*` 与 `window.fundet`；Windows 用 PowerShell 跑 Electron |
 
 ---
@@ -232,7 +232,7 @@ Fundet/
 
 ### 4.9 本地知识库
 
-- **混合语义检索（0.3.14，升级原「纯 FTS5」决策）**：`knowledge/embeddings(-logic).ts`——FTS5 关键词榜 + 向量余弦榜（kb_chunks.embedding BLOB，2560×f32=10KB/块，暴力余弦）RRF 融合（k=60）；**查询侧加指令前缀**（Qwen3-Embedding 官方建议）；**服务不可达自动降级纯 FTS5（检索永不死）**；`searchKnowledgeChunks` 已转 async（MCP 工具/自动 RAG/召回测试全链自动生效）。导入/笔记/快照后自动后台向量化（失败静默）；存量库在知识库面板点「升级语义检索」回填（embeddedChunks 进 KB 列表视图，kb:embed-progress 推进度）。分块/分词（CJK bigram）不变。
+- **纯语义检索（0.3.14 混合 → 0.3.16 纯语义，均用户拍板）**：`knowledge/embeddings(-logic).ts`——kb_chunks.embedding BLOB（2560×f32=10KB/块，暴力余弦 TopN）；查询侧指令前缀（Qwen3 官方建议）。**关键词检索（FTS5 榜+kb_fts 写入+回填按钮+RRF）已于 0.3.16 整体移除**；服务不可达 → 返回空（调用方提示未命中）。导入/笔记/快照后自动后台向量化（进度条 kb:embed-progress，完成自动刷新计数）；queryTerms 仅存片段定位用。分块（800/120）不变；tokenize 模块仍被 messages-fts 复用。
 
 - **纯 FTS5 关键词检索**（用户决策：不做 embedding/不做向量化）。表走 raw SQL 幂等创建（`main/knowledge/store.ts`），FTS5 虚表**不进 drizzle 迁移**；`getSqlite()`（db/client.ts）取原生句柄。
 - **分词：CJK bigram + 拉丁整词小写**（`knowledge/tokenize.ts`），索引/查询两侧同一函数；**别换 Intl.Segmenter**（ICU 词典深浅不一，本机把「退货」切成单字）。查询 = 各 token 引号 OR + 拉丁前缀 `*`；排序 bm25()。

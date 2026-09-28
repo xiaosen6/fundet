@@ -13,8 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { getSqlite } from '../db/client.js';
 import { getSetting, setSetting } from '../db/settings.js';
 import { chunkText } from './chunk.js';
-import { indexText, matchExpression, queryTerms } from './tokenize.js';
-import { cosineSimilarity, embedQuery, loadEmbeddedChunks, mergeRrf } from './embeddings.ts';
+import { queryTerms } from './tokenize.js';
+import { cosineSimilarity, embedQuery, loadEmbeddedChunks } from './embeddings.ts';
 import type {
   KnowledgeBaseParams,
   KnowledgeBaseView,
@@ -243,7 +243,6 @@ export function importDocumentChunks(kbId: string, name: string, text: string): 
   const insertChunk = db.prepare(
     'INSERT INTO kb_chunks (chunk_id, kb_id, doc_id, ord, text) VALUES (?, ?, ?, ?, ?)',
   );
-  const insertFts = db.prepare('INSERT INTO kb_fts (rowid, seg) VALUES (?, ?)');
   const txn = db.transaction(() => {
     insertDoc.run(docId, kbId, name, text.length, Date.now());
     for (const piece of pieces) {
@@ -251,7 +250,6 @@ export function importDocumentChunks(kbId: string, name: string, text: string): 
         id: number;
       };
       insertChunk.run(chunkId.id, kbId, docId, piece.ord, piece.text);
-      insertFts.run(chunkId.id, indexText(piece.text));
     }
   });
   txn();
@@ -302,8 +300,8 @@ export function removeKnowledgeDoc(docId: string): void {
 // ---------- 检索 ----------
 
 /**
- * 混合检索（0.3.14）：FTS5 关键词 + 向量余弦 RRF 融合；向量侧不可达时
- * 自动降级纯 FTS5。async（向量查询走网关）。
+ * 纯语义检索（0.3.16 起，用户拍板去除关键词检索）：查询向量 → 与已嵌入块
+ * 余弦相似 → TopN。服务不可达或块未嵌入时返回空（调用方提示未命中）。
  */
 export async function searchKnowledgeChunks(
   kbIds: string[],
@@ -311,69 +309,25 @@ export async function searchKnowledgeChunks(
   limit = 6,
 ): Promise<KnowledgeSearchResult[]> {
   ensureTables();
-  const fts = ftsSearch(kbIds, query, limit);
+  if (kbIds.length === 0) return [];
   try {
     const queryVec = await embedQuery(query);
     const chunks = loadEmbeddedChunks(kbIds);
-    if (chunks.length === 0) return fts;
     const terms = queryTerms(query);
-    const scored = chunks
+    return chunks
       .filter((c) => c.embedding)
       .map((c) => ({
-        item: {
-          docName: c.docName,
-          ord: c.ord,
-          snippet: buildSnippetLocal(c.text, terms),
-          score: 0,
-        } as KnowledgeSearchResult,
-        key: `${c.docName}#${c.ord}`,
-        sim: cosineSimilarity(queryVec, c.embedding!),
+        docName: c.docName,
+        ord: c.ord,
+        snippet: buildSnippetLocal(c.text, terms),
+        score: cosineSimilarity(queryVec, c.embedding!),
       }))
-      .sort((a, b) => b.sim - a.sim)
+      .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-    const merged = mergeRrf<KnowledgeSearchResult>([
-      fts.map((r) => ({ item: r, key: `${r.docName}#${r.ord}` })),
-      scored.map((s) => ({ item: s.item, key: s.key })),
-    ]).slice(0, limit);
-    return merged.map((m) => ({ ...m.item, score: m.score }));
   } catch {
-    // 嵌入服务不可达：降级纯关键词（检索永不死）
-    return fts;
+    // 嵌入服务不可达：语义检索无结果（关键词检索已按用户决策移除）
+    return [];
   }
-}
-
-/** 原 FTS5 关键词检索（同步，混合检索的一路 + 降级态） */
-function ftsSearch(
-  kbIds: string[],
-  query: string,
-  limit: number,
-): KnowledgeSearchResult[] {
-  const expr = matchExpression(query);
-  if (!expr || kbIds.length === 0) return [];
-  const db = getSqlite();
-  const placeholders = kbIds.map(() => '?').join(',');
-  const rows = db
-    .prepare(
-      `SELECT c.doc_id, c.ord, c.text, bm25(kb_fts) AS rank, d.name AS doc_name
-       FROM kb_fts JOIN kb_chunks c ON c.chunk_id = kb_fts.rowid
-       JOIN knowledge_docs d ON d.id = c.doc_id
-       WHERE kb_fts MATCH ? AND c.kb_id IN (${placeholders})
-       ORDER BY rank LIMIT ?`,
-    )
-    .all(expr, ...kbIds, limit) as Array<{
-    doc_id: string;
-    ord: number;
-    text: string;
-    rank: number;
-    doc_name: string;
-  }>;
-  const terms = queryTerms(query);
-  return rows.map((r) => ({
-    docName: r.doc_name,
-    ord: r.ord,
-    snippet: buildSnippetLocal(r.text, terms),
-    score: r.rank,
-  }));
 }
 
 function buildSnippetLocal(text: string, terms: string[]): string {

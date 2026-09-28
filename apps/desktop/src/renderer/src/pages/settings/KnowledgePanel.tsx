@@ -57,7 +57,6 @@ export function KnowledgePanel(): React.JSX.Element {
   const [snapshotUrl, setSnapshotUrl] = useState('');
   const [importProgress, setImportProgress] = useState<KbImportProgress | null>(null);
   const [embedProgress, setEmbedProgress] = useState<KbImportProgress | null>(null);
-  const [embeddingKb, setEmbeddingKb] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -342,40 +341,11 @@ export function KnowledgePanel(): React.JSX.Element {
                         <span className="text-11 text-muted/70">PDF / DOCX / TXT / MD</span>
                       </div>
 
-                      {/* 语义检索就绪度 + 回填（0.3.14：FTS5+向量混合，服务断自动降级关键词） */}
-                      {(kb.embeddedChunks ?? 0) < kb.chunkCount && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={busy || embeddingKb === kb.id}
-                            onClick={() => {
-                              setEmbeddingKb(kb.id);
-                              void window.fundet
-                                .backfillKnowledgeEmbeddings(kb.id)
-                                .then(() => refresh())
-                                .catch((err: unknown) =>
-                                  toast.error(err instanceof Error ? err.message : '向量化失败，请确认服务网关可用'),
-                                )
-                                .finally(() => setEmbeddingKb(null));
-                            }}
-                            className={ACTION_PILL}
-                          >
-                            <Sparkles size={13} />
-                            升级语义检索
-                          </button>
-                          <span className="text-11 text-muted/70">
-                            {embeddingKb === kb.id || embedProgress?.kbId === kb.id
-                              ? embedProgress
-                                ? `向量化 ${embedProgress.completed}/${embedProgress.total}…`
-                                : '准备向量化…'
-                              : `语义检索就绪 ${kb.embeddedChunks ?? 0}/${kb.chunkCount} 块（点此补齐，需服务网关）`}
-                          </span>
-                        </div>
-                      )}
-                      {(kb.embeddedChunks ?? 0) >= kb.chunkCount && kb.chunkCount > 0 && (
+                      {/* 向量化进度（导入后自动跑；0.3.16 起纯语义检索，无手动回填入口） */}
+                      {embedProgress?.kbId === kb.id && embedProgress.total > 0 && (
                         <span className="flex items-center gap-1 text-11 text-muted/70 select-none">
-                          <Sparkles size={12} />
-                          语义检索就绪（{kb.chunkCount} 块已向量化；服务不可用时自动回退关键词检索）
+                          <Sparkles size={12} className="animate-pulse" />
+                          向量化 {embedProgress.completed}/{embedProgress.total}…
                         </span>
                       )}
 
