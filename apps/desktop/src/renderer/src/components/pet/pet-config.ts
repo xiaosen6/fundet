@@ -37,8 +37,14 @@ export const PET_STATES: Record<PetStateId, PetStateVisual> = {
   },
   thinking: { frames: [frame('thinking_00')], interval: 0, loop: true, anim: 'sway' },
   notify: { frames: frames('notify', 11), interval: 80, loop: false, fallback: 'idle' },
-  // 拖动中：向右奔跑循环（向左拖时整体水平翻转），素材面朝右
-  running: { frames: frames('run', 14), interval: 90, loop: true, fadeMs: 40 },
+  // 拖动中：向右奔跑循环（向左拖时整体水平翻转），素材面朝右。
+  // 帧抽稀（隔一取一）+ 硬切（16ms）：快速动作硬切比叠化干净，避免四肢重影抖动
+  running: {
+    frames: frames('run', 14).filter((_, i) => i % 2 === 0),
+    interval: 110,
+    loop: true,
+    fadeMs: 16,
+  },
 };
 
 /** 待机偶发动作间隔（ms，随机区间） */

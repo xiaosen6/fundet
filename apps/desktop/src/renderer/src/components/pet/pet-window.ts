@@ -46,7 +46,32 @@ function showFrame(framePath: string, fadeMs: number): void {
   back.src = abs;
 }
 
-// ---------- RAF 主循环：帧轮播 + 漂浮 + 代码动画 ----------
+// ---------- 帧推进：独立 setInterval 驱动 ----------
+// （不用 RAF：窗口被 setPosition 高频移动时合成器可能暂停 RAF 回调，动画会停走）
+function advanceFrame(): void {
+  const st = PET_STATES[dragMoved ? 'running' : currentState];
+  if (st.frames.length <= 1) {
+    showFrame(st.frames[0], st.fadeMs ?? 40);
+    return;
+  }
+  const now = performance.now();
+  if (now - lastFrameTime >= st.interval) {
+    lastFrameTime = now;
+    currentFrame++;
+    if (currentFrame > st.frames.length - 1) {
+      if (st.loop) {
+        currentFrame = 0;
+      } else if (st.fallback) {
+        setState(st.fallback);
+      } else {
+        currentFrame = st.frames.length - 1;
+      }
+    }
+  }
+  showFrame(st.frames[currentFrame], st.fadeMs ?? 40);
+}
+
+// ---------- RAF 主循环：定长回落 + 漂浮 + 代码动画 ----------
 function tick(now: number): void {
   requestAnimationFrame(tick);
 
@@ -57,27 +82,6 @@ function tick(now: number): void {
     setState(st.fallback ?? 'idle');
     return;
   }
-
-  // 帧推进（单帧状态纯代码动画，无帧可推）
-  const fadeMs = st.fadeMs ?? 40;
-  if (st.frames.length > 1) {
-    if (now - lastFrameTime >= st.interval) {
-      lastFrameTime = now;
-      currentFrame++;
-      if (currentFrame > st.frames.length - 1) {
-        if (st.loop) {
-          currentFrame = 0;
-        } else if (st.fallback) {
-          setState(st.fallback);
-          return;
-        } else {
-          currentFrame = st.frames.length - 1;
-        }
-      }
-    }
-  }
-  // 每 tick 都确保画面是当前状态当前帧（去重由 showFrame 内部处理）
-  showFrame(st.frames[currentFrame], fadeMs);
 
   // 拖动（跑步）时无漂浮，交给跑步帧动画
   const floatY = dragMoved ? 0 : Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE;
@@ -197,6 +201,7 @@ document.addEventListener('contextmenu', (e) => {
 setState('idle');
 showFrame(PET_STATES.idle.frames[0], 240);
 scheduleIdleGestures();
+setInterval(advanceFrame, 55);
 requestAnimationFrame(tick);
 
 // 通知主进程渲染层就绪
