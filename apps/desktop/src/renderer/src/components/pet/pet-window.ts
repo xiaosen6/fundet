@@ -23,7 +23,8 @@ let frameDir = 1; // ping-pong 方向
 let lastFrameTime = 0;
 let stateStart = 0;
 let dragging = false; // 按下即 true
-let dragMoved = false; // 位移超阈值才算拖动（区分单击）
+let dragMoved = false; // 位移超阈值才算拖动（保留到下次按下——click 抑制依赖）
+let dragRunning = false; // 跑步状态开关（拖动确立置位，松手清除）
 const imgA = document.getElementById('pet-img') as HTMLImageElement;
 const imgB = document.getElementById('pet-img-b') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
@@ -49,7 +50,7 @@ function showFrame(framePath: string, fadeMs: number): void {
 // ---------- 帧推进：独立 setInterval 驱动 ----------
 // （不用 RAF：窗口被 setPosition 高频移动时合成器可能暂停 RAF 回调，动画会停走）
 function advanceFrame(): void {
-  const st = PET_STATES[dragMoved ? 'running' : currentState];
+  const st = PET_STATES[dragRunning ? 'running' : currentState];
   if (st.frames.length <= 1) {
     showFrame(st.frames[0], st.fadeMs ?? 40);
     return;
@@ -75,7 +76,7 @@ function advanceFrame(): void {
 function tick(now: number): void {
   requestAnimationFrame(tick);
 
-  const st = PET_STATES[dragMoved ? 'running' : currentState];
+  const st = PET_STATES[dragRunning ? 'running' : currentState];
 
   // 定长状态（眨眼）到时回落
   if (st.duration && now - stateStart >= st.duration) {
@@ -84,13 +85,13 @@ function tick(now: number): void {
   }
 
   // 拖动（跑步）时无漂浮，交给跑步帧动画
-  const floatY = dragMoved ? 0 : Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE;
+  const floatY = dragRunning ? 0 : Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE;
 
   // 单帧状态的代码动画（极轻——待机以静为主，相位用全局 now 保证连续）
   let sx = 1;
   let sy = 1;
   let rot = 0;
-  if (!dragMoved) {
+  if (!dragRunning) {
     if (st.anim === 'breath') {
       const p = Math.sin((now / 2400) * Math.PI * 2);
       sy = 1 + 0.01 * p;
@@ -160,6 +161,7 @@ root.addEventListener('pointermove', (e: PointerEvent) => {
   if (!dragMoved) {
     if (Math.hypot(e.screenX - downX, e.screenY - downY) < 6) return;
     dragMoved = true;
+    dragRunning = true;
     root.style.cursor = 'grabbing';
     currentFrame = 0;
     lastFrameTime = 0;
@@ -178,6 +180,7 @@ root.addEventListener('pointerup', () => {
   root.style.cursor = 'grab';
   // dragMoved 保持到下次 pointerdown 再复位（click 抑制依赖它）
   if (dragMoved) {
+    dragRunning = false; // 松手立即停跑
     facing = 1;
     currentFrame = 0;
     lastFrameTime = 0;

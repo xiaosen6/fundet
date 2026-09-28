@@ -26,6 +26,7 @@ import {
 } from '../lib/fonts';
 import { useTheme, type ThemeMode } from '../themes/useTheme';
 import { SearchPanel } from './settings/SearchPanel';
+import { PetPanel } from './settings/PetPanel';
 import { UpdateCard } from '../components/settings/UpdateCard';
 import { LoginItemSection } from '../components/settings/LoginItemSection';
 import { BrowserSection } from '../components/settings/BrowserSection';
@@ -50,7 +51,8 @@ type SettingsTab =
   | 'mcp'
   | 'automation'
   | 'usage'
-  | 'search';
+  | 'search'
+  | 'pet';
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: '通用',
@@ -59,6 +61,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   automation: '自动操作',
   usage: '用量历史',
   search: '搜索',
+  pet: '桌面助手',
 };
 
 /** 表单字段样式（对齐 Cindy 设置字段：h-10 + 12px 圆角 + Card 底 + 1px Board；
@@ -284,6 +287,7 @@ export function SettingsPage(): React.JSX.Element {
             {tab === 'usage' && <UsageHistoryPanel />}
 
             {tab === 'search' && <SearchPanel />}
+            {tab === 'pet' && <PetPanel />}
           </div>
         </div>
       </div>

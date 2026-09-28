@@ -9,6 +9,7 @@ import { BrowserWindow, screen, ipcMain, desktopCapturer, app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { FUNDET_INVOKE, FUNDET_PUSH } from '../ipc/channels.js';
+import { setBoolSetting } from '../db/settings.js';
 
 export const PET_STATE = 'pet:state';
 export const PET_NEW_CHAT = 'pet:new-chat';
@@ -215,6 +216,7 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
     savePetPos(wx, wy);
   });
   ipcMain.handle(PET_TOGGLE, (_e, show: boolean) => {
+    setBoolSetting('pet.enabled', show);
     togglePet(show);
     return { ok: true };
   });
