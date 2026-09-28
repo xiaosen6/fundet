@@ -231,10 +231,10 @@ Fundet/
 
 ---
 
-### 4.11 桌宠（规划中，素材已备 2026-09-28）
+### 4.11 桌宠（MVP 已实现 2026-09-28，待发版）
 - **素材**：红色机器人 IP（用户提供的公司形象），网关 Qwen-Image-2.1 图生图批量生成（参考图保证一致性）。已备 4 状态 27 帧（256×256 透明底）：idle 呼吸 8 帧 + blink 眨眼 3 帧 + thinking 思考 8 帧 + notify 通知 8 帧。资产在 apps/desktop/resources/pet/。
 - **生图参数**：idle 4096×1024/80 步/CFG 2.0（最高画质，**单张就会打崩 GPU 引擎**——日常用 3072×1024/60 步/无 CFG 是可持续上限）；seed 42 固定。sprite sheet 横条布局 + 提示词强调完整身体（含腿脚）防裁切。
-- **实现规划（未开工）**：透明置顶小窗（~128px）+ RAF 帧动画 + 状态机联动 agent 事件（isRunning→thinking、TTS→speaking、pendingInteractions→notify）；双击=新对话、拖文件=发送；代码正弦漂浮+scaleX 翻转省帧。MVP 约 4-5 天。
+- **MVP 已实现（0.3.18 待发）**：`host/pet-host.ts`（窗口创建/销毁/右键菜单/截图 desktopCapturer）+ `pet-state-bridge.ts`（agent 事件→桌宠状态：isRunning→thinking/done→notify+回 idle/interaction→notify/error→notify）+ 渲染层 `pet/pet-window.ts` + `pet-config.ts`（帧动画引擎 RAF 10FPS + 正弦漂浮 ±6px/2.5s + 状态淡入 180ms + 眨眼随机 3-7s 插播）+ `pet.html`（vite 双入口，public/pet/sprites 经 vite 拷贝）。交互：双击=新对话、右键菜单（截图问答/新对话/打开/隐藏）、拖拽+贴边+位置记忆 localStorage、hover 穿透切换 setIgnoreMouseEvents(forward)。**截图问答**：desktopCapturer 全屏→base64→主窗口 stageBytes→composer 附件注入。设置开关 pet.enabled 默认开。dev 实测：窗口/帧动画/漂浮/IPC 全通。
 - 二期候选：行走/拖拽/睡觉/庆祝/倾听/出错 六状态（+44 帧待生成）。
 
 ### 4.9 本地知识库

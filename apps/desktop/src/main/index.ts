@@ -19,6 +19,8 @@ import { registerDwsWidgetsIpc, startDwsWidgets, stopDwsWidgets } from './host/d
 import { startAutomationScheduler, stopAutomationScheduler } from './host/automations.js';
 import { disposeBrowserHost } from './browser/host.js';
 import { initUpdater } from './updater.js';
+import { createPetWindow, registerPetIpc, togglePet } from './host/pet-host.js';
+import { getBoolSetting } from './db/settings.js';
 import {
   registerFileProtocolHandler,
   registerFileProtocolPrivileges,
@@ -280,6 +282,11 @@ function bootstrap(): void {
   initUpdater();
 
   createWindow();
+  // 桌宠（0.3.18）：设置开关默认开；在主窗之后创建（依赖主窗已存在）
+  registerPetIpc(() => getBoolSetting('pet.enabled', true));
+  if (getBoolSetting('pet.enabled', true)) {
+    createPetWindow();
+  }
   // 首启解压随包 git（tar.gz → userData/runtime/git，Splash 遮面；幂等按版本
   // 标记）+ PATH 回退装配。pi 会话最早在首条消息才创建，同步完成不竞态。
   // （浏览器依赖 tar.gz 方案已回滚：ESM 静态 import 在启动即解析，解压来不及。）

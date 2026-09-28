@@ -241,6 +241,16 @@ const api: FundetApi = {
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
   onKbEmbedProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_EMBED_PROGRESS, cb),
+
+  // 桌宠（pet.html 窗口专用；主窗口也消费 onPetScreenshot/onPetNewChat）
+  onPetState: (cb) => subscribe<string>('pet:state', cb),
+  onPetScreenshot: (cb) => subscribe<{ base64: string }>('pet:screenshot-result', cb),
+  onPetNewChat: (cb) => subscribe<Record<string, never>>('pet:new-chat', cb),
+  petReady: () => { try { ipcRenderer.send('pet:ready'); } catch { /* 非 pet 窗口 */ } },
+  petNewChat: () => { try { ipcRenderer.send('pet:new-chat'); } catch { /* 非 pet 窗口 */ } },
+  petSetHover: (hovering) => { try { ipcRenderer.send('pet:hover', hovering); } catch { /* 非 pet 窗口 */ } },
+  petToggle: (show) => invoke('pet:toggle', show),
+  petVisible: () => invoke('pet:visible'),
   onFindResult: (cb) => subscribe<FindResultPayload>(FUNDET_PUSH.FIND_RESULT, cb),
 };
 

@@ -68,6 +68,7 @@ import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
 import { transcribeAudio, synthesizeSpeech, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
 import { embedKbChunks } from '../knowledge/embeddings.js';
+import { bridgeAgentEvent, bridgeReset } from '../host/pet-state-bridge.js';
 
 /** 导入/笔记/快照后的后台向量化（失败静默——检索自动降级纯关键词，面板可手动回填） */
 function embedKbInBackground(kbId: string): void {
@@ -268,10 +269,13 @@ export function wireSession(session: Session): void {
       };
     }
     broadcast(FUNDET_PUSH.AGENT_EVENT, { sessionId: session.id, event });
+    // 桌宠状态桥（0.3.18）：agent 事件 → 桌宠动作
+    bridgeAgentEvent(event.type, event.data as Record<string, unknown>);
   });
 
   session.onStatusChange((status) => {
     broadcast(FUNDET_PUSH.AGENT_STATUS_CHANGED, { sessionId: session.id, status });
+    if (status === 'closed' || status === 'error') bridgeReset();
   });
 
   session.setInteractionListener(

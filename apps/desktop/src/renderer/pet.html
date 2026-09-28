@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline'" />
+  <title>Fundet Pet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; -webkit-app-region: no-drag; }
+    #pet-root {
+      position: absolute;
+      width: 128px;
+      height: 128px;
+      cursor: grab;
+      will-change: transform;
+      transition: none;
+    }
+    #pet-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      image-rendering: auto;
+      transition: opacity 180ms ease-out;
+    }
+    #pet-shadow {
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 10px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="pet-root">
+    <img id="pet-img" src="./pet/sprites/idle_00.png" alt="Fundet 桌面助手" draggable="false" />
+    <div id="pet-shadow"></div>
+  </div>
+  <script type="module" src="./src/components/pet/pet-window.ts"></script>
+</body>
+</html>

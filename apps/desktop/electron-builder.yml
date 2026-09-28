@@ -71,6 +71,7 @@ win:
       to: runtime/git.tar.gz
     - from: ../../apps/git-bin/win32-x64/VERSION
       to: runtime/git.version
+    // 桌宠精灵图经 vite public/ 目录自动拷到 out/renderer/pet/（dev+prod 统一路径）
 
 nsis:
   include: build/installer.nsh

@@ -251,6 +251,39 @@ export function ChatPage(): React.JSX.Element {
     if (activeId) void ensureHistory(activeId);
   }, [activeId]);
 
+  // ---------- 桌宠联动（截图注入 + 双击新对话） ----------
+  const workDirRef = useRef(workDir);
+  workDirRef.current = workDir;
+  useEffect(() => {
+    const unSubShot = window.fundet?.onPetScreenshot?.((payload) => {
+      if (payload?.base64) {
+        // base64 → ArrayBuffer → stageBytes 走现有附件管线
+        const bin = atob(payload.base64);
+        const buf = new ArrayBuffer(bin.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+        const name = `截图_${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.png`;
+        void window.fundet
+          .stageBytes(workDirRef.current, name, buf)
+          .then((att) => {
+            setAttachments((prev) => [...prev, att]);
+            toast.success('截图已附上，请输入你的问题');
+          })
+          .catch((err: unknown) => {
+            toast.error(err instanceof Error ? err.message : '截图附加失败');
+          });
+      }
+    });
+    const unSubChat = window.fundet?.onPetNewChat?.(() => {
+      createSession();
+    });
+    return () => {
+      unSubShot?.();
+      unSubChat?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---------- 会话动作 ----------
 
   // 新建会话只建本地草稿（不调 session:create、不 spawn pi）；

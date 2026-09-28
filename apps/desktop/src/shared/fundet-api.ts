@@ -595,6 +595,16 @@ export interface FundetApi {
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
   onKbEmbedProgress(cb: (payload: KbImportProgress) => void): () => void;
+
+  // ---------- 桌宠（pet.html 窗口专用） ----------
+  onPetState(cb: (state: string) => void): () => void;
+  onPetScreenshot(cb: (payload: { base64: string }) => void): () => void;
+  onPetNewChat(cb: () => void): () => void;
+  petReady(): void;
+  petNewChat(): void;
+  petSetHover(hovering: boolean): void;
+  petToggle(show: boolean): Promise<{ ok: boolean }>;
+  petVisible(): Promise<boolean>;
   onFindResult(cb: (payload: FindResultPayload) => void): () => void;
   onUpdateStatusChanged(cb: (payload: UpdateState) => void): () => void;
 }
