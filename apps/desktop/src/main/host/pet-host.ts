@@ -118,28 +118,6 @@ export function createPetWindow(): void {
   } else {
     void petWindow.loadFile(path.join(__dirname, '../renderer/pet.html'));
   }
-
-  setupPetMenu();
-}
-
-/** 右键菜单 */
-function setupPetMenu(): void {
-  if (!petWindow) return;
-  petWindow.webContents.on('context-menu', () => {
-    const menu = Menu.buildFromTemplate([
-      { label: '截图问答', click: () => void petScreenshot() },
-      { label: '新对话', click: () => void petNewChat() },
-      { type: 'separator' },
-      { label: `打开 ${brand.name}`, click: () => {
-        const main = BrowserWindow.getAllWindows().find((w) => w !== petWindow);
-        main?.show();
-        main?.focus();
-      }},
-      { type: 'separator' },
-      { label: '隐藏桌面助手', click: () => togglePet(false) },
-    ]);
-    menu.popup({ window: petWindow ?? undefined });
-  });
 }
 
 /** 聚焦主窗口（桌宠外的那个窗口） */
@@ -221,13 +199,11 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
   let dragTimer: ReturnType<typeof setInterval> | null = null;
   let dragGrabX = 0;
   let dragGrabY = 0;
-  let snapTimer: ReturnType<typeof setInterval> | null = null;
   const stopDrag = (): void => {
     if (dragTimer) { clearInterval(dragTimer); dragTimer = null; }
   };
   ipcMain.on('pet:drag-start', () => {
     if (!petWindow || petWindow.isDestroyed()) return;
-    if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
     const p = screen.getCursorScreenPoint();
     const [wx, wy] = petWindow.getPosition();
     dragGrabX = p.x - wx;
@@ -242,28 +218,25 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
       petWindow.setPosition(Math.round(nx), Math.round(ny));
     }, 16);
   });
-  // 拖拽结束：贴边吸附（滑动动画）+ 持久化窗口位置
+  // 拖拽结束：记录位置（不自动贴边）
   ipcMain.on('pet:drag-end', () => {
     stopDrag();
     if (!petWindow || petWindow.isDestroyed()) return;
-    const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
     const [wx, wy] = petWindow.getPosition();
-    const nx = wx + PET_W / 2 < sw / 2 ? 8 : sw - PET_W - 8;
-    if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
-    if (nx === wx) { savePetPos(nx, wy); return; }
-    const steps = 8;
-    const stepDx = (nx - wx) / steps;
-    let i = 0;
-    snapTimer = setInterval(() => {
-      i++;
-      if (!petWindow || petWindow.isDestroyed() || i >= steps) {
-        if (snapTimer) { clearInterval(snapTimer); snapTimer = null; }
-        if (petWindow && !petWindow.isDestroyed()) petWindow.setPosition(nx, wy);
-        savePetPos(nx, wy);
-        return;
-      }
-      petWindow.setPosition(Math.round(wx + stepDx * i), wy);
-    }, 16);
+    savePetPos(wx, wy);
+  });
+  // 右键菜单（渲染层 contextmenu → IPC → popup，透明穿透小窗上 webContents context-menu 事件不可靠）
+  ipcMain.on('pet:context-menu', () => {
+    if (!petWindow || petWindow.isDestroyed()) return;
+    const menu = Menu.buildFromTemplate([
+      { label: '截图问答', click: () => void petScreenshot() },
+      { label: '新对话', click: () => void petNewChat() },
+      { type: 'separator' },
+      { label: `打开 ${brand.name}`, click: () => focusMainWindow() },
+      { type: 'separator' },
+      { label: '隐藏桌面助手', click: () => togglePet(false) },
+    ]);
+    menu.popup({ window: petWindow });
   });
   // 单击 → 聚焦主窗口
   ipcMain.on('pet:focus-main', () => focusMainWindow());

@@ -605,6 +605,7 @@ export interface FundetApi {
   petSetHover(hovering: boolean): void;
   petDragStart(): void;
   petDragEnd(): void;
+  petContextMenu(): void;
   petFocusMain(): void;
   petToggle(show: boolean): Promise<{ ok: boolean }>;
   petVisible(): Promise<boolean>;

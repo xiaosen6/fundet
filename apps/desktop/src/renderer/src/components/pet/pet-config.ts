@@ -19,23 +19,23 @@ export const PET_STATES: Record<PetStateId, {
   idle: {
     frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/idle_${String(i).padStart(2, '0')}.png`),
     loop: true,
-    interval: 140,
+    interval: 120,
   },
   blink: {
     frames: Array.from({ length: 3 }, (_, i) => `./pet/sprites/blink_${String(i).padStart(2, '0')}.png`),
     loop: false,
-    interval: 100,
+    interval: 90,
     fallback: 'idle',
   },
   thinking: {
     frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/thinking_${String(i).padStart(2, '0')}.png`),
     loop: true,
-    interval: 120,
+    interval: 100,
   },
   notify: {
     frames: Array.from({ length: 6 }, (_, i) => `./pet/sprites/notify_${String(i).padStart(2, '0')}.png`),
     loop: false,
-    interval: 110,
+    interval: 90,
     fallback: 'idle',
   },
 };

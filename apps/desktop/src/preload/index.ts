@@ -251,6 +251,7 @@ const api: FundetApi = {
   petSetHover: (hovering) => { try { ipcRenderer.send('pet:hover', hovering); } catch { /* 非 pet 窗口 */ } },
   petDragStart: () => { try { ipcRenderer.send('pet:drag-start'); } catch { /* 非 pet 窗口 */ } },
   petDragEnd: () => { try { ipcRenderer.send('pet:drag-end'); } catch { /* 非 pet 窗口 */ } },
+  petContextMenu: () => { try { ipcRenderer.send('pet:context-menu'); } catch { /* 非 pet 窗口 */ } },
   petFocusMain: () => { try { ipcRenderer.send('pet:focus-main'); } catch { /* 非 pet 窗口 */ } },
   petToggle: (show) => invoke('pet:toggle', show),
   petVisible: () => invoke('pet:visible'),
