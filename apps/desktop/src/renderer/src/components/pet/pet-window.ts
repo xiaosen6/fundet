@@ -21,12 +21,15 @@ const imgB = document.getElementById('pet-img-b') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
 let frontIsA = true;
 
-/** 帧展示：双 img 交叉淡化（40ms）柔化跳变；等新帧 onload 再过渡，避免半加载闪白 */
-function showFrame(framePath: string): void {
+/** 帧展示：双 img 交叉淡化；等新帧 onload 再过渡，避免半加载闪白。
+ *  fadeMs：状态切换用 240（柔和变形过渡），动作帧间用 40（快速衔接）。 */
+function showFrame(framePath: string, fadeMs: number): void {
   const front = frontIsA ? imgA : imgB;
   const back = frontIsA ? imgB : imgA;
   const abs = new URL(framePath, location.href).href;
   if (front.src === abs) return;
+  back.style.transitionDuration = `${fadeMs}ms`;
+  front.style.transitionDuration = `${fadeMs}ms`;
   back.onload = () => {
     back.onload = null;
     back.style.opacity = '1';
@@ -36,7 +39,7 @@ function showFrame(framePath: string): void {
   back.src = abs;
 }
 
-// ---------- RAF 主循环：帧轮播（ping-pong）+ 漂浮 ----------
+// ---------- RAF 主循环：帧轮播 + 漂浮 + 代码动画 ----------
 let floatAmp = 1; // 漂浮幅度（拖动时平滑归零，避免"拖不住、发飘"）
 function tick(now: number): void {
   requestAnimationFrame(tick);
@@ -50,21 +53,26 @@ function tick(now: number): void {
   }
 
   // 帧推进（单帧状态纯代码动画，无帧可推）
-  if (st.frames.length > 1 && now - lastFrameTime >= st.interval) {
-    lastFrameTime = now;
-    currentFrame++;
-    if (currentFrame > st.frames.length - 1) {
-      if (st.loop) {
-        currentFrame = 0;
-      } else if (st.fallback) {
-        setState(st.fallback);
-        return;
-      } else {
-        currentFrame = st.frames.length - 1;
+  let fadeMs = 240; // 状态切换：柔和变形过渡
+  if (st.frames.length > 1) {
+    fadeMs = 40; // 动作帧间：快速衔接
+    if (now - lastFrameTime >= st.interval) {
+      lastFrameTime = now;
+      currentFrame++;
+      if (currentFrame > st.frames.length - 1) {
+        if (st.loop) {
+          currentFrame = 0;
+        } else if (st.fallback) {
+          setState(st.fallback);
+          return;
+        } else {
+          currentFrame = st.frames.length - 1;
+        }
       }
     }
-    showFrame(st.frames[currentFrame]);
   }
+  // 每 tick 都确保画面是当前状态当前帧（去重由 showFrame 内部处理）
+  showFrame(st.frames[currentFrame], fadeMs);
 
   // 正弦漂浮（拖动时平滑衰减到 0，松手恢复）
   floatAmp += ((dragMoved ? 0 : 1) - floatAmp) * 0.15;
@@ -152,7 +160,7 @@ document.addEventListener('contextmenu', (e) => {
 
 // ---------- 启动 ----------
 setState('idle');
-showFrame(PET_STATES.idle.frames[0]);
+showFrame(PET_STATES.idle.frames[0], 240);
 requestAnimationFrame(tick);
 
 // 通知主进程渲染层就绪
