@@ -12,7 +12,6 @@ import { PET_STATES, FLOAT_AMPLITUDE, FLOAT_PERIOD, type PetStateId } from './pe
 // ---------- 状态 ----------
 let currentState: keyof typeof PET_STATES = 'idle';
 let currentFrame = 0;
-let frameDir = 1; // ping-pong 方向
 let lastFrameTime = 0;
 let stateStart = 0;
 let dragging = false; // 按下即 true
@@ -50,25 +49,18 @@ function tick(now: number): void {
     return;
   }
 
-  // 帧推进
-  if (now - lastFrameTime >= st.interval) {
+  // 帧推进（单帧状态纯代码动画，无帧可推）
+  if (st.frames.length > 1 && now - lastFrameTime >= st.interval) {
     lastFrameTime = now;
-    const last = st.frames.length - 1;
-    if (st.pingpong) {
-      if (currentFrame + frameDir > last) { frameDir = -1; currentFrame = last - 1; }
-      else if (currentFrame + frameDir < 0) { frameDir = 1; currentFrame = 1; }
-      else currentFrame += frameDir;
-    } else {
-      currentFrame++;
-      if (currentFrame > last) {
-        if (st.loop) {
-          currentFrame = 0;
-        } else if (st.fallback) {
-          setState(st.fallback);
-          return;
-        } else {
-          currentFrame = last;
-        }
+    currentFrame++;
+    if (currentFrame > st.frames.length - 1) {
+      if (st.loop) {
+        currentFrame = 0;
+      } else if (st.fallback) {
+        setState(st.fallback);
+        return;
+      } else {
+        currentFrame = st.frames.length - 1;
       }
     }
     showFrame(st.frames[currentFrame]);
@@ -77,7 +69,19 @@ function tick(now: number): void {
   // 正弦漂浮（拖动时平滑衰减到 0，松手恢复）
   floatAmp += ((dragMoved ? 0 : 1) - floatAmp) * 0.15;
   const floatY = Math.sin((now / FLOAT_PERIOD) * Math.PI * 2) * FLOAT_AMPLITUDE * floatAmp;
-  root.style.transform = `translateY(${floatY}px)`;
+
+  // 单帧状态的代码动画（数学连续，相位用全局 now——状态切换不跳变）
+  let sx = 1;
+  let sy = 1;
+  let rot = 0;
+  if (st.anim === 'breath') {
+    const p = Math.sin((now / 1600) * Math.PI * 2);
+    sy = 1 + 0.02 * p;
+    sx = 1 - 0.012 * p;
+  } else if (st.anim === 'sway') {
+    rot = 2.5 * Math.sin((now / 2200) * Math.PI * 2);
+  }
+  root.style.transform = `translateY(${floatY}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
 }
 
 // ---------- 状态切换 ----------
@@ -85,7 +89,6 @@ function setState(id: PetStateId): void {
   if (currentState === id) return;
   currentState = id;
   currentFrame = 0;
-  frameDir = 1;
   lastFrameTime = 0;
   stateStart = performance.now();
 }

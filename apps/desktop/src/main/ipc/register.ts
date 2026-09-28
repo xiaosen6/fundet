@@ -894,6 +894,10 @@ ${input.text}`;
   });
 
 
+  ipcMain.handle(FUNDET_INVOKE.KB_SESSION_GET, async (_e, sessionId: string) =>
+    getSessionKnowledgeBinding(sessionId),
+  );
+
   ipcMain.handle(
     FUNDET_INVOKE.KB_SESSION_SET,
     async (_e, sessionId: string, binding: { ids?: string[]; auto?: boolean; dingtalk?: boolean }) => {
