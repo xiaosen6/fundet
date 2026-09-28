@@ -12,6 +12,7 @@ import { PET_STATES, FLOAT_AMPLITUDE, FLOAT_PERIOD, type PetStateId } from './pe
 // ---------- 状态 ----------
 let currentState: keyof typeof PET_STATES = 'idle';
 let currentFrame = 0;
+let frameDir = 1; // ping-pong 方向
 let lastFrameTime = 0;
 let stateStart = 0;
 let dragging = false; // 按下即 true
@@ -21,8 +22,7 @@ const imgB = document.getElementById('pet-img-b') as HTMLImageElement;
 const root = document.getElementById('pet-root') as HTMLDivElement;
 let frontIsA = true;
 
-/** 帧展示：双 img 交叉淡化；等新帧 onload 再过渡，避免半加载闪白。
- *  fadeMs：状态切换用 240（柔和变形过渡），动作帧间用 40（快速衔接）。 */
+/** 帧展示：双 img 交叉淡化；等新帧 onload 再过渡，避免半加载闪白 */
 function showFrame(framePath: string, fadeMs: number): void {
   const front = frontIsA ? imgA : imgB;
   const back = frontIsA ? imgB : imgA;
@@ -53,20 +53,26 @@ function tick(now: number): void {
   }
 
   // 帧推进（单帧状态纯代码动画，无帧可推）
-  let fadeMs = 240; // 状态切换：柔和变形过渡
+  let fadeMs = st.fadeMs ?? 40;
   if (st.frames.length > 1) {
-    fadeMs = 40; // 动作帧间：快速衔接
     if (now - lastFrameTime >= st.interval) {
       lastFrameTime = now;
-      currentFrame++;
-      if (currentFrame > st.frames.length - 1) {
-        if (st.loop) {
-          currentFrame = 0;
-        } else if (st.fallback) {
-          setState(st.fallback);
-          return;
-        } else {
-          currentFrame = st.frames.length - 1;
+      const last = st.frames.length - 1;
+      if (st.pingpong) {
+        if (currentFrame + frameDir > last) { frameDir = -1; currentFrame = last - 1; }
+        else if (currentFrame + frameDir < 0) { frameDir = 1; currentFrame = 1; }
+        else currentFrame += frameDir;
+      } else {
+        currentFrame++;
+        if (currentFrame > last) {
+          if (st.loop) {
+            currentFrame = 0;
+          } else if (st.fallback) {
+            setState(st.fallback);
+            return;
+          } else {
+            currentFrame = last;
+          }
         }
       }
     }
@@ -97,6 +103,7 @@ function setState(id: PetStateId): void {
   if (currentState === id) return;
   currentState = id;
   currentFrame = 0;
+  frameDir = 1;
   lastFrameTime = 0;
   stateStart = performance.now();
 }

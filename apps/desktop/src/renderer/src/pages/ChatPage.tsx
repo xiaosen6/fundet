@@ -202,6 +202,11 @@ export function ChatPage(): React.JSX.Element {
     setCanvasOpen(false);
     setCanvasPath(null);
     setAttachments([]);
+    // 桌宠截图问答：强制新建会话并携带截图——截图在会话切换清空后自动恢复
+    if (pendingShotRef.current) {
+      setAttachments([pendingShotRef.current]);
+      pendingShotRef.current = null;
+    }
     setDragOver(false);
     dragCountRef.current = 0;
   }, [activeId]);
@@ -251,12 +256,15 @@ export function ChatPage(): React.JSX.Element {
     if (activeId) void ensureHistory(activeId);
   }, [activeId]);
 
-  // ---------- 桌宠联动（截图注入 + 双击新对话） ----------
+  // ---------- 桌宠联动（截图注入 + 新对话） ----------
   const workDirRef = useRef(workDir);
   workDirRef.current = workDir;
+  const pendingShotRef = useRef<SessionAttachment | null>(null);
   useEffect(() => {
     const unSubShot = window.fundet?.onPetScreenshot?.((payload) => {
       if (payload?.base64) {
+        // 截图问答 = 强制新建会话并携带截图（pendingRef 保证穿过会话切换清空）
+        createSession();
         // base64 → ArrayBuffer → stageBytes 走现有附件管线
         const bin = atob(payload.base64);
         const buf = new ArrayBuffer(bin.length);
@@ -266,7 +274,8 @@ export function ChatPage(): React.JSX.Element {
         void window.fundet
           .stageBytes(workDirRef.current, name, buf)
           .then((att) => {
-            setAttachments((prev) => [...prev, att]);
+            pendingShotRef.current = att;
+            setAttachments([att]);
             toast.success('截图已附上，请输入你的问题');
           })
           .catch((err: unknown) => {
