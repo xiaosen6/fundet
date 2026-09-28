@@ -103,11 +103,11 @@ pnpm dev:win
 在 **Windows PowerShell** 打 Windows 安装包（NSIS exe）：
 
 ```powershell
-cd D:\AI\Fundet
+cd D:\Go\fundet-buddy\apps\desktop
 pnpm dist:win
 ```
 
-产物：`apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（约 170MB）。
+产物：`apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（约 260MB，内置完整运行时）。**EBUSY 失败是 Defender 锁文件的高频项，重跑即过**。
 
 macOS（未签名，CI 或 mac 机器出包）：`Fundet-<version>-arm64.dmg` / `Fundet-<version>-x64.dmg`。**未签名应用在较新 macOS 上会报「文件已损坏」**（Gatekeeper 拦截，不是真损坏），终端执行一次即可：
 
@@ -161,20 +161,21 @@ Fundet/
 
 ```powershell
 pnpm typecheck
-pnpm test        # 183 项（node --test，desktop 侧在 apps/desktop/package.json 逐文件枚举）
+pnpm test        # 219 项（node --test，desktop 侧在 apps/desktop/package.json 逐文件枚举）
 pnpm --filter @fundet/agent-core test
 ```
 
 ---
 
-## 发版流程（0.2.19 起 GitHub 单线）
+## 发版流程（0.3.18 实践版；每步细节见 memory.md 版本行）
 
-1. 确认改动已提交、`pnpm test` 全绿；`apps/desktop/package.json` 升版本号
-2. `pnpm build && pnpm dist:win`（apps/desktop 下）——出包前确认 `apps/pi-bin`、`apps/cua-driver-bin`、`apps/git-bin` 的 `win32-x64/VERSION`（或二进制）都在；**EBUSY 失败是 Defender 锁新签名 exe 的高频项，重跑即过**（脚本带 3 次重试更稳）
-3. `memory.md` 写版本行（内容、根因、验证方式）+ 在途事项清零
-4. `git tag -a v<版本> && git push github main && git push github v<版本>`（远端名是 **github**；origin 是已弃用的 GitLab）
-5. `gh release create v<版本> dist/Fundet-Setup-*.exe dist/*.blockmap dist/latest.yml --title ... --notes ...`
-6. `gh api repos/xiaosen6/fundet/releases/tags/v<版本>` 复核非 draft、三资产齐；安装包备份到 `D:\`
+1. 发版前必跑：`node tools/check-ipc-channels.cjs`（在 apps/desktop 下；IPC 注册无测试覆盖，防静默失效）+ `pnpm test` 全绿
+2. `apps/desktop/package.json` 升版本号；`memory.md` 写版本行（内容、根因、验证方式）；提交
+3. `pnpm build && pnpm dist:win`（apps/desktop 下）
+4. **树外隔离冒烟**：把 `dist/win-unpacked` 复制到仓库树外（如 `C:\temp\iso-run`）运行——确认无启动崩溃、进程正常、关键窗口创建；冒完杀进程
+5. `git tag v<版本> && git push github main v<版本>`（远端名是 **github**）
+6. `gh release create v<版本> --draft --title ... --notes-file <notes> dist/latest.yml`；**大资产用脱离任务系统的方式上传**（PowerShell `Start-Process gh release upload v<版本> <exe> <blockmap> --clobber`），传完 `gh release edit v<版本> --draft=false`（直接在前台上传 263MB 会超时）
+7. 验证：GitHub 直连与 `gh-proxy.com` 镜像的 latest.yml 均 200 且 sha512 一致；安装包备份到 `D:\`
 
 工作节奏（用户约定）：**修复→本地提交→用户实测→用户说「发」才发版**。
 
@@ -182,6 +183,7 @@ pnpm --filter @fundet/agent-core test
 
 ## 接手必读（AI / 新人）
 
+- **入口是 `AGENTS.md`**（多数编码 AI 会自动读取）：铁律、常用命令、必读顺序都在那里，先看它。
 - **`memory.md` 是项目记忆**：版本史、在途事项、技术事实（skillhub API 真参数、Cindy asar 抽取法、dws 命令族）、踩坑记录（E2E 探针必须写文件脚本忌内联转义、冒烟种子必须 db-only 忌整库拷贝、fixture 抓包必须脱敏凭证——GitHub Push Protection 会拦）。接手先通读。
 - **代码纪律**：主进程模块间 import 用 `.ts` 扩展（node --test 直跑 TS 源）；测试注入式依赖（看 `setSkillhubDeps` / `setAutomationDeps` 范式）；表结构变更走 client.ts 幂等 raw SQL（drizzle-kit 迁移留大版本）。
 - **设计基准**：UI 对齐 Cindy（本机 `D:\AI\Cindy` 可抽 asar 对照；主题原值已抄进 globals.css）；产品名 Fundet（技术标识 appId/userData/GitHub 仓不可动——动了断存量数据与更新通道）。
