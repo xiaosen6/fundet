@@ -11,7 +11,7 @@
  * 拆分数据自 0005 迁移起积累，之前为 0 → 命中率显示「—」。
  * 无任何数据时渲染空态说明（Cindy 同款提示口径）。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { brand } from '../../../../shared/brand.ts';
 
 interface UsageRow {
@@ -219,6 +219,32 @@ export function UsageHistoryPanel(): React.JSX.Element {
     };
   }, [rows]);
 
+  // 悬停浮层（替换原生 title：即时出现、CINDY 卡样式、视口内钳制；
+  // 锚定元素矩形而非跟随光标，避免 mousemove 级重渲染）
+  const [tip, setTip] = useState<{
+    anchorTop: number;
+    anchorBottom: number;
+    centerX: number;
+    title: string;
+    rows: Array<{ color?: string; label: string; value: string }>;
+  } | null>(null);
+  const tipRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!tip || !el) return;
+    const r = el.getBoundingClientRect();
+    const left = Math.min(Math.max(8, tip.centerX - r.width / 2), window.innerWidth - r.width - 8);
+    // 优先浮在元素上方；顶部放不下换到下方
+    const top = tip.anchorTop - r.height - 10 >= 8 ? tip.anchorTop - r.height - 10 : tip.anchorBottom + 10;
+    el.style.left = `${Math.round(left)}px`;
+    el.style.top = `${Math.round(Math.max(8, top))}px`;
+  }, [tip]);
+
+  const anchorTip = (e: React.MouseEvent): { anchorTop: number; anchorBottom: number; centerX: number } => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { anchorTop: r.top, anchorBottom: r.bottom, centerX: r.left + r.width / 2 };
+  };
+
   if (view === null) {
     return (
       <div className="text-13 text-muted" style={{ paddingTop: 8 }}>
@@ -280,7 +306,10 @@ export function UsageHistoryPanel(): React.JSX.Element {
                   ) : (
                     <div
                       key={ri}
-                      title={`${cell.day} · ${fmtCompact(cell.tokens)} token`}
+                      onMouseEnter={(e) =>
+                        setTip({ ...anchorTip(e), title: `${cell.day} · ${fmtCompact(cell.tokens)} token`, rows: [] })
+                      }
+                      onMouseLeave={() => setTip(null)}
                       className="rounded-[3px]"
                       style={{
                         width: heatCell,
@@ -310,16 +339,21 @@ export function UsageHistoryPanel(): React.JSX.Element {
           <div className="flex min-w-0 flex-1 items-end gap-[3px]" style={{ height: 110 }}>
             {view.days.map((d) => {
               const h = Math.round((d.tokens / barMax) * 110);
-              const detail = [...d.models.entries()]
-                .sort((a, b) => b[1] - a[1])
-                .map(([m, t]) => `${shortModel(m)} ${fmtCompact(t)}`)
-                .join('，');
               return (
                 <div
                   key={d.day}
                   className="flex min-w-0 flex-1 flex-col justify-end"
                   style={{ height: 110 }}
-                  title={`${d.day} · ${fmtCompact(d.tokens)} token${detail ? `（${detail}）` : ''}`}
+                  onMouseEnter={(e) =>
+                    setTip({
+                      ...anchorTip(e),
+                      title: `${d.day} · ${fmtCompact(d.tokens)} token`,
+                      rows: [...d.models.entries()]
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([m, t]) => ({ color: modelColor(m), label: shortModel(m), value: fmtCompact(t) })),
+                    })
+                  }
+                  onMouseLeave={() => setTip(null)}
                 >
                   <div
                     className="flex w-full flex-col-reverse overflow-hidden rounded-[2px]"
@@ -423,6 +457,28 @@ export function UsageHistoryPanel(): React.JSX.Element {
           </tbody>
         </table>
       </SectionCard>
+
+      {/* 悬停浮层（fixed 定位，useLayoutEffect 实测尺寸后钳制进视口） */}
+      {tip && (
+        <div
+          ref={tipRef}
+          className="pointer-events-none fixed z-[90] w-max max-w-[260px] rounded-lg border border-board bg-card px-3 py-2 shadow-[var(--shadow-menu)]"
+          style={{ left: -9999, top: -9999 }}
+        >
+          <p className="text-12 font-medium tabular-nums text-primary">{tip.title}</p>
+          {tip.rows.length > 0 && (
+            <div className="mt-1 flex min-w-[180px] flex-col gap-0.5">
+              {tip.rows.map((r) => (
+                <div key={r.label} className="flex items-center gap-1.5 text-11 text-secondary">
+                  {r.color && <span className="h-2 w-2 shrink-0 rounded-[2px]" style={{ backgroundColor: r.color }} />}
+                  <span className="min-w-0 truncate">{r.label}</span>
+                  <span className="ml-auto pl-2 tabular-nums">{r.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

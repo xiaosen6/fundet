@@ -127,7 +127,10 @@ function CustomProviderDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--overlay-modal)]" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[min(520px,100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-board bg-card p-4">
+        <Dialog.Content
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed top-1/2 left-1/2 z-50 w-[min(520px,100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-board bg-card p-4"
+        >
           <Dialog.Title className="text-15 font-medium text-primary">
             {editing ? '编辑供应商' : '自定义端点'}
           </Dialog.Title>

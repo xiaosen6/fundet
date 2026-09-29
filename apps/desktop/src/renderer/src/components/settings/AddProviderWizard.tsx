@@ -147,7 +147,10 @@ export function AddProviderWizard({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--overlay-modal)]" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex h-[min(640px,calc(100vh-48px))] w-[min(520px,100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-board bg-card">
+        <Dialog.Content
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed top-1/2 left-1/2 z-50 flex h-[min(640px,calc(100vh-48px))] w-[min(520px,100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-board bg-card"
+        >
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-board px-3">
             {preset ? (
               <button type="button" onClick={() => setPreset(null)} className="text-muted hover:text-primary">

@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { Tooltip } from './ui/Tooltip';
 
 const STORAGE_DISMISSED = 'fundet.welcome-suggestions.dismissed';
 
@@ -120,15 +121,16 @@ export function WelcomeSuggestions({ onPick }: { onPick: (prompt: string) => voi
     <div className="flex w-full flex-col items-start gap-2 select-none">
       <div className="flex w-full flex-col gap-2">
         {grid.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onPick(s.prompt)}
-            className="flex h-8 w-fit items-center gap-2 text-13 text-secondary transition-colors hover:text-primary"
-          >
-            <s.Icon size={13} className="shrink-0 text-muted" />
-            {s.label}
-          </button>
+          <Tooltip key={s.id} label={s.prompt} side="top" className="text-left">
+            <button
+              type="button"
+              onClick={() => onPick(s.prompt)}
+              className="flex h-8 w-fit items-center gap-2 text-13 text-secondary transition-colors hover:text-primary"
+            >
+              <s.Icon size={13} className="shrink-0 text-muted" />
+              {s.label}
+            </button>
+          </Tooltip>
         ))}
       </div>
       <div className="mt-0.5 flex items-center gap-4 text-11 text-muted">
