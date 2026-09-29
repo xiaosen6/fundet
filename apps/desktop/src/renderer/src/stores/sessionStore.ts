@@ -699,6 +699,11 @@ export function markSessionSeen(sessionId: string | null): void {
   }
 }
 
+/** 当前注视会话（prop 链路之外的读取方用，如 MessageStream 的入场账本清理） */
+export function getFocusedSessionId(): string | null {
+  return focusedSessionId;
+}
+
 // ---------------------------------------------------------------------------
 // 对外 hook 与动作
 // ---------------------------------------------------------------------------

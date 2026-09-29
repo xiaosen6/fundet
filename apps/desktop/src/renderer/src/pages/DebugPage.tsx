@@ -1,5 +1,5 @@
 /**
- * LongMa 调试台（/debug 保留）：功能优先，样式从简。
+ * Fundet 调试台（/debug 保留）：功能优先，样式从简。
  * 阶段 2 的最小验证页，正式 UI 上线后仍用于 IPC 全链路复验：
  * - 设置区：provider CRUD + API key 写入
  * - 会话区：新建会话 → prompt → 流式打印原始 AgentEvent → 权限审批卡 → 中断

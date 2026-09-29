@@ -3,7 +3,7 @@
  *
  * 视觉复刻 Cindy 侧栏（真机参照 ref-shots/cindy-02/08，CINDY skin）：
  * - 整块 Surface 平铺，只靠右侧 1px Board 发丝线与主区分隔（无背景色分块、无阴影）。
- * - 顶行品牌位：图形 logo + LongMa 字；其下是同级等权 pill 导航行
+ * - 顶行品牌位：图形 logo + 品牌字标（brand.name）；其下是同级等权 pill 导航行
  *   （h-8 / rounded-full / px-3 / gap-2.5 / text-14，icon 15×1.8）。
  * - 会话区：小字灰标签「会话」+ 会话行（SessionItem 解剖：32px pill 行，15px 状态槽
  *   + 标题 truncate + 右侧时间槽，hover 时 120ms 让位给重命名/删除按钮）。

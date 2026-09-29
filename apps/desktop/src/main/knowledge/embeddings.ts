@@ -1,7 +1,7 @@
 /**
  * 语义检索落库/回填/查询（网关绑定层；纯函数在 embeddings-logic.ts）。
- * 设计：混合检索（FTS5 + 向量 RRF 融合）、服务不可达自动降级纯关键词、
- * 查询侧按 Qwen3-Embedding 官方建议加指令前缀。
+ * 设计：纯语义检索——查询向量与块嵌入余弦相似；嵌入服务不可达时查询抛错、
+ * 由调用方按未命中处理。查询侧按 Qwen3-Embedding 官方建议加指令前缀。
  * 注意：本文件 import 链含 electron/db，仅 vite bundle 链使用（.ts 后缀）。
  */
 import { embedTexts } from '../host/service-gateway.ts';
@@ -9,7 +9,7 @@ import { getSqlite } from '../db/client.ts';
 import { ensureTables } from './store.ts';
 import { EMBED_INSTRUCT, blobToVector, vectorToBlob } from './embeddings-logic.ts';
 
-export { EMBED_INSTRUCT, cosineSimilarity, mergeRrf, vectorToBlob, blobToVector } from './embeddings-logic.ts';
+export { EMBED_INSTRUCT, cosineSimilarity, vectorToBlob, blobToVector } from './embeddings-logic.ts';
 
 const BATCH = 24;
 
@@ -48,7 +48,7 @@ export async function embedKbChunks(
   return result;
 }
 
-/** 查询向量（带指令前缀）；失败抛错由调用方降级 */
+/** 查询向量（带指令前缀）；失败抛错由调用方按未命中处理 */
 export async function embedQuery(query: string): Promise<Float32Array> {
   const { vectors } = await embedTexts([query], { instruct: EMBED_INSTRUCT });
   return Float32Array.from(vectors[0]);
@@ -91,16 +91,4 @@ export function loadEmbeddedChunks(
     docName: r.doc_name,
     embedding: blobToVector(r.embedding),
   }));
-}
-
-/** KB 卡片语义就绪度（嵌入块/总块） */
-export function embeddingStats(kbId: string): { total: number; embedded: number } {
-  ensureTables();
-  const db = getSqlite();
-  const row = db
-    .prepare(
-      'SELECT COUNT(*) AS total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded FROM kb_chunks WHERE kb_id = ?',
-    )
-    .get(kbId) as { total: number; embedded: number | null };
-  return { total: row.total, embedded: row.embedded ?? 0 };
 }

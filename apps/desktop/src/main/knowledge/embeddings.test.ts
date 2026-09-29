@@ -1,29 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blobToVector, cosineSimilarity, mergeRrf, vectorToBlob } from './embeddings-logic.ts';
+import { blobToVector, cosineSimilarity, vectorToBlob } from './embeddings-logic.ts';
 
 test('cosineSimilarity：同向 1 / 正交 0 / 反向 -1 / 零向量 0', () => {
   assert.ok(Math.abs(cosineSimilarity([1, 2, 3], [2, 4, 6]) - 1) < 1e-6);
   assert.ok(Math.abs(cosineSimilarity([1, 0], [0, 1])) < 1e-6);
   assert.ok(Math.abs(cosineSimilarity([1, 0], [-1, 0]) + 1) < 1e-6);
   assert.equal(cosineSimilarity([0, 0], [1, 1]), 0);
-});
-
-test('mergeRrf：双榜命中者得分最高；名次越靠前贡献越大', () => {
-  const merged = mergeRrf<string>([
-    [
-      { item: 'A', key: 'a' },
-      { item: 'B', key: 'b' },
-    ],
-    [
-      { item: 'C', key: 'c' },
-      { item: 'A', key: 'a' },
-    ],
-  ]);
-  assert.equal(merged[0]?.item, 'A'); // 双榜命中
-  const a = merged.find((m) => m.item === 'A')!.score;
-  const c = merged.find((m) => m.item === 'C')!.score;
-  assert.ok(a > c); // A 两榜累计 > C 单榜第一
 });
 
 test('vector blob 往返：Float32 精确保留（2560 维模拟）', () => {

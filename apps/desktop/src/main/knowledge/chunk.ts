@@ -66,26 +66,3 @@ export function chunkText(text: string, opts?: ChunkOptions): TextChunk[] {
 
   return out.map((t, i) => ({ ord: i + 1, text: t }));
 }
-
-/** 命中片段：在原文里找第一个词的位置，取前后窗口（bigram 是原文子串，可直接定位） */
-export function buildSnippet(
-  text: string,
-  terms: string[],
-  radius = 130,
-): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
-  let first = -1;
-  let termLen = 0;
-  for (const term of terms) {
-    if (!term) continue;
-    const idx = clean.indexOf(term);
-    if (idx >= 0 && (first < 0 || idx < first)) {
-      first = idx;
-      termLen = term.length;
-    }
-  }
-  if (first < 0) return clean.slice(0, radius * 2) + (clean.length > radius * 2 ? '…' : '');
-  const start = Math.max(0, first - radius);
-  const end = Math.min(clean.length, first + termLen + radius);
-  return `${start > 0 ? '…' : ''}${clean.slice(start, end)}${end < clean.length ? '…' : ''}`;
-}

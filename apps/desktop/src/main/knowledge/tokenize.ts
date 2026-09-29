@@ -6,7 +6,6 @@
  * 用同一函数，中文双字词可命中，长词由相邻 bigram 的 OR 覆盖。
  *
  * 形态约定（FTS5 unicode61 分词器对空格切词）：
- * - 索引文本 = 全部 token 以空格连接；
  * - 查询表达式 = `"tok1" OR "tok2" OR …`（拉丁词带前缀 `*`）。
  */
 
@@ -67,13 +66,6 @@ export function tokenize(text: string): Token[] {
     i = j;
   }
   return tokens;
-}
-
-/** 索引侧：正文 → 空格连接的 token 串（存入 FTS5 的 seg 列） */
-export function indexText(text: string): string {
-  return tokenize(text)
-    .map((t) => t.text)
-    .join(' ');
 }
 
 /** 查询侧：用户原话 → FTS5 MATCH 表达式（OR 连接，拉丁词前缀匹配） */

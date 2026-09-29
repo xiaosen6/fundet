@@ -54,7 +54,7 @@ export async function startWecom(): Promise<void> {
           await ws.sendMessage(chatId, { msgtype: 'markdown', markdown: { content: chunk } });
         }
       } catch (err) {
-        console.warn('[longma:im:wecom] reply failed', err);
+        console.warn('[fundet:im:wecom] reply failed', err);
       }
     })();
   };

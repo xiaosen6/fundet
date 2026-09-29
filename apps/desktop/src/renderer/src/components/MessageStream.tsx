@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Loader2, Pen, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { DisplayItem, SessionSlice } from '../stores/sessionStore';
+import { getFocusedSessionId, type DisplayItem, type SessionSlice } from '../stores/sessionStore';
 import type { SessionAttachment } from '../../../shared/fundet-api.js';
 import { AssistantMessage } from './AssistantMessage';
 import { AttachmentThumb } from './AttachmentThumb';
@@ -552,6 +552,8 @@ function StreamBottomChip({
  * - 已入场的行进 seen 集，虚拟滚动回收重挂不重播。
  */
 const enteredRows = new Set<string>();
+/** enteredRows 归属会话（模块级）：切会话整体清空；同会话内不清（虚拟化重挂不重播靠它） */
+let enteredRowsSession: string | null = null;
 /** 一次渲染新增 ≤4 行才算「尾部追加」；更大批次按历史/重建处理 */
 const APPEND_BATCH_MAX = 4;
 
@@ -796,6 +798,16 @@ export function MessageStream({
     console.debug('[perf] stream first-paint', Math.round(performance.now() - historyLoadMark.at), 'ms');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slice.historyLoaded]);
+
+  // 切会话清空入场账本（focusedSessionId 由 ChatPage 切会话时 markSessionSeen 更新，
+  // 可能晚一拍——新会话的行 id 本不在账本里，晚清不影响正确性）
+  useEffect(() => {
+    const sid = getFocusedSessionId();
+    if (sid !== null && sid !== enteredRowsSession) {
+      enteredRowsSession = sid;
+      enteredRows.clear();
+    }
+  });
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">

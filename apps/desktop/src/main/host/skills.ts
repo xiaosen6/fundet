@@ -171,7 +171,7 @@ function bundledSkillsRoot(): string {
 export function ensureBundledSkills(): void {
   const srcRoot = bundledSkillsRoot();
   if (!srcRoot || !fs.existsSync(srcRoot)) {
-    console.warn('[longma:skills] 找不到预制技能目录', { srcRoot, packaged: app.isPackaged });
+    console.warn('[fundet:skills] 找不到预制技能目录', { srcRoot, packaged: app.isPackaged });
     return;
   }
   const destRoot = userSkillsRoot();
@@ -193,9 +193,9 @@ export function ensureBundledSkills(): void {
     copyDir(src, dest);
     fs.writeFileSync(path.join(dest, BUNDLED_MARKER), `${srcRev}\n`, 'utf-8');
     count += 1;
-    console.log(`[longma:skills] 已预置技能 ${ent.name} → ${dest}`);
+    console.log(`[fundet:skills] 已预置技能 ${ent.name} → ${dest}`);
   }
-  console.log(`[longma:skills] 预制技能就绪 ${count} 个`, { srcRoot, destRoot });
+  console.log(`[fundet:skills] 预制技能就绪 ${count} 个`, { srcRoot, destRoot });
 }
 
 function readRevision(dir: string): string | null {

@@ -54,5 +54,3 @@ export const IDLE_HOP_EVERY: [number, number] = [15000, 30000];
 /** 正弦漂浮参数（极轻——待机以静为主） */
 export const FLOAT_AMPLITUDE = 3;
 export const FLOAT_PERIOD = 3200;
-/** 尺寸（逻辑 px） */
-export const PET_SIZE = 128;

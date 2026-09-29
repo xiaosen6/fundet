@@ -1,5 +1,5 @@
 # 日常守门：push / PR 跑 typecheck + 全部单测（桌面 node:test + agent-core vitest）。
-# 只做代码检查不出安装包；发版构建在 release.yml，手动 Mac 包在 dist-mac.yml。
+# 只做代码检查不出安装包；发版构建在 release.yml。
 # agent-core 的 pi 集成测试在二进制缺失时自动 skip（CI 不下载 pi-bin）。
 name: ci
 

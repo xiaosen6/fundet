@@ -96,7 +96,6 @@ export function ChatInput({
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
 
   // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
-  const voiceEnabled = true as const;
   const insertAtCursor = useCallback(
     (text: string): void => {
       const el = textareaRef.current;

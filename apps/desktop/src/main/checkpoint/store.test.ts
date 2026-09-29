@@ -20,7 +20,7 @@ try {
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fundet-cp-root-'));
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fundet-cp-work-'));
-process.env.FUNET_CHECKPOINT_ROOT = root;
+process.env.FUNDET_CHECKPOINT_ROOT = root;
 
 before(() => {
   if (!gitOk) return;

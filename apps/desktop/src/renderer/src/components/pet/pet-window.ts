@@ -1,5 +1,5 @@
 /**
- * PetWindow 渲染层：密集帧轮播（ping-pong）+ 漂浮 + 交互。
+ * PetWindow 渲染层：帧动画 + 漂浮 + 交互。
  * 挂载在独立 HTML（pet.html），非主窗口 React 树。
  *
  * 穿透模型：主进程 setIgnoreMouseEvents(true,{forward:true}) 时只有 mousemove 能到达页面，
@@ -19,7 +19,6 @@ import {
 // ---------- 状态 ----------
 let currentState: keyof typeof PET_STATES = 'idle';
 let currentFrame = 0;
-let frameDir = 1; // ping-pong 方向
 let lastFrameTime = 0;
 let stateStart = 0;
 let dragging = false; // 按下即 true
@@ -119,7 +118,6 @@ function setState(id: PetStateId): void {
   if (currentState === id) return;
   currentState = id;
   currentFrame = 0;
-  frameDir = 1;
   lastFrameTime = 0;
   stateStart = performance.now();
 }

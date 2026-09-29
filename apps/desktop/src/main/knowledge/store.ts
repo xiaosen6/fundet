@@ -1,10 +1,11 @@
 /**
- * 知识库存储：KB / 文档 / 分块（FTS5 索引）与会话绑定。
+ * 知识库存储：KB / 文档 / 分块与会话绑定。
  *
- * 表结构走 raw SQL 幂等创建（FTS5 虚表不进 drizzle 迁移）：
- * - knowledge_bases / knowledge_docs / kb_chunks（原文与元数据）
- * - kb_fts：FTS5 虚表（seg 列存 bigram 分词文本，unicode61 切词），
- *   rowid 与 kb_chunks.chunk_id 对齐；检索命中后回 kb_chunks 取原文片段。
+ * 表结构走 raw SQL 幂等创建（不进 drizzle 迁移）：
+ * - knowledge_bases / knowledge_docs / kb_chunks（原文、元数据与嵌入向量 BLOB）
+ *
+ * 检索为纯语义：查询向量与块嵌入余弦相似取 TopN（见 embeddings.ts）；
+ * 嵌入服务不可达或块未嵌入时返回未命中。
  *
  * 会话绑定存 settings 表（key = kb.session.<sessionId>），主进程装配会话时
  * 读取以决定是否注入 knowledge MCP。
@@ -54,7 +55,8 @@ export function ensureTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_kb_chunks_kb ON kb_chunks(kb_id);
     CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
-    CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(seg, tokenize='unicode61');
+    -- 清 0.3.16 前的 kb_fts 残表（纯语义检索后无消费者）
+    DROP TABLE IF EXISTS kb_fts;
   `);
   // 早期建表无参数列：逐列补齐（幂等）
   const cols = new Set(
@@ -190,7 +192,6 @@ export function createKnowledgeBase(
 export function deleteKnowledgeBase(id: string): void {
   ensureTables();
   const db = getSqlite();
-  db.prepare('DELETE FROM kb_fts WHERE rowid IN (SELECT chunk_id FROM kb_chunks WHERE kb_id = ?)').run(id);
   db.prepare('DELETE FROM kb_chunks WHERE kb_id = ?').run(id);
   db.prepare('DELETE FROM knowledge_docs WHERE kb_id = ?').run(id);
   db.prepare('DELETE FROM knowledge_bases WHERE id = ?').run(id);
@@ -229,7 +230,7 @@ export function listKnowledgeDocs(kbId: string): KnowledgeDocView[] {
   }));
 }
 
-/** 导入一份已提取的正文：分块 → 入库 → 建 FTS 索引（单事务）。 */
+/** 导入一份已提取的正文：分块 → 入库（单事务）。 */
 export function importDocumentChunks(kbId: string, name: string, text: string): { docId: string; chunks: number } {
   ensureTables();
   const db = getSqlite();
@@ -292,7 +293,6 @@ export function getKnowledgeNoteContent(docId: string): string | null {
 export function removeKnowledgeDoc(docId: string): void {
   ensureTables();
   const db = getSqlite();
-  db.prepare('DELETE FROM kb_fts WHERE rowid IN (SELECT chunk_id FROM kb_chunks WHERE doc_id = ?)').run(docId);
   db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?').run(docId);
   db.prepare('DELETE FROM knowledge_docs WHERE id = ?').run(docId);
 }

@@ -19,26 +19,6 @@ export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): nu
   return dot / Math.sqrt(na * nb);
 }
 
-export interface RrfCandidate<T> {
-  item: T;
-  key: string;
-}
-
-/** RRF 融合：k=60 惯例；多榜命中者按名次累加 1/(k+rank) */
-export function mergeRrf<T>(lists: Array<Array<RrfCandidate<T>>>, k = 60): Array<{ item: T; score: number }> {
-  const scores = new Map<string, { item: T; score: number }>();
-  for (const list of lists) {
-    list.forEach((entry, idx) => {
-      const rank = idx + 1;
-      const add = 1 / (k + rank);
-      const prev = scores.get(entry.key);
-      if (prev) prev.score += add;
-      else scores.set(entry.key, { item: entry.item, score: add });
-    });
-  }
-  return [...scores.values()].sort((a, b) => b.score - a.score);
-}
-
 export function vectorToBlob(vec: number[]): Uint8Array {
   const f = new Float32Array(vec);
   return new Uint8Array(f.buffer, f.byteOffset, f.byteLength);

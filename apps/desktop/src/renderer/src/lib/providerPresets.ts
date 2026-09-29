@@ -10,7 +10,7 @@ export interface ProviderPreset {
   models: Array<{ id: string; reasoning?: boolean; thinkingLevelMap?: Record<string, string | null>; contextWindow?: number; maxTokens?: number; input?: Array<'text' | 'image'> }>;
 }
 
-/** Cindy catalog/providers.json 的预设，收成 LongMa 单 runtime（Pi BYOK）。 */
+/** Cindy catalog/providers.json 的预设，收成 Fundet 单 runtime（Pi BYOK）。 */
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     "id": "openai-api",

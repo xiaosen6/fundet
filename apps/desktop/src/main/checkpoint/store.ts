@@ -92,7 +92,7 @@ export function isCheckpointAvailable(): boolean {
  * （单测注入临时目录——此时不触 Electron，可在 node --test 里直跑真实 git 流）。
  */
 function checkpointsRoot(): string {
-  const override = process.env.FUNET_CHECKPOINT_ROOT;
+  const override = process.env.FUNDET_CHECKPOINT_ROOT;
   if (override) return override;
   // 惰性：node --test（注入了覆盖根目录）时不触 Electron 运行时
   const { app } = requireElectron('electron') as typeof import('electron');

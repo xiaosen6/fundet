@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { tokenize, indexText, matchExpression, queryTerms } from './tokenize.ts';
-import { chunkText, buildSnippet } from './chunk.ts';
+import { tokenize, matchExpression, queryTerms } from './tokenize.ts';
+import { chunkText } from './chunk.ts';
 
 describe('knowledge tokenize（CJK bigram）', () => {
   it('中文连续段切成重叠 bigram', () => {
@@ -23,8 +23,7 @@ describe('knowledge tokenize（CJK bigram）', () => {
     ]);
   });
 
-  it('indexText 空格连接；matchExpression OR 表达式带引号与拉丁前缀', () => {
-    assert.equal(indexText('退货流程'), '退货 货流 流程');
+  it('matchExpression OR 表达式带引号与拉丁前缀', () => {
     assert.equal(matchExpression('退货流程'), '"退货" OR "货流" OR "流程"');
     assert.equal(matchExpression('error'), '"error"*');
     assert.equal(matchExpression('！！！'), null);
@@ -60,19 +59,5 @@ describe('knowledge chunkText', () => {
     assert.deepEqual(chunks.map((c) => c.ord), [1]);
     assert.ok(chunks[0]!.text.includes('甲。'));
     assert.ok(chunks[0]!.text.includes('乙。'));
-  });
-});
-
-describe('buildSnippet', () => {
-  it('以首个命中词为中心取窗口，带省略号', () => {
-    const text = '前'.repeat(300) + '退货流程说明' + '后'.repeat(300);
-    const snip = buildSnippet(text, ['退货'], 60);
-    assert.ok(snip.startsWith('…') && snip.endsWith('…'));
-    assert.ok(snip.includes('退货流程'));
-  });
-
-  it('无命中回退开头窗口', () => {
-    const snip = buildSnippet('abcdef'.repeat(50), ['不存在'], 30);
-    assert.ok(snip.startsWith('abcdef'));
   });
 });
