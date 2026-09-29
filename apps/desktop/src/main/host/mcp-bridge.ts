@@ -87,6 +87,8 @@ class StdioMcpHttpProxy {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: this.spawnOpts?.env ?? process.env,
       ...(this.spawnOpts?.cwd ? { cwd: this.spawnOpts.cwd } : {}),
+      // #5173 同构：stdio MCP server 多为控制台二进制，不隐藏会派生 conhost.exe
+      windowsHide: true,
     });
     this.child.on('error', (err) => {
       this.logger.warn('mcp stdio 子进程启动失败', { name: this.config.name, error: String(err) });
@@ -289,7 +291,7 @@ export async function probeMcpServer(
     }
   }
   // stdio：spawn → initialize → 等同 id 响应 → 杀进程
-  const child = crossSpawn(config.command!, config.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = crossSpawn(config.command!, config.args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   return await new Promise((resolve) => {
     let settled = false;
     const finish = (r: { ok: boolean; error?: string }): void => {

@@ -32,7 +32,7 @@ export function resolveCuaDriverCommand(): string | null {
 export function disableCuaDriverTelemetry(command: string): void {
   try {
     const { spawn } = require('node:child_process') as typeof import('node:child_process');
-    const child = spawn(command, ['telemetry', 'disable'], { stdio: 'ignore' });
+    const child = spawn(command, ['telemetry', 'disable'], { stdio: 'ignore', windowsHide: true });
     const timer = setTimeout(() => child.kill(), 20000);
     child.on('exit', () => clearTimeout(timer));
     child.on('error', () => clearTimeout(timer));

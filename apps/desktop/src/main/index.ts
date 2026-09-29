@@ -257,7 +257,7 @@ function bootstrap(): void {
   // 与其等用户第一次发消息报错，不如启动就讲清楚。正常机器这一步 <500ms。
   void (async () => {
     const { spawn } = await import('node:child_process');
-    const child = spawn(resolvePiBinaryPath(), ['--version'], { stdio: 'ignore' });
+    const child = spawn(resolvePiBinaryPath(), ['--version'], { stdio: 'ignore', windowsHide: true });
     child.on('exit', (code) => {
       if (code === 3221225501) {
         dialog.showErrorBox(
