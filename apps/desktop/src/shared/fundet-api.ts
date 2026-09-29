@@ -594,6 +594,13 @@ export interface FundetApi {
   onInteractionRequest(cb: (payload: InteractionRequestPayload) => void): () => void;
   onInteractionDismissed(cb: (payload: InteractionDismissedPayload) => void): () => void;
   onSessionListChanged(cb: () => void): () => void;
+  /** 完成提醒：点击系统通知 → 切到该会话（主进程已聚焦主窗） */
+  onNotifyOpenSession(cb: (payload: { sessionId: string }) => void): () => void;
+  /** 完成提醒提示音（渲染层 WebAudio 播放） */
+  onNotifyChime(cb: () => void): () => void;
+  /** 完成提醒开关（设置 → 桌宠） */
+  notifyEnabledGet(): Promise<{ enabled: boolean }>;
+  notifyEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
   onKbEmbedProgress(cb: (payload: KbImportProgress) => void): () => void;

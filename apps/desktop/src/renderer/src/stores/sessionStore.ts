@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
 import { classifyRetryableError, retryDelayMs } from '../lib/errorRetry';
+import { playCompletionChime } from '../lib/chime';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
 import type {
   MessageView,
@@ -640,6 +641,8 @@ export function initGlobalListeners(): void {
   window.fundet.onSessionListChanged(() => {
     void refreshSessionList();
   });
+  // 完成提醒提示音（主窗渲染层播放；主进程已按开关与失焦态门控并节流）
+  window.fundet.onNotifyChime(() => playCompletionChime());
 }
 
 // ---------------------------------------------------------------------------

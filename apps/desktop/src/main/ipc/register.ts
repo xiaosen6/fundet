@@ -125,6 +125,7 @@ import {
 import type { AutomationInput } from '../../shared/automations.ts';
 import { probeMcpServer } from '../host/mcp-bridge.js';
 import { getPiVersionInfo } from '../host/pi-version.js';
+import { COMPLETION_NOTIFY_SETTING, notifyTurnFinished } from '../host/completion-notify.js';
 import {
   createKnowledgeBase,
   updateKnowledgeBaseParams,
@@ -161,6 +162,31 @@ import type {
 
 /** permission 审批的兜底超时：超时自动 deny，防 pi 侧永久挂起 */
 const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * 完成提醒（0.3.23）：turn 终态统一口径（用户拍板不区分 done/出错）。
+ * 终止 error 判定与 events.ts 语义对齐：先看 isTerminal，缺省但有 willRetry
+ * 时用 !willRetry 兜底，两者都缺的老事件按终止处理。
+ */
+function maybeNotifyCompletion(sessionId: string, event: AgentEvent): void {
+  let summary = '';
+  if (event.type === 'done') {
+    const data = event.data as { result?: string } | undefined;
+    if (typeof data?.result === 'string') summary = data.result;
+  } else if (event.type === 'error') {
+    const data = event.data as { isTerminal?: boolean; willRetry?: boolean; message?: string } | undefined;
+    const terminal =
+      data?.isTerminal === true ||
+      (data?.isTerminal === undefined && data?.willRetry !== true);
+    if (!terminal) return;
+    if (typeof data?.message === 'string') summary = data.message;
+  } else {
+    return;
+  }
+  const title =
+    getDb().select({ title: sessions.title }).from(sessions).where(eq(sessions.id, sessionId)).get()?.title ?? '';
+  notifyTurnFinished(sessionId, title, summary.trim());
+}
 
 interface PendingInteraction {
   sessionId: string;
@@ -274,6 +300,7 @@ export function wireSession(session: Session): void {
     broadcast(FUNDET_PUSH.AGENT_EVENT, { sessionId: session.id, event });
     // 桌宠状态桥（0.3.18）：agent 事件 → 桌宠动作
     bridgeAgentEvent(event.type, event.data as Record<string, unknown>);
+    maybeNotifyCompletion(session.id, event);
   });
 
   session.onStatusChange((status) => {
@@ -751,6 +778,13 @@ ${input.text}`;
   // ---------- providers ----------
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_LIST, async () => listProviders());
   ipcMain.handle(FUNDET_INVOKE.PI_VERSION_INFO, () => getPiVersionInfo());
+  ipcMain.handle(FUNDET_INVOKE.NOTIFY_ENABLED_GET, () => ({
+    enabled: getBoolSetting(COMPLETION_NOTIFY_SETTING, true),
+  }));
+  ipcMain.handle(FUNDET_INVOKE.NOTIFY_ENABLED_SET, (_e, enabled: boolean) => {
+    setBoolSetting(COMPLETION_NOTIFY_SETTING, Boolean(enabled));
+    return { ok: true };
+  });
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) =>
     createProvider(input),

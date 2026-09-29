@@ -131,6 +131,8 @@ export const FUNDET_INVOKE = {
   PI_VERSION_INFO: 'pi:version-info',
   APP_GET_LOGIN_ITEM: 'app:get-login-item',
   APP_SET_LOGIN_ITEM: 'app:set-login-item',
+  NOTIFY_ENABLED_GET: 'notify:enabled-get',
+  NOTIFY_ENABLED_SET: 'notify:enabled-set',
   FIND_START: 'find:start',
   FIND_STOP: 'find:stop',
 } as const;
@@ -158,4 +160,8 @@ export const FUNDET_PUSH = {
   UPDATE_STATUS_CHANGED: 'update:status-changed',
   /** 页内搜索结果（webContents found-in-page）：payload { activeMatchOrdinal, matches, finalUpdate } */
   FIND_RESULT: 'find:result',
+  /** 完成提醒：点击系统通知 → 主窗切到该会话：payload { sessionId } */
+  NOTIFY_OPEN_SESSION: 'notify:open-session',
+  /** 完成提醒提示音（主窗渲染层 WebAudio 播放）：payload {} */
+  NOTIFY_CHIME: 'notify:chime',
 } as const;

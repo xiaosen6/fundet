@@ -197,6 +197,8 @@ const api: FundetApi = {
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
   loginItemEnabled: () => invoke(FUNDET_INVOKE.APP_GET_LOGIN_ITEM),
   setLoginItemEnabled: (enabled) => invoke(FUNDET_INVOKE.APP_SET_LOGIN_ITEM, enabled),
+  notifyEnabledGet: () => invoke(FUNDET_INVOKE.NOTIFY_ENABLED_GET),
+  notifyEnabledSet: (enabled) => invoke(FUNDET_INVOKE.NOTIFY_ENABLED_SET, enabled),
   findInPage: (text, opts) => invoke(FUNDET_INVOKE.FIND_START, text, opts),
   stopFindInPage: () => invoke(FUNDET_INVOKE.FIND_STOP),
 
@@ -236,6 +238,8 @@ const api: FundetApi = {
   onInteractionDismissed: (cb) =>
     subscribe<InteractionDismissedPayload>(FUNDET_PUSH.INTERACTION_DISMISSED, cb),
   onSessionListChanged: (cb) => subscribe(FUNDET_PUSH.SESSION_LIST_CHANGED, cb),
+  onNotifyOpenSession: (cb) => subscribe(FUNDET_PUSH.NOTIFY_OPEN_SESSION, cb),
+  onNotifyChime: (cb) => subscribe(FUNDET_PUSH.NOTIFY_CHIME, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
   onDwsInstallProgress: (cb) => subscribe(FUNDET_PUSH.DWS_INSTALL_PROGRESS, cb),

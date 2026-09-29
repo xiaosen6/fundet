@@ -298,6 +298,16 @@ export function ChatPage(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 完成提醒：点击系统通知 → 切到对应会话（主进程已聚焦主窗；顺手清关注态）
+  useEffect(() => {
+    return window.fundet?.onNotifyOpenSession?.(({ sessionId }) => {
+      if (!sessionId) return;
+      markSessionSeen(sessionId);
+      setActiveId(sessionId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---------- 会话动作 ----------
 
   // 新建会话只建本地草稿（不调 session:create、不 spawn pi）；

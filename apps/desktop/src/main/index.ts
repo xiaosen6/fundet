@@ -326,6 +326,8 @@ function bootstrap(): void {
 // 0.3.0 起品牌更名「未灵」：目录与自启动键名仍钉死 Fundet——存量装机数据零迁移、
 // HKCU Run 键与 installer.nsh 卸载清理保持对齐。
 app.setName('Fundet');
+// Windows 系统通知（完成提醒）需要 AUMID 与安装器Shortcut 一致，否则 toast 不显示
+app.setAppUserModelId('com.fundet.app');
 const brandUserData = process.env.FUNDET_USER_DATA
   ? path.resolve(process.env.FUNDET_USER_DATA)
   : path.join(app.getPath('appData'), 'Fundet');
