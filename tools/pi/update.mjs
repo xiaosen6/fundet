@@ -306,7 +306,10 @@ async function downloadAsset(meta, version, platformKey, assetName, finalBinName
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
 
-  const url = asset.browser_download_url;
+  // GitHub 直连常断，FUNDET_GH_PROXY 前缀镜像（同 tools/git/update.mjs）：
+  // FUNDET_GH_PROXY=https://gh-proxy.com/ node tools/pi/update.mjs ...
+  const proxyPrefix = process.env.FUNDET_GH_PROXY?.replace(/\/+$/, '') ?? '';
+  const url = proxyPrefix ? `${proxyPrefix}/${asset.browser_download_url}` : asset.browser_download_url;
   const expectedDigest = asset.digest;
   if (!expectedDigest) {
     throw new Error(
@@ -472,7 +475,7 @@ async function main() {
     console.log('');
     console.log('=== Done ===');
     console.log(`Version: ${pinnedVersion}`);
-    console.log(`Output:  ${path.join(UPDATES_DIR, requestedVersion)}`);
+    console.log(`Output:  ${path.join(UPDATES_DIR, requestedVersion ?? pinnedVersion)}`);
     console.log(`Bin:     ${BIN_DIR}`);
     return;
   }
