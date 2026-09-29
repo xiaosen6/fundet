@@ -1,12 +1,14 @@
 /**
  * URL 快照的抓取与安全前置：只允许公网 http(s)，解析全部地址逐个校验
- * （拦 localhost / RFC1918 / 链路本地 / 云元数据），对齐 §4.4 SSRF 立场。
+ * （拦 localhost / RFC1918 / 链路本地 / 云元数据），重定向逐跳复审
+ * （redirect:'follow' 不复审，公网 302 → 内网即可绕过）。对齐 §4.4 SSRF 立场。
  * 正文用 html-to-text 提取（纯字符串，无 DOM 依赖）。
  */
 import dns from 'node:dns/promises';
 
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_BYTES = 3 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
 
 function isPrivateAddress(address: string): boolean {
   if (address === '::1' || address === '::') return true;
@@ -42,8 +44,8 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
     throw new Error('禁止抓取本机/内网地址');
   }
-  // 字面 IP 直接判；域名逐条解析后判（防 DNS rebind 只查一次不够，但快照场景
-  // 单次校验 + 不复用连接已是合理防线）
+  // 字面 IP 直接判；域名逐条解析后判。每跳重定向都会重新过本校验；
+  // DNS rebind 的 lookup→connect 间隙仍是理论缺口（快照场景不复用连接）
   if (/^[\d.]+$/.test(host)) {
     if (isPrivateAddress(host)) throw new Error('禁止抓取内网/保留地址');
     return url;
@@ -63,14 +65,40 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
   return url;
 }
 
+type FetchLike = (url: URL, init: RequestInit) => Promise<Response>;
+
+/**
+ * 手动跟随重定向，每一跳重新过 assertPublicHttpUrl；总时限 FETCH_TIMEOUT_MS
+ * 不随跳数放大。fetchImpl 可注入（测试）。
+ */
+export async function fetchGuarded(
+  raw: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<{ res: Response; url: URL }> {
+  let current = await assertPublicHttpUrl(raw);
+  const deadline = Date.now() + FETCH_TIMEOUT_MS;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await fetchImpl(current, {
+      headers: { 'user-agent': 'Mozilla/5.0 (Fundet knowledge snapshot)' },
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+      redirect: 'manual',
+    });
+    if (res.status < 300 || res.status >= 400) return { res, url: current };
+    const loc = res.headers.get('location');
+    if (!loc) return { res, url: current };
+    try {
+      await res.body?.cancel();
+    } catch {
+      /* 3xx 响应体无价值 */
+    }
+    current = await assertPublicHttpUrl(new URL(loc, current).toString());
+  }
+  throw new Error(`重定向次数过多（>${MAX_REDIRECTS}）`);
+}
+
 /** 抓取页面并提取正文（标题 + 纯文本） */
 export async function fetchPageText(raw: string): Promise<{ title: string; text: string }> {
-  const url = await assertPublicHttpUrl(raw);
-  const res = await fetch(url, {
-    headers: { 'user-agent': 'Mozilla/5.0 (Fundet knowledge snapshot)' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    redirect: 'follow',
-  });
+  const { res, url } = await fetchGuarded(raw);
   if (!res.ok) throw new Error(`抓取失败：HTTP ${res.status}`);
   const len = Number(res.headers.get('content-length') ?? '0');
   if (len > MAX_BYTES) throw new Error('页面过大（>3MB）');
