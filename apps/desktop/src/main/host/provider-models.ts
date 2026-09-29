@@ -83,6 +83,14 @@ export async function fetchProviderModels(input: FetchModelsInput): Promise<Fetc
   if (!apiKey && input.providerId) {
     apiKey = readProviderKey(input.providerId)?.trim() ?? '';
   }
+  // Key 里混入中文/全角/不可见字符会让 Authorization 头构造直接被 fetch 拒绝
+  // （ByteString 错误，用户实报：复制 Key 时带上了说明文字）——提前拦下给准确指引
+  if (/[^\x21-\x7e]/.test(apiKey)) {
+    return {
+      ok: false,
+      error: 'API Key 含有无效字符（中文、空格或全角符号等）。请重新复制 Key——它只应包含英文、数字和符号，不要带上说明文字或多余内容',
+    };
+  }
   const headers: Record<string, string> = { accept: 'application/json' };
   if (input.api === 'anthropic-messages') {
     headers['anthropic-version'] = '2023-06-01';
@@ -98,7 +106,12 @@ export async function fetchProviderModels(input: FetchModelsInput): Promise<Fetc
   try {
     res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   } catch (err) {
-    return { ok: false, error: `无法连接列模型端点：${err instanceof Error ? err.message : String(err)}` };
+    const msg = err instanceof Error ? err.message : String(err);
+    // ByteString 类错误 = 头里有非 Latin1 字符，只可能来自 Key（URL 已先行校验）
+    if (/ByteString|greater than 255/i.test(msg)) {
+      return { ok: false, error: 'API Key 含有无效字符（中文、空格或全角符号等）。请重新复制 Key——它只应包含英文、数字和符号' };
+    }
+    return { ok: false, error: `无法连接列模型端点：${msg}` };
   }
   if (!res.ok) {
     let body = '';

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Switch from '@radix-ui/react-switch';
-import { Eye, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Eye, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, ScanSearch, Trash2 } from 'lucide-react';
 import type { ProviderApi, ProviderView } from '../../../../shared/fundet-api.js';
 import { formatTokenCount, preferScannedContextWindow } from '../../../../shared/context-window.js';
 import { cn } from '../../lib/cn';
@@ -151,8 +151,23 @@ function CustomProviderDialog({
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
-            <button type="button" className="self-start text-12 text-secondary" onClick={() => void scan()}>
-              {fetching ? '扫描中…' : '扫描模型'}
+            <button
+              type="button"
+              className="self-start flex h-8 items-center gap-1.5 rounded-full border border-board px-3 text-12 font-medium text-secondary transition-colors hover:bg-hover disabled:opacity-40"
+              disabled={fetching}
+              onClick={() => void scan()}
+            >
+              {fetching ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  扫描中…
+                </>
+              ) : (
+                <>
+                  <ScanSearch size={13} />
+                  扫描模型
+                </>
+              )}
             </button>
             <div className="flex max-h-[180px] flex-col gap-1.5 overflow-y-auto">
               {models.map((m, i) => (
