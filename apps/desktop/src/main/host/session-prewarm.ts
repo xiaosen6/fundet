@@ -83,7 +83,13 @@ async function discardPrewarm(sessionId: string): Promise<void> {
 export async function prewarmSession(input: PrewarmInput): Promise<boolean> {
   if (!deps) return false;
   const existing = records.get(input.sessionId);
-  const fingerprint = computePrewarmFingerprint(input);
+  // 与 attach 侧同口径（带真实 KB 绑定与 browser/computer 开关）——否则开了
+  // 这些开关的用户预热必指纹失配被弃（0.3.13 引入的静默回归）
+  const fingerprint = computePrewarmFingerprint({
+    ...input,
+    getBinding: getSessionKnowledgeBinding,
+    boolSetting: getBoolSetting,
+  });
   if (existing && existing.fingerprint === fingerprint) return true;
 
   const alive = getHost().maker.getSession(input.sessionId);
