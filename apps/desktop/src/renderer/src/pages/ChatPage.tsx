@@ -225,8 +225,25 @@ export function ChatPage(): React.JSX.Element {
     setCanvasOpen(true);
   }, []);
 
+  // providers 就绪门控：启动后 listProviders 异步返回前的窗口期里，桌宠等
+  // 入口触发 createSession 会误报「请先配置 provider」（2026-09-29 用户实报）
+  const providersReadyRef = useRef(false);
+  const providersWaitersRef = useRef<Array<() => void>>([]);
+  const whenProvidersReady = useCallback((): Promise<void> => {
+    if (providersReadyRef.current) return Promise.resolve();
+    // 8s 兜底：加载失败也放行，让 createSession 给出准确提示
+    return new Promise((resolve) => {
+      providersWaitersRef.current.push(resolve);
+      window.setTimeout(resolve, 8000);
+    });
+  }, []);
+
   useEffect(() => {
-    void window.fundet.listProviders().then(setProviders);
+    void window.fundet.listProviders().then((p) => {
+      setProviders(p);
+      providersReadyRef.current = true;
+      providersWaitersRef.current.splice(0).forEach((w) => w());
+    });
     void (async () => {
       if (getDefaultWorkDir().trim()) return;
       const home = await window.fundet.userHome();
@@ -266,9 +283,10 @@ export function ChatPage(): React.JSX.Element {
   // 首渲染的空 providers 闭包进去（桌宠左键/截图的强制新建会话会静默失效）
   const createSessionRef = useRef<() => void>(() => undefined);
   useEffect(() => {
-    const unSubShot = window.fundet?.onPetScreenshot?.((payload) => {
+    const unSubShot = window.fundet?.onPetScreenshot?.(async (payload) => {
       if (payload?.base64) {
         // 截图问答 = 强制新建会话并携带截图（pendingRef 保证穿过会话切换清空）
+        await whenProvidersReady(); // 启动竞态门控：providers 未载完先等（8s 兜底）
         createSessionRef.current();
         // base64 → ArrayBuffer → stageBytes 走现有附件管线
         const bin = atob(payload.base64);
@@ -289,7 +307,7 @@ export function ChatPage(): React.JSX.Element {
       }
     });
     const unSubChat = window.fundet?.onPetNewChat?.(() => {
-      createSession();
+      void whenProvidersReady().then(() => createSessionRef.current());
     });
     return () => {
       unSubShot?.();

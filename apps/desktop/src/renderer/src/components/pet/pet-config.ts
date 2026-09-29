@@ -38,11 +38,12 @@ export const PET_STATES: Record<PetStateId, PetStateVisual> = {
   thinking: { frames: [frame('thinking_00')], interval: 0, loop: true, anim: 'sway' },
   notify: { frames: frames('notify', 11), interval: 80, loop: false, fallback: 'idle' },
   // 拖动中：向右奔跑循环（向左拖时整体水平翻转），素材面朝右。
-  // 全 14 帧 @75ms 硬切（16ms 近无过渡）：帧率优先的丝滑档——快速动作下
-  // 生图帧形变被运动感掩盖（抽稀档 7帧@110ms 系 0.3.18 防重影的保守选择，
-  // 2026-09-29 用户要更丝滑后恢复全帧提速；闪烁/重影由用户实测裁决）
+  // 素材 v3（2026-09-29 夜，用户验收）：rung 6 帧——IP 锚定两步法（idle_08 →
+  // 黄金参考 ip-canon → 逐姿势 img2img）生成：腿步态相位 + 手臂对侧摆 +
+  // 形象为公司 IP（此前纯 t2i 版形象漂移被否决；img2img 版胳膊被参考锚定被否决，
+  // 两步法同时解决）。75ms 硬切。旧 run 14 帧（微动版）保留可回滚。
   running: {
-    frames: frames('run', 14),
+    frames: frames('rung', 6),
     interval: 75,
     loop: true,
     fadeMs: 16,
