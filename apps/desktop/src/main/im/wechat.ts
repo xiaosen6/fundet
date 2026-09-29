@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { TencentIlinkTransport } from './wechat-ilink/transport.ts';
 import type { WechatAuthorizationObserver, WechatCredentials } from './wechat-ilink/types.ts';
 import { chunkImText, handleImMessage } from './dispatcher.ts';
+import { composeInboundText, sniffImageMime, splitInboundMedia } from './wechat-inbound.ts';
 import { clearImCreds, readImCreds, writeImCreds } from './secrets.ts';
 import { setImRuntime } from './runtime.ts';
 import { getSetting, setSetting } from '../db/settings.js';
@@ -53,38 +54,70 @@ async function pollLoop(transport: TencentIlinkTransport, stored: WechatCredenti
   let cursor = getSetting(CURSOR_KEY) ?? '';
   const contextByPeer = new Map<string, string>();
   await transport.notifyStart(ac.signal);
-  console.log('[longma:im/wechat] 已连接，开始长轮询', { botId: stored.botId, userId: stored.userId });
+  console.log('[fundet:im/wechat] 已连接，开始长轮询', { botId: stored.botId, userId: stored.userId });
   while (!ac.signal.aborted) {
     try {
       const result = await transport.poll(cursor, ac.signal);
       cursor = result.cursor;
       setSetting(CURSOR_KEY, cursor);
       for (const msg of result.messages) {
-        console.log('[longma:im/wechat] 入站消息', {
+        const { images: imageRefs, otherCount } = splitInboundMedia(msg.media);
+        console.log('[fundet:im/wechat] 入站消息', {
           from: msg.senderId.slice(-6),
           len: msg.text.length,
+          images: imageRefs.length,
+          otherMedia: otherCount,
           preview: msg.text.slice(0, 30),
         });
-        if (!msg.text.trim()) continue;
+        // 纯空消息跳过；带图片/附件的消息即使无文字也要进回合
+        if (!msg.text.trim() && msg.media.length === 0) continue;
         // 只挡机器人自己发的（防回环）。个人微信场景下用户本人发给机器人的消息
         // senderId == userId，这正是「给自己派活」的主流程，不能过滤；
         // 带 recipient 且不是发给本机器人的才跳过。
         if (msg.senderId === stored.botId) {
-          console.log('[longma:im/wechat] 跳过机器人自己发的消息');
+          console.log('[fundet:im/wechat] 跳过机器人自己发的消息');
           continue;
         }
         if (msg.recipientId && msg.recipientId !== stored.botId) {
-          console.log('[longma:im/wechat] 跳过非发给本机器人的消息', { to: msg.recipientId.slice(-6) });
+          console.log('[fundet:im/wechat] 跳过非发给本机器人的消息', { to: msg.recipientId.slice(-6) });
           continue;
         }
         contextByPeer.set(msg.senderId, msg.contextToken);
-        const reply = await handleImMessage({
-          channel: 'wechat',
-          chatId: msg.senderId,
-          senderName: msg.senderId.slice(-6),
-          text: msg.text,
-          dedupeKey: msg.messageId,
+        // 图片在入队前下载（dispatcher 的 downloadImages 回调无法回注降级文字）；
+        // 逐张容错，失败的以文字说明告知模型，不静默吞
+        const images: Array<{ buffer: Uint8Array; mimeType: string }> = [];
+        let failedImages = 0;
+        let failReason = '';
+        for (const ref of imageRefs) {
+          try {
+            const bytes = await transport.downloadMedia(ref, ac.signal);
+            images.push({ buffer: bytes, mimeType: sniffImageMime(bytes) });
+          } catch (err) {
+            failedImages += 1;
+            failReason = err instanceof Error ? err.message : String(err);
+            console.warn('[fundet:im/wechat] 图片下载失败（降级为文字说明）', {
+              messageId: msg.messageId,
+              reason: failReason,
+            });
+          }
+        }
+        if (ac.signal.aborted) return;
+        const text = composeInboundText(msg.text, {
+          total: imageRefs.length,
+          failed: failedImages,
+          reason: failReason,
+          otherCount,
         });
+        const reply = await handleImMessage(
+          {
+            channel: 'wechat',
+            chatId: msg.senderId,
+            senderName: msg.senderId.slice(-6),
+            text,
+            dedupeKey: msg.messageId,
+          },
+          images.length > 0 ? { downloadImages: () => Promise.resolve(images) } : undefined,
+        );
         if (!reply) continue;
         const chunks = chunkImText(reply, 1800);
         for (const chunk of chunks) {
@@ -98,7 +131,7 @@ async function pollLoop(transport: TencentIlinkTransport, stored: WechatCredenti
             ac.signal,
           );
         }
-        console.log('[longma:im/wechat] 已回复', { to: msg.senderId.slice(-6), chunks: chunks.length });
+        console.log('[fundet:im/wechat] 已回复', { to: msg.senderId.slice(-6), chunks: chunks.length });
       }
     } catch (err) {
       if (ac.signal.aborted) return;
@@ -107,7 +140,7 @@ async function pollLoop(transport: TencentIlinkTransport, stored: WechatCredenti
         setImRuntime('wechat', 'error', '微信登录已失效，请重新扫码');
         return;
       }
-      console.warn('[longma:im/wechat] 轮询异常，2s 后重试:', msg);
+      console.warn('[fundet:im/wechat] 轮询异常，2s 后重试:', msg);
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
