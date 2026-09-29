@@ -114,6 +114,8 @@ export class PiRpcProcess {
       cwd: opts.cwd,
       env: opts.env as NodeJS.ProcessEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
+      // #5173:pi.exe 是控制台子系统二进制，Windows 不隐藏会为每个会话派生 conhost.exe
+      windowsHide: true,
     });
     if (this.child.pid != null && this.child.pid > 0) {
       try {
