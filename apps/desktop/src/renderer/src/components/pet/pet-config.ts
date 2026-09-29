@@ -38,10 +38,12 @@ export const PET_STATES: Record<PetStateId, PetStateVisual> = {
   thinking: { frames: [frame('thinking_00')], interval: 0, loop: true, anim: 'sway' },
   notify: { frames: frames('notify', 11), interval: 80, loop: false, fallback: 'idle' },
   // 拖动中：向右奔跑循环（向左拖时整体水平翻转），素材面朝右。
-  // 帧抽稀（隔一取一）+ 硬切（16ms）：快速动作硬切比叠化干净，避免四肢重影抖动
+  // 全 14 帧 @75ms 硬切（16ms 近无过渡）：帧率优先的丝滑档——快速动作下
+  // 生图帧形变被运动感掩盖（抽稀档 7帧@110ms 系 0.3.18 防重影的保守选择，
+  // 2026-09-29 用户要更丝滑后恢复全帧提速；闪烁/重影由用户实测裁决）
   running: {
-    frames: frames('run', 14).filter((_, i) => i % 2 === 0),
-    interval: 110,
+    frames: frames('run', 14),
+    interval: 75,
     loop: true,
     fadeMs: 16,
   },
