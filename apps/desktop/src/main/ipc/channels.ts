@@ -128,6 +128,7 @@ export const FUNDET_INVOKE = {
   UPDATE_STATUS: 'update:status',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
+  PI_VERSION_INFO: 'pi:version-info',
   APP_GET_LOGIN_ITEM: 'app:get-login-item',
   APP_SET_LOGIN_ITEM: 'app:set-login-item',
   FIND_START: 'find:start',

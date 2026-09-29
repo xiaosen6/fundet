@@ -551,6 +551,8 @@ export interface FundetApi {
 
   updateStatus(): Promise<UpdateState>;
   checkUpdate(): Promise<void>;
+  /** pi 内核版本：随包版本 + 上游最新（上游探测失败为 null） */
+  getPiVersionInfo(): Promise<{ bundled: string; upstream: string | null }>;
   /** Windows：重启并安装已下载的更新；macOS：打开 Release 下载页 */
   installUpdate(): Promise<void>;
 

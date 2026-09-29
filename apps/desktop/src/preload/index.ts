@@ -193,6 +193,7 @@ const api: FundetApi = {
 
   updateStatus: () => invoke(FUNDET_INVOKE.UPDATE_STATUS),
   checkUpdate: () => invoke(FUNDET_INVOKE.UPDATE_CHECK),
+  getPiVersionInfo: () => invoke(FUNDET_INVOKE.PI_VERSION_INFO),
   installUpdate: () => invoke(FUNDET_INVOKE.UPDATE_INSTALL),
   loginItemEnabled: () => invoke(FUNDET_INVOKE.APP_GET_LOGIN_ITEM),
   setLoginItemEnabled: (enabled) => invoke(FUNDET_INVOKE.APP_SET_LOGIN_ITEM, enabled),

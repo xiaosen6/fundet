@@ -124,6 +124,7 @@ import {
 } from '../host/automations.js';
 import type { AutomationInput } from '../../shared/automations.ts';
 import { probeMcpServer } from '../host/mcp-bridge.js';
+import { getPiVersionInfo } from '../host/pi-version.js';
 import {
   createKnowledgeBase,
   updateKnowledgeBaseParams,
@@ -749,6 +750,7 @@ ${input.text}`;
 
   // ---------- providers ----------
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_LIST, async () => listProviders());
+  ipcMain.handle(FUNDET_INVOKE.PI_VERSION_INFO, () => getPiVersionInfo());
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) =>
     createProvider(input),

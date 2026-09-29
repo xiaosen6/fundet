@@ -28,10 +28,15 @@ function statusText(s: UpdateState): string {
 
 export function UpdateCard(): React.JSX.Element {
   const [state, setState] = useState<UpdateState | null>(null);
+  const [pi, setPi] = useState<{ bundled: string; upstream: string | null } | null>(null);
 
   useEffect(() => {
     void window.fundet.updateStatus().then(setState);
     return window.fundet.onUpdateStatusChanged(setState);
+  }, []);
+
+  useEffect(() => {
+    void window.fundet.getPiVersionInfo().then(setPi).catch(() => setPi(null));
   }, []);
 
   if (!state) return <p className="text-13 text-muted">读取版本信息…</p>;
@@ -44,6 +49,14 @@ export function UpdateCard(): React.JSX.Element {
       <p className="mt-1 text-12 text-muted">
         当前版本 v{state.currentVersion}。Windows 自动下载更新，macOS 需手动下载安装。
       </p>
+      {pi && (
+        <p className="mt-2 text-12 text-muted">
+          Agent 运行时（pi）：{pi.bundled}
+          {pi.upstream && pi.upstream !== `v${pi.bundled}`
+            ? ` · 上游最新 ${pi.upstream}（将随下版应用更新带来）`
+            : ''}
+        </p>
+      )}
       {statusText(state) && (
         <p className="mt-2 text-12 text-secondary">{statusText(state)}</p>
       )}
