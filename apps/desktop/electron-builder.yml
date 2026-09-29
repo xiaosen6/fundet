@@ -22,26 +22,31 @@ files:
   - drizzle/**
   - package.json
   # agent-core/shared 打进主 bundle，不进 asar；browser-runtime 的运行时闭包
-  # （playwright-core/sharp/…，101 包）由 tools/pack-browser-deps.mjs 打平，
-  # 经下方 extraResources 落到 resources/node_modules（asar 外，主进程模块
-  # 解析向上可及；.node 原生二进制不进 asar 也免去 asarUnpack）
+  # （playwright-core/sharp/…）由 tools/pack-browser-deps.mjs 打平+裁剪后，
+  # 以 files 条目并入 app.asar 内的 node_modules（2026-09-29 spike 实证：
+  # Electron 37 主进程 ESM 可从 asar 解析 node_modules 裸包/子目录/exports map，
+  # 五项全绿）。asar 单文件落盘替代散装 5,600+ 文件——安装成本由「文件数 ×
+  # 每文件固定开销（实测 5,622 小文件 11.3s vs 单大文件 93ms）」塌缩到常数；
+  # 原生二进制走 asarUnpack（@img 带非 .node 的 dll）。
   - "!node_modules/@fundet/agent-core"
   - "!node_modules/@fundet/shared"
+  - from: resources-browser/node_modules
+    to: node_modules
 
 asarUnpack:
   - "**/*.node"
+  - "**/node_modules/@img/**"
+
+# Chromium 语言包只留中英（默认 55 个 locale 文件 43MB）
+electronLanguages:
+  - zh-CN
+  - en-US
 
 extraResources:
   - from: resources/fundet/icon.png
     to: icon.png
   - from: resources/fundet/icon.ico
     to: icon.ico
-  # 浏览器运行时依赖：恢复散装目录（0.3.14 tar.gz 方案致启动崩溃已回滚——
-  # 主 bundle 是 ESM，MCP SDK 静态 import 在入口文件头部，进程启动即解析，
-  # 首启解压来不及跑；散装目录保证解析常在。安装提速由 asar 瘦身 + git
-  # tar.gz 承担）
-  - from: resources-browser/node_modules
-    to: node_modules
   - from: ../../apps/cua-driver-bin/win32-x64
     to: cua-driver/win32-x64
     filter:
