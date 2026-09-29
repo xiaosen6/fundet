@@ -18,10 +18,10 @@ Windows 开发机；仓库 `D:\Go\fundet-buddy`；远端 `github` = `xiaosen6/fu
 
 ```powershell
 pnpm typecheck            # apps/desktop 下
-pnpm test                 # 219 项（node --test）
+pnpm test                 # 245 项（node --test）
 pnpm dev                  # 开发
 pnpm build && pnpm dist:win   # 打包（约 3 分钟；EBUSY 重跑即过）
-node tools/check-ipc-channels.cjs   # IPC 通道审计，发版前必跑（在 apps/desktop 下执行）
+node ../../tools/check-ipc-channels.cjs   # IPC 通道审计，发版前必跑（在 apps/desktop 下执行）
 ```
 
 ## 高频坑（详见 memory.md 对应章节）

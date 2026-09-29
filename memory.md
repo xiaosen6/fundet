@@ -254,7 +254,7 @@ Fundet/
 - **纯 FTS5 关键词检索**（用户决策：不做 embedding/不做向量化）。表走 raw SQL 幂等创建（`main/knowledge/store.ts`），FTS5 虚表**不进 drizzle 迁移**；`getSqlite()`（db/client.ts）取原生句柄。
 - **分词：CJK bigram + 拉丁整词小写**（`knowledge/tokenize.ts`），索引/查询两侧同一函数；**别换 Intl.Segmenter**（ICU 词典深浅不一，本机把「退货」切成单字）。查询 = 各 token 引号 OR + 拉丁前缀 `*`；排序 bm25()。
 - 分块：段落聚合 800 字，超长段按句切窗 overlap 120（`knowledge/chunk.ts`）。
-- 导入：PDF/DOCX/TXT/MD → `extractKnowledgeDocumentText`（doc-text.ts，抛错制）→ 分块事务入库（kb_chunks + kb_fts，rowid 对齐）。
+- 导入：PDF/DOCX/TXT/MD → `extractKnowledgeDocumentText`（doc-text.ts，抛错制）→ 分块事务入库（kb_chunks）。
 - 会话绑定存 settings（`kb.session.<sessionId>`，主进程可读）；绑定后**新消息**注入内置 knowledge MCP（`knowledge_search` 工具，返回【n】来源片段并带「不得编造」提示语）；composer 知识库 chip（KnowledgeChip）+ 设置→知识库（CRUD/导入/召回测试）。
 - 批A（2026-09-10）：目录导入（递归收集、跳隐藏/node_modules）；KB 级参数 topK/chunkSize/chunkOverlap（knowledge_bases 列，幂等补列；MCP 默认 limit 与导入分块都读它，**改块参数需重新导入才生效**）；导入结果逐文件展示 + 失败项保留路径一键重试。
 - 批B（2026-09-10）：会话绑定升级 `{ids, auto}`（兼容旧纯数组）；`auto` = 发送前自动检索注入——session:send 按用户原话检索（**条数与 knowledge MCP 工具同源：各绑定 KB 的 topK 取最大，2026-09-11 起对齐，原为硬编码 top4**）拼进发给模型的消息上下文（**DB messages 仍存用户原话**，注入只影响模型所见）；回答里的【n】经 rehypeKnowledgeCite 渲染成可点角标，点开溯源面板（来源/块序/原文），数据 = 本轮 knowledge_search 工具 resultText 解析（`lib/knowledgeCite.ts`）。
@@ -382,6 +382,14 @@ Fundet/
 
 > **在途事项（2026-09-27，0.3.15 事故修复发）**：0.3.14 启动崩溃事故已热修——0.3.15 已发（tag=15b73fb，三资产齐，镜像复核过，备份 D:Fundet-Setup-0.3.15-x64.exe）。**运维要点：0.3.14 装机崩在更新器之前无法自愈，必须手动装 0.3.15**——恢复链接已放 Release 说明（gh-proxy 直链）。**新铁律：打包版冒烟必须把 win-unpacked 复制到仓库树外隔离运行（smoke-0315-iso.cjs 模板）——ESM 向上解析会命中开发机祖先 node_modules 造成假阴性，本事故的直接教训**。安装期文件数口径修正：0.3.15 实为 ~5,400（浏览器依赖回滚散装；仍比 0.3.13 少 62%）。
 
+> **在途事项（2026-09-29，修复批本地待实测，未发版）**：全仓复扫（§7 2026-09-29 块）后的修复+清理批，typecheck/245 测试/IPC 审计 125/build 全绿，**待用户实测，用户说「发」才进 0.3.19**：
+> - **①桌宠联动 stale closure（0.3.18 实发缺陷）**：pet 订阅 effect deps=[] 捕获首渲染空 providers 的 createSession→左键新对话/右键截图强制新建会话静默失效；修=createSessionRef。**②预热指纹不对称**：prewarm 侧指纹不带 KB 绑定/自动操作开关（全默认），attach 侧带真实值→开了开关的用户预热必失配白做；修=同口径。
+> - **③微信入站图片**（新 im/wechat-inbound.ts 纯函数 +10 测试）：ilink `transport.downloadMedia`（AES key/CDN 兜底全在消息体内，无需额外 ticket）入队前逐张下载，落 `.fundet-uploads/im-*` 与钉钉同款；纯图/图文混合都进回合；下载失败**文字降级**告知模型不静默吞（选入队前下载因 dispatcher 回调无法回注降级文字；重复推送窗口短，代价可忽略）。引用消息内图片与出站图片未做。
+> - **④知识库 URL 快照 SSRF**：`url.ts` 新 `fetchGuarded`——`redirect:'manual'` 手动跟随、**每跳重过 assertPublicHttpUrl**（原 `redirect:'follow'` 公网 302→内网可绕过）、20s 总时限不随跳数放大、fetchImpl 可注入（+5 测试）。
+> - **⑤桌宠补强**：审批/问答弹窗桌宠 notify（原 interaction_request 是不可达死分支——审批走 setInteractionListener 独立通道，新增 bridgeInteractionRequest 在 register.ts 接线）；截图按光标所在屏 `display_id` 匹配（sources 顺序不保证）；broadcast 跳过 pet.html 窗口（流式事件不再白发给桌宠一份）。
+> - **清理批（净删 ~520 行 + 27 张 sprite ~1.5MB + 死 tar.gz 产物段）**：UsageDashboard 死组件、sprite 52→22（保留集=pet.html 占位 idle_00+pet-config 引用 21 张）、kb FTS 残留（建表+2 DELETE+mergeRrf/indexText/buildSnippet/embeddingStats；ensure 加 `DROP TABLE IF EXISTS kb_fts` 清存量表；**matchExpression 保留——session-search 活代码**）、pack-browser-deps 末段死 tar.gz（git 的 tar 链路未动）、PET_SIZE/frameDir/spritesPath/voiceEnabled、enteredRows 会话切换清账本（sessionStore 新增 getFocusedSessionId，MessageStream 模块级比对）、ChatPage onDragEnd 复位、注释漂移批（LongMa 调试台/[longma:] 前缀/ci.yml/FUNET_→FUNDET_ typo 等）、测试 glob 补两个孤儿套件（filePathPolicy+providerBranding=14 项）。**品牌变体机制内的 LongMa 字样（brand.ts/BrandMark/pi-host replace）不是漂移，保留**。
+> - **评估后刻意不动**：resumeSessionId（重启恢复 pi 上下文=大工程，待产品拍板）、im-workspace per-bot 隔离（内部路径常量红线）、stageFileIntoWorkDir 大小上限、agent-core flaky 测试、service-gateway 明文 HTTP（待运维）。
+
 > **在途事项（2026-09-25，0.3.14 发）**：**无**——0.3.14 已发 GitHub Release：tag=commit 6083bdc（版本提交在内，merge-base 验证），三资产齐（exe 261.6MB/blockmap/latest.yml，资产端点+gh-proxy 镜像双复核，sha512/size 与本地一致），非 draft；安装包备份 `D:\Fundet-Setup-0.3.14-x64.exe`（249MB）。发版前例行 Cindy 增量速扫：**714ec5b1f..96dcfad99 两天 99 提交无 P0**（大头 mobile/bots/teammates 红线；唯一疑似同构 #5062 code-less 服务错误恢复——本仓 errorRetry 分类器已覆盖 503/529/过载模式，不移植；**同步点推进 96dcfad99**，下锚=09-30 周全量或下版发版前）。打包版冒烟史上最全 8 项 PASS：双 tar.gz 资产/首启双解压（git→userData、browser→安装目录原位）/zoom 复位/麦克风 Cindy 形态/预热闭环/真 TTS（108KB wav）/语义检索全链（**换说法「出差别忘了报账的时间限制」命中差旅制度原文，零关键词重叠**——嵌入检索真实生效）。安装期文件数 **14,500→405（-97%）**。上传走 draft 先建+独立进程（~10 分钟，262MB 网络慢日）。
 > **打包机楔子排障全记录（2026-09-24 白天，已随重启解决）**：electron-builder 曾稳定挂死在「searching for node modules」（单核空转）；**已排除**仓库内容/路径/node_modules/FS 速度/符号链接/pm 模式——机器级状态问题。**起病链**：打包版冒烟 → Fundet 死后 **crashpad_handler 孤儿进程锁住 dist\win-unpacked\resources\app.asar**（杀 Fundet 不够，crashpad 会留！）→ 后续构建连环异常，重启才彻底清。**新坑入账**：①打包版冒烟后必须查杀 crashpad_handler 残留再打包；②Restart Manager API（C:\temp\fundet-dev-tools\FileLockFinder.cs）可定位文件占用者；③robocopy /XD dist 排掉所有层级同名目录（误杀 vendored dist）；④打包版 safeStorage 与 dev/安装版互解不开真实密钥（app 绑定加密）——打包冒烟涉及会话一律用 **loopback provider 种子**（127.0.0.1 免 key）。
 
@@ -413,6 +421,17 @@ Fundet/
 > - **审批超时语义澄清**：10min 兜底 deny 在 desktop 宿主层（register.ts pendingInteractions）；agent-core 核心交互卡本身无超时；auto-review delegate（reviewAutoPermissionAction）Fundet 未接 → 灰区一律 ask。
 > - **browser-runtime 同步工具缺失**：lock.json/MAINTAINING.md 引用的 `scripts/browser-runtime/sync.mjs` 不在本仓（留在上游），`_generated/` 禁手改 = 再同步能力已失，升级 vendored 需整目录人工比对；upstream lock b972feb3 + 2 条 LOCAL_PATCHES（fake-IP 豁免、去上游自动 profile）。
 > - **杂项**：localStorage key 品牌分裂（fundet.* 为主、longma.* 残留在 sidebar-width/profile/font）；checkpoint 环境变量 typo `FUNET_CHECKPOINT_ROOT`（少 D，测试专用自洽）；with-brand.mjs 已硬编码只收 fundet（longma 分支仅存参考）；`.msg-stream-items > *:not([data-virtual])` 的 content-visibility 规则虚拟化后仅剩空态命中（优化已被真虚拟化取代）；resendLast 绕过 lastSendInputs 不享自动重试。
+
+> **全仓代码研究复扫（2026-09-29，0.3.18 后，六路深挖 + 两 bug 亲核实证；同日修复批见 §6 在途事项）**：
+> - **规模**：全仓 TS 116,061 行/590 文件（browser-runtime `_generated` ≈3 万行占 1/4）；渲染层 ≈2.03 万行；agent-core 源/测各 ≈2.03 万行；`ipc/register.ts` 1442 行。IPC = FUNDET_INVOKE **125** + FUNDET_PUSH **12** + **pet 11 个字符串散写**（未进 channels.ts 收口，是「新 IPC 四处一起改」铁律的存量例外）；WINDOW_MINIMIZE 等四个定义在 INVOKE 组但实际走单向 send。
+> - **健康实测**：typecheck ✓；IPC 审计 125/0 ✓；desktop 单测 245/245（09-29 修复批后：219 −13 随死代码作废的用例 +14 孤儿套件补入 +10 微信 +5 URL）；agent-core 876/877（`cindySubagentParentWatchdog` 负载敏感 flaky，单跑/复跑均过）；browser-mcp 91；shared 48。孤儿测试与审计脚本路径问题均已修（09-29）。
+> - **确认 bug ①（影响已发的 0.3.18）：桌宠联动 stale closure**——ChatPage pet 订阅 effect `deps=[]`（ChatPage.tsx:263-294）捕获首渲染的 `createSession`，而 `providers` 初值 `[]` 异步装载（:83/:227），空 providers 走「请先配置 provider」提前 return：**左键新对话、右键截图的强制新建会话实际失效**（截图注入当前会话/空态）。0.3.18 冒烟只验了窗口创建未验交互。**已修 09-29**（createSessionRef，workDirRef 同款）。
+> - **确认 bug ②：预热指纹不对称**——`prewarmSession` 存指纹不带 `getBinding/boolSetting`（全默认空/false），`prewarmAttachDecision` 比对时带真实值：开了浏览器/电脑操作开关或绑了 KB 的用户预热必指纹失配→discard 重建，预热白做（静默性能回归，无功能故障）。**已修 09-29**（prewarm 侧与 attach 侧同口径）。
+> - **架构事实**：`resumeSessionId` 全仓零调用——**重启后旧会话=全新 pi 上下文**（UI 历史只是 SQLite 显示层，模型看不到，sessions.sdkSessionId 只写不读）；~~pet-state-bridge 的 `interaction_request` 是死分支~~（**已修 09-29**：审批走独立 setInteractionListener 通道，新增 bridgeInteractionRequest 接通——审批/问答弹窗时桌宠 notify）；~~petScreenshot 取 `sources[0]` 当主屏~~（**已修 09-29**：按光标所在屏 display_id 匹配）；service-gateway=明文 HTTP 固定公网 IP（语音/嵌入文本链路裸奔，待运维上 https）；~~broadcast 群发所有窗口含桌宠~~（**已修 09-29**：pet.html 窗口跳过）。
+> - **死代码批（已全部清理 09-29）**：UsageDashboard.tsx 死组件（+孤儿 key）、pet sprite 52→22 张（留 pet.html 占位 idle_00 + 代码引用 21 张）、kb FTS 残留三件套（kb_fts DROP 清存量）、pack-browser-deps 死产物 tar.gz 段、PET_SIZE/frameDir/spritesPath/voiceEnabled；wechat-ilink 媒体收发能力随微信图片支持转正（mediaTransfer/mediaCrypto 开始被消费），upload/typing 仍闲置属 vendored 备用。
+> - **注释漂移批（已全部修正 09-29）**：embeddings.ts 头注、register.ts 不存在的「升级语义检索」按钮提示、DebugPage「LongMa 调试台」、全部 `[longma:]` 日志前缀、ci.yml 引用已删 dist-mac.yml、checkpoint `FUNET_`→`FUNDET_` typo、providerPresets/Sidebar 注释。品牌变体机制内的 LongMa 字样（brand.ts/BrandMark/pi-host replace/电子 builder 注释）**不是漂移，不许清**。
+> - **边界风险**：~~`knowledge/url.ts` `redirect:'follow'` 不做逐跳 SSRF 复审~~（**已修 09-29**：fetchGuarded 手动逐跳+每跳 assertPublicHttpUrl+20s 总时限，+5 测试）；~~微信纯图片消息静默丢弃~~（**已修 09-29**：ilink downloadMedia+AES 全链落地，下载失败文字降级，+10 测试）。**仍开放（评估后刻意不动）**：`stageFileIntoWorkDir` 无大小上限（stageBytes 有 32MB）；微信渠道共享全局 im-workspace（per-bot 隔离仅钉钉——路径常量红线，动前必想）；agent-core flaky 测试。
+> - **防线复核完好（勿再重查）**：审批 10min 兜底 deny（仅 permission 类挂定时器；ask_user_question 靠会话关闭时 pi 侧 dismissAllPendingPrompts 强制 deny）；快照后台串行队列不在发送关键路径；zoom 1280 锚定封顶 1.25；SSRF 每跳复审+跨 origin 剥敏感头+fake-IP 两段豁免；控制面写守卫 bypassPermissions 下仍强制确认；preview deny-list/FS_OPEN_PATH 27 扩展闸/附件 stage 约束；`will-navigate` 放行所有 `file://`（打包态自身就是 file 协议，属必要放宽）。
 
 ---
 
