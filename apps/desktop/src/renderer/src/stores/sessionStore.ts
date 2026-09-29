@@ -1013,6 +1013,20 @@ export async function resolvePermission(
   }
 }
 
+/** 问答：提交全部答案（单选=标签串、多选=JSON 数组串、跳过=空串） */
+export async function resolveAskUser(
+  sessionId: string,
+  request: Extract<InteractionRequest, { kind: 'ask_user_question' }>,
+  answers: Record<string, string>,
+): Promise<void> {
+  await window.fundet.resolveInteraction(request.requestId, { kind: 'ask_user_question', answers });
+  const s = getSlice(sessionId);
+  if (s.pendingInteraction?.requestId === request.requestId) {
+    patchSlice(sessionId, { pendingInteraction: null });
+    notifySlice(sessionId);
+  }
+}
+
 /** 新建会话后登记一个空 slice，避免首次渲染闪烁 */
 export function touchSlice(sessionId: string): void {
   if (!slices.has(sessionId)) slices.set(sessionId, { ...EMPTY_SLICE });

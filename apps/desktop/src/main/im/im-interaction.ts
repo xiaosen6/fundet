@@ -5,6 +5,7 @@
  * Fundet 差异：无 auto-review 附加行；plan_review 保留（agent-core 有该请求形态）。
  */
 import type { InteractionDecision, InteractionRequest } from '@fundet/agent-core';
+import { visibleAskOptions } from '../../shared/ask-options.ts';
 
 export function formatInteractionPrompt(request: InteractionRequest): string {
   if (request.kind === 'permission') {
@@ -16,7 +17,7 @@ export function formatInteractionPrompt(request: InteractionRequest): string {
   const lines: string[] = ['需要你补充以下信息：'];
   request.questions.forEach((question, questionIndex) => {
     lines.push(`${questionIndex + 1}. ${question.question}`);
-    question.options?.forEach((option, optionIndex) => {
+    visibleAskOptions(question.options).forEach((option, optionIndex) => {
       lines.push(`   ${optionIndex + 1}) ${option.label}`);
     });
   });
@@ -28,7 +29,7 @@ type AskQuestion = Extract<InteractionRequest, { kind: 'ask_user_question' }>['q
 
 export function formatQuestionPrompt(question: AskQuestion, index: number, total: number): string {
   const lines = [`需要你补充信息（${index + 1}/${total}）：${question.question}`];
-  question.options?.forEach((option, optionIndex) => {
+  visibleAskOptions(question.options).forEach((option, optionIndex) => {
     lines.push(`${optionIndex + 1}) ${option.label}`);
   });
   lines.push('请回复选项序号或你的答案。');
@@ -38,8 +39,10 @@ export function formatQuestionPrompt(question: AskQuestion, index: number, total
 export function parseQuestionAnswer(question: AskQuestion, rawText: string): string | null {
   const text = rawText.trim();
   if (!text) return null;
+  // 序号按展示口径（visibleAskOptions 过滤后）映射，与提问文案一致
+  const options = visibleAskOptions(question.options);
   const index = Number.parseInt(text, 10);
-  const option = Number.isInteger(index) && index >= 1 ? question.options?.[index - 1] : undefined;
+  const option = Number.isInteger(index) && index >= 1 ? options[index - 1] : undefined;
   return option?.label ?? text;
 }
 
@@ -70,9 +73,10 @@ export function parseInteractionReply(
   }
   const answers: Record<string, string> = {};
   for (const question of request.questions) {
+    // 序号按展示口径（visibleAskOptions 过滤后）映射，与提问文案一致
+    const options = visibleAskOptions(question.options);
     const index = Number.parseInt(text, 10);
-    const option =
-      Number.isInteger(index) && index >= 1 ? question.options?.[index - 1] : undefined;
+    const option = Number.isInteger(index) && index >= 1 ? options[index - 1] : undefined;
     answers[question.question] = option?.label ?? text;
   }
   return { kind: 'ask_user_question', answers };

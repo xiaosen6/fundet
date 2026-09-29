@@ -28,6 +28,7 @@ import {
   refreshSessionList,
   renameSession,
   resendTurn,
+  resolveAskUser,
   setSessionEffortLevel,
   resolvePermission,
   sendMessage,
@@ -45,6 +46,7 @@ import {
   setDefaultWorkDir,
 } from '../lib/defaults';
 import { ChatInput } from '../components/ChatInput';
+import { AskUserQuestionPrompt } from '../components/AskUserQuestionPrompt';
 import { WelcomeSuggestions } from '../components/WelcomeSuggestions';
 import { SessionRenameInput } from '../components/SessionRenameInput';
 import { MessageStream } from '../components/MessageStream';
@@ -644,6 +646,9 @@ export function ChatPage(): React.JSX.Element {
 
   const pendingPermission =
     slice.pendingInteraction?.kind === 'permission' ? slice.pendingInteraction : null;
+  // ask_user_question 问答卡（此前只认 permission，问答请求无卡可点会挂死 turn）
+  const pendingAsk =
+    slice.pendingInteraction?.kind === 'ask_user_question' ? slice.pendingInteraction : null;
 
   // 无可用模型（没配 provider / 草稿没选到模型）：发送禁用（对齐 cindy-09 的
   // 禁用态，不报错）；空态下再叠一张内联引导面板（对齐 cindy-02 的 Connect 面板）。
@@ -996,6 +1001,11 @@ export function ChatPage(): React.JSX.Element {
                     onRespond={(behavior) =>
                       void resolvePermission(activeId, pendingPermission, behavior)
                     }
+                  />
+                ) : pendingAsk ? (
+                  <AskUserQuestionPrompt
+                    request={pendingAsk}
+                    onAnswer={(requestId, answers) => void resolveAskUser(activeId, pendingAsk, answers)}
                   />
                 ) : (
                   <>

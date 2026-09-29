@@ -71,3 +71,27 @@ describe('plan_review 回复解析', () => {
     assert.deepEqual(parseInteractionReply(req, '拒绝'), { kind: 'plan_review', behavior: 'deny', reason: 'im_user_denied' });
   });
 });
+
+describe('ask_user_question 选项过滤（#5198：模型自造「其他」逃生口剔除）', () => {
+  const q = {
+    question: '选哪个',
+    options: [{ label: 'A 方案' }, { label: '其他（回复说明）' }, { label: 'B 方案' }],
+  } as never;
+  it('提问文案不出现「其他（回复说明）」，序号按过滤后口径', () => {
+    const text = formatQuestionPrompt(q, 0, 1);
+    assert.ok(!text.includes('其他（回复说明）'));
+    assert.ok(text.includes('1) A 方案'));
+    assert.ok(text.includes('2) B 方案'));
+  });
+  it('序号答案按展示口径映射（2 → B 方案）；自由文本直传', () => {
+    assert.equal(parseQuestionAnswer(q, '2'), 'B 方案');
+    assert.equal(parseQuestionAnswer(q, '自己说个 C'), '自己说个 C');
+  });
+  it('parseInteractionReply 的序号映射同口径', () => {
+    const req = { kind: 'ask_user_question', requestId: 'r', questions: [q] } as never;
+    assert.deepEqual(parseInteractionReply(req, '2'), {
+      kind: 'ask_user_question',
+      answers: { 选哪个: 'B 方案' },
+    });
+  });
+});
