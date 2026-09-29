@@ -1,10 +1,9 @@
 /**
- * PetStateBridge —— 把 agent 事件映射为桌宠状态指令。
+ * PetStateBridge —— 把宿主信号映射为桌宠状态指令。
  *
- * 消费现有信号（不新造）：
- * - sessionStore 的 agent 事件流（经 register.ts 的 wireSession 已有广播）
- * - pendingInteractions（权限确认）
- * - IM 消息到达
+ * 信号源（均为既有通道，不新造）：
+ * - agent 事件流（register.ts wireSession 广播）
+ * - 审批/问答请求（register.ts setInteractionListener——不经 agent 事件流，单独桥接）
  */
 import { pushPetState } from './pet-host.js';
 
@@ -35,9 +34,6 @@ export function bridgeAgentEvent(eventType: string, data: Record<string, unknown
       setState('notify');
       setTimeout(() => setState('idle'), 3000);
       break;
-    case 'interaction_request':
-      setState('notify');
-      break;
     case 'interaction_dismissed':
       setState('idle');
       break;
@@ -46,10 +42,10 @@ export function bridgeAgentEvent(eventType: string, data: Record<string, unknown
   }
 }
 
-/** IM 消息到达 → 通知 */
-export function bridgeImMessage(): void {
+/** 审批/问答请求到达 → 短暂通知（用户不在主窗时桌宠提示需要确认） */
+export function bridgeInteractionRequest(): void {
   setState('notify');
-  setTimeout(() => setState('idle'), 2500);
+  setTimeout(() => setState('idle'), 3000);
 }
 
 /** 重置（会话关闭等） */

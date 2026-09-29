@@ -41,14 +41,6 @@ function savePetPos(x: number, y: number): void {
   } catch { /* 写失败不致命 */ }
 }
 
-/** 帧资产目录（打包态 resources/pet/sprites，dev 态 renderer 目录） */
-function spritesPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'pet', 'sprites')
-    : path.join(app.getAppPath(), 'src', 'renderer', 'pet', 'sprites');
-}
-void spritesPath; // pet.html 经 vite 打包后资产走 out/renderer；此函数留作将来直接引用 raw PNG 时的入口
-
 export function isPetVisible(): boolean {
   return petWindow !== null && !petWindow.isDestroyed();
 }
@@ -143,7 +135,10 @@ async function petScreenshot(): Promise<void> {
       types: ['screen'],
       thumbnailSize: { width: 1920, height: 1080 },
     });
-    const primary = sources[0];
+    // sources 顺序不保证：优先取光标所在屏，多屏时不至于截错屏
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const primary =
+      sources.find((s) => s.display_id !== '' && s.display_id === String(display.id)) ?? sources[0];
     if (!primary) throw new Error('无法获取屏幕画面');
 
     const dataUrl = primary.thumbnail.toDataURL();

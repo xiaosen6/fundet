@@ -260,11 +260,14 @@ export function ChatPage(): React.JSX.Element {
   const workDirRef = useRef(workDir);
   workDirRef.current = workDir;
   const pendingShotRef = useRef<SessionAttachment | null>(null);
+  // 下方 pet 订阅 effect deps=[]，回调用 ref 取最新 createSession——直接捕获会把
+  // 首渲染的空 providers 闭包进去（桌宠左键/截图的强制新建会话会静默失效）
+  const createSessionRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     const unSubShot = window.fundet?.onPetScreenshot?.((payload) => {
       if (payload?.base64) {
         // 截图问答 = 强制新建会话并携带截图（pendingRef 保证穿过会话切换清空）
-        createSession();
+        createSessionRef.current();
         // base64 → ArrayBuffer → stageBytes 走现有附件管线
         const bin = atob(payload.base64);
         const buf = new ArrayBuffer(bin.length);
@@ -356,6 +359,7 @@ export function ChatPage(): React.JSX.Element {
       workDir: dir,
     });
   }, [providers, workDir]);
+  createSessionRef.current = createSession;
 
   /** 钉钉组件 AI 钩子：开新会话并预填 prompt（用户过目后手动发送） */
   const askDwsAgent = useCallback(
@@ -806,6 +810,12 @@ export function ChatPage(): React.JSX.Element {
               }
               const { files } = filesFromDataTransfer(e.dataTransfer);
               if (files.length > 0) void addDroppedFiles(files);
+            }}
+            onDragEnd={(e) => {
+              e.preventDefault();
+              dragCountRef.current = 0;
+              setDragOver(false);
+              setDragFolder(false);
             }}
           >
             {dragOver && (

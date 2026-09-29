@@ -68,15 +68,15 @@ import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
 import { transcribeAudio, synthesizeSpeech, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
 import { embedKbChunks } from '../knowledge/embeddings.js';
-import { bridgeAgentEvent, bridgeReset } from '../host/pet-state-bridge.js';
+import { bridgeAgentEvent, bridgeInteractionRequest, bridgeReset } from '../host/pet-state-bridge.js';
 
-/** 导入/笔记/快照后的后台向量化（失败静默——检索自动降级纯关键词，面板可手动回填） */
+/** 导入/笔记/快照后的后台向量化（失败静默；未嵌入的块下次导入时幂等补齐） */
 function embedKbInBackground(kbId: string): void {
   void embedKbChunks(kbId, {
     onProgress: (p) => broadcast(FUNDET_PUSH.KB_EMBED_PROGRESS, { kbId, completed: p.done, total: p.total }),
   }).catch((err: unknown) => {
     console.warn(
-      '[fundet:kb] 导入后向量化未完成（可在知识库面板点「升级语义检索」重试）：',
+      '[fundet:kb] 导入后向量化未完成（下次向该知识库导入文档时会自动补齐）：',
       err instanceof Error ? err.message : String(err),
     );
   });
@@ -175,6 +175,8 @@ const wiredSessions = new Set<string>();
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
+    // 桌宠窗口不订阅通用 push（pet:state 等走专用通道），跳过省一份跨进程 IPC
+    if (win.webContents.getURL().endsWith('pet.html')) continue;
     win.webContents.send(channel, payload);
   }
 }
@@ -294,6 +296,7 @@ export function wireSession(session: Session): void {
           }, PERMISSION_INTERACTION_TIMEOUT_MS);
         }
         pendingInteractions.set(request.requestId, entry);
+        bridgeInteractionRequest(); // 桌宠提示需要确认（审批不走 agent 事件流）
         broadcast(FUNDET_PUSH.INTERACTION_REQUEST, { sessionId: session.id, request });
       }),
   );
