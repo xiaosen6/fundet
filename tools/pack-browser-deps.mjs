@@ -20,6 +20,24 @@ const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_PKG_DIR = path.join(ROOT, 'packages', 'browser-runtime');
 const OUT = path.join(ROOT, 'apps', 'desktop', 'resources-browser', 'node_modules');
 
+// 运行时裁剪：安装成本 ≈ 文件数 × 每文件固定开销（写盘+杀软逐文件扫描，实测
+// 5,622 小文件 11.3s vs 单 85MB 文件 93ms）——类型/源码/文档/测试文件运行时
+// 不可达，进包纯属浪费（typebox 单包带 690 个 .mts 源码）。
+const PRUNE_EXTS = new Set(['.ts', '.mts', '.cts', '.map', '.md', '.markdown']);
+const PRUNE_NAMES =
+  /^(?:license|licence|notice|authors|contributors|changelog|history|security|code_of_conduct|contributing)(?:\..*)?$/i;
+const PRUNE_DIRS = new Set(['__tests__', 'test', 'tests', '.github', 'coverage']);
+
+function isPrunedRel(rel) {
+  const parts = rel.split(path.sep);
+  if (parts.some((p) => PRUNE_DIRS.has(p))) return true;
+  const base = parts[parts.length - 1];
+  if (PRUNE_NAMES.test(base)) return true;
+  return PRUNE_EXTS.has(path.extname(base).toLowerCase());
+}
+
+let prunedCount = 0;
+
 const SEEDS = [
   'playwright-core',
   'sharp',
@@ -61,7 +79,12 @@ function copyPkg(pkgDir, name) {
     filter: (src) => {
       const rel = path.relative(pkgDir, src);
       // 包内自带的 node_modules（符号链接）不拷：闭包已打平到顶层
-      return rel !== 'node_modules' && !rel.startsWith(`node_modules${path.sep}`) && rel !== '.bin';
+      if (rel === 'node_modules' || rel.startsWith(`node_modules${path.sep}`) || rel === '.bin') return false;
+      if (rel !== '' && isPrunedRel(rel)) {
+        prunedCount += 1;
+        return false;
+      }
+      return true;
     },
   });
   console.log('  +', name);
@@ -146,4 +169,32 @@ fs.writeFileSync(
   ),
 );
 console.log('  + @fundet/browser-runtime (dist)');
-console.log(`完成：${seen.size + 1} 个包 → ${path.relative(ROOT, OUT)}`);
+
+// 清掉裁剪留下的空目录（NSIS 仍会为目录建条目，能省一点是一点）
+function removeEmptyDirs(dir) {
+  let empty = true;
+  for (const entry of fs.readdirSync(dir)) {
+    const p = path.join(dir, entry);
+    if (fs.statSync(p).isDirectory()) {
+      if (!removeEmptyDirs(p)) empty = false;
+    } else {
+      empty = false;
+    }
+  }
+  if (empty) fs.rmdirSync(dir);
+  return empty;
+}
+removeEmptyDirs(OUT);
+const keptFiles = (() => {
+  let n = 0;
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d)) {
+      const p = path.join(d, e);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else n += 1;
+    }
+  };
+  walk(OUT);
+  return n;
+})();
+console.log(`完成：${seen.size + 1} 个包 / 保留 ${keptFiles} 文件（裁剪 ${prunedCount}）→ ${path.relative(ROOT, OUT)}`);
