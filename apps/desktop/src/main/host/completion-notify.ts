@@ -1,13 +1,15 @@
 /**
  * 完成提醒：agent turn 终态（done / 终止 error——统一口径不区分）且主窗
- * 失焦/隐藏时，发系统通知（静音）+ 应用内提示音（主窗渲染层 WebAudio，
+ * 失焦/隐藏/最小化时，发系统通知（静音）+ 应用内提示音（主窗渲染层 WebAudio，
  * 3s 节流防并发完成连响）。点击通知 = 聚焦主窗并切到该会话。
  * 开关存 settings `pet.notify`（用户口径「桌宠提醒」，放桌宠设置区），默认开。
+ * 注视判定见 completion-notify-logic.ts（最小化的窗口即使 isFocused 仍 true 也不算注视）。
  */
 import { BrowserWindow, Notification } from 'electron';
 import { brand } from '../../shared/brand.ts';
 import { getBoolSetting } from '../db/settings.js';
 import { FUNDET_PUSH } from '../ipc/channels.js';
+import { isWindowWatching, shouldNotifyCompletion } from './completion-notify-logic.js';
 
 export const COMPLETION_NOTIFY_SETTING = 'pet.notify';
 const CHIME_THROTTLE_MS = 3000;
@@ -18,15 +20,9 @@ function mainWindow(): BrowserWindow | null {
   return win ?? null;
 }
 
-/** 纯判定（单测口径）：开关开 + 主窗非「可见且聚焦」才提醒；窗口不存在也提醒 */
-export function shouldNotifyCompletion(args: { enabled: boolean; mainWindowFocused: boolean | null }): boolean {
-  if (!args.enabled) return false;
-  return args.mainWindowFocused !== true;
-}
-
 export function notifyTurnFinished(sessionId: string, title: string, summary: string): void {
   const main = mainWindow();
-  const focused = main ? main.isVisible() && main.isFocused() : null;
+  const focused = isWindowWatching(main);
   if (!shouldNotifyCompletion({ enabled: getBoolSetting(COMPLETION_NOTIFY_SETTING, true), mainWindowFocused: focused })) {
     return;
   }
