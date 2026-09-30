@@ -3,6 +3,15 @@
 > **这是改动浏览器自动化功能前的唯一必读文档。** 它串起三层代码、记录所有踩过的坑与不变量、说明如何跟随上游更新。
 > 以源码实现为准:本文与代码冲突时信代码,但请在同一改动里同步修正本文。
 
+> **【2026-09-30 路径更正——先读这段】** 本文随 vendored 包从 Cindy 仓搬来，正文路径/包名仍是 Cindy 时代布局，
+> 对照本仓实际：`packages/browser-control-runtime` → `packages/browser-runtime`（本包）；
+> `packages/lizi-mcps/src/browser` → `packages/browser-mcp`；desktop host（文中 `browser.ts` /
+> `browser-managed-config.ts`）→ `apps/desktop/src/main/browser/host.ts`；`maker-core` → `packages/agent-core`。
+> 同步工具 `scripts/browser-runtime/sync.mjs` **不在本仓**（留在 Cindy 仓）——本仓再同步需按
+> `upstream/browser-runtime.lock.json` 钉的 commit 整目录人工比对 + 重放 LOCAL_PATCHES + 跑 SSRF 契约测试。
+> 托管 profile 名在本仓是 **"Fundet"**（`MANAGED_PROFILE` 常量，勿改）；`cindy_browser` MCP server 名与
+> `CINDY_*` env 是底座机制名，保留勿改。action 数已从 17 增至 23（extract/recipe/siteguide/saveRecipe 等）。
+
 ## 1. 这是什么
 
 给 agent(Claude Code / Codex)用的浏览器自动化能力,对外是 `cindy_browser` MCP 工具。核心运行时是**vendored 上游(代号见 `sync.mjs`)的浏览器内核**——不是重写,以便跟随上游更新。产品可见的任何地方都**不出现上游名 / 🦞**(见 §6)。

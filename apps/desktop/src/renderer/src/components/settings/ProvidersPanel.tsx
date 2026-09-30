@@ -70,11 +70,18 @@ function CustomProviderDialog({
         setError(r.error || '未能列出模型');
         return;
       }
+      // 扫描合并：同 id 模型保留已配置的 maxTokens/视觉 input（勾了「视觉」再扫描不丢配置）
+      const prev = new Map(models.map((m) => [m.id, m]));
       setModels(
-        r.models.map((m) => ({
-          id: m.id,
-          contextWindow: preferScannedContextWindow(m.id, m.contextWindow),
-        })),
+        r.models.map((m) => {
+          const old = prev.get(m.id);
+          return {
+            id: m.id,
+            contextWindow: preferScannedContextWindow(m.id, m.contextWindow, old?.contextWindow),
+            ...(old?.maxTokens ? { maxTokens: old.maxTokens } : {}),
+            ...(old?.input ? { input: old.input } : {}),
+          };
+        }),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -290,6 +297,8 @@ export function ProvidersPanel(): React.JSX.Element {
         return {
           id: m.id,
           contextWindow: preferScannedContextWindow(m.id, m.contextWindow, old?.contextWindow),
+          ...(old?.maxTokens ? { maxTokens: old.maxTokens } : {}),
+          ...(old?.input ? { input: old.input } : {}),
           enabled: old?.enabled !== false,
         };
       });

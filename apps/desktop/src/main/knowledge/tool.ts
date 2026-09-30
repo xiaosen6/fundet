@@ -39,7 +39,17 @@ export async function handleKnowledgeSearch(
   const rawLimit = typeof args.limit === 'number' ? Math.round(args.limit) : resolveDefaultTopK(kbIds);
   const limit = Math.min(Math.max(rawLimit || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
-  const results: KnowledgeSearchResult[] = await searchKnowledgeChunks(kbIds, query, limit);
+  let results: KnowledgeSearchResult[];
+  try {
+    results = await searchKnowledgeChunks(kbIds, query, limit);
+  } catch (err) {
+    // 服务不可达 ≠ 未命中：如实告诉模型，防止它把「查不了」当成「库里没有」
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      text: `知识库检索失败：${msg}。请如实告知用户当前无法检索知识库（稍后可重试），不要当作未命中下结论。`,
+      isError: true,
+    };
+  }
   if (results.length === 0) {
     return {
       text: `知识库中没有找到与「${query}」相关的内容。请如实告知用户未命中，不要编造。`,

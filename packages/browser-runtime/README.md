@@ -1,6 +1,6 @@
-# @cindy/browser-control-runtime
+# @fundet/browser-runtime
 
-Neutral, in-process browser-automation runtime for Cindy. Exposes a small,
+Neutral, in-process browser-automation runtime. Exposes a small,
 stable contract (`BrowserControlRuntime`) that the `cindy_browser` MCP and the
 desktop host drive — without depending on any upstream product API or surfacing
 an upstream product name in product code.
@@ -36,14 +36,20 @@ upstream/
 
 ## Updating from upstream
 
+**`sync.mjs` is NOT in this repo** (it stayed behind in the upstream Cindy
+workspace when this package was vendored). Re-syncing therefore means a manual
+whole-directory diff against the pinned upstream commit recorded in
+`upstream/browser-runtime.lock.json` (2 `LOCAL_PATCHES` are listed there and
+must be re-applied), followed by:
+
 ```
-pnpm sync:browser-runtime --ref=<commit-or-branch>
-pnpm --filter @cindy/browser-control-runtime build   # surfaces any shim gaps
-pnpm --filter @cindy/browser-control-runtime test     # contract + SSRF guard
+pnpm --filter @fundet/browser-runtime compile   # surfaces any shim gaps
+pnpm --filter @fundet/browser-runtime test      # contract + SSRF guard
 ```
 
-`_generated/**` is regenerated wholesale; never hand-edit it. To change behavior,
-edit `sync.mjs` (vendor set / import rewrite) or the hand-written `src/shim/*`.
+`_generated/**` is regenerated wholesale upstream; never hand-edit it here. To
+change behavior, edit the hand-written `src/shim/*` (and record any new
+divergence in `upstream/browser-runtime.lock.json`).
 
 ## Security note
 

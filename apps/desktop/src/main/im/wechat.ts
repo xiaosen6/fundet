@@ -14,6 +14,7 @@ const CURSOR_KEY = 'im.wechat.cursor';
 
 let pollAbort: AbortController | null = null;
 let qrAbort: AbortController | null = null;
+let qrCanceled = false;
 let active: TencentIlinkTransport | null = null;
 let creds: WechatCredentials | null = null;
 
@@ -53,8 +54,18 @@ async function pollLoop(transport: TencentIlinkTransport, stored: WechatCredenti
   pollAbort = ac;
   let cursor = getSetting(CURSOR_KEY) ?? '';
   const contextByPeer = new Map<string, string>();
-  await transport.notifyStart(ac.signal);
-  console.log('[fundet:im/wechat] 已连接，开始长轮询', { botId: stored.botId, userId: stored.userId });
+  // 连接成功才置 connected（此前 startWechat 先行置位，notifyStart 网络失败时
+  // 假在线 + unhandled rejection）
+  try {
+    await transport.notifyStart(ac.signal);
+    setImRuntime('wechat', 'connected');
+    console.log('[fundet:im/wechat] 已连接，开始长轮询', { botId: stored.botId, userId: stored.userId });
+  } catch (err) {
+    if (!ac.signal.aborted) {
+      setImRuntime('wechat', 'error', err instanceof Error ? err.message : String(err));
+    }
+    return;
+  }
   while (!ac.signal.aborted) {
     try {
       const result = await transport.poll(cursor, ac.signal);
@@ -157,16 +168,15 @@ export async function startWechat(): Promise<void> {
   const transport = makeTransport(stored.token);
   active = transport;
   setImRuntime('wechat', 'connecting');
-  try {
-    void pollLoop(transport, stored);
-    setImRuntime('wechat', 'connected');
-  } catch (err) {
+  // pollLoop 内部自收口：连接成功置 connected、失败置 error，这里只兜未预期异常
+  void pollLoop(transport, stored).catch((err) => {
     setImRuntime('wechat', 'error', err instanceof Error ? err.message : String(err));
-  }
+  });
 }
 
 export async function startWechatQr(): Promise<string> {
   await stopWechat();
+  qrCanceled = false;
   qrAbort?.abort();
   const ac = new AbortController();
   qrAbort = ac;
@@ -209,9 +219,16 @@ export async function startWechatQr(): Promise<string> {
         baseUrl: got.baseUrl || BASE,
       });
       creds = got;
+      if (qrCanceled) {
+        // 用户在授权落定前点了取消：保留凭证但不启动轮询（下次「连接」直接用）
+        active = null;
+        setImRuntime('wechat', 'idle', undefined, null);
+        return;
+      }
       active = makeTransport(got.token);
-      setImRuntime('wechat', 'connected', undefined, null);
-      void pollLoop(active, got);
+      void pollLoop(active, got).catch((err) => {
+        setImRuntime('wechat', 'error', err instanceof Error ? err.message : String(err));
+      });
     })
     .catch((err) => {
       if (ac.signal.aborted) {
@@ -224,13 +241,10 @@ export async function startWechatQr(): Promise<string> {
 }
 
 export function cancelWechatQr(): void {
-  qrAbort?.abort();
-  qrAbort = null;
-  setImRuntime('wechat', hasWechatCreds() ? 'idle' : 'idle', undefined, null);
-}
-
-function hasWechatCreds(): boolean {
-  return loadCreds() !== null;
+  // 授权可能已成功、轮询已在跑——只 abort qrAbort 拦不住 pollLoop，
+  // 会出现「UI 显示未连接、消息照收」；统一走 stopWechat 连轮询一起停
+  qrCanceled = true;
+  void stopWechat();
 }
 
 export async function stopWechat(): Promise<void> {

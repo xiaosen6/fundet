@@ -24,7 +24,7 @@ const logger = {
 };
 
 function fakeChild(): unknown {
-  const child = new EventEmitter() as Record<string, unknown>;
+  const child = new EventEmitter() as unknown as Record<string, unknown>;
   child['pid'] = 4321;
   child['stdin'] = new Writable();
   child['stdout'] = new Readable({ read() {} });

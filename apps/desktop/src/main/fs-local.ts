@@ -9,6 +9,9 @@ import type { SessionAttachment } from '../shared/fundet-api.ts';
 
 export const UPLOADS_DIR = '.fundet-uploads';
 const MAX_STAGE_BYTES = 32 * 1024 * 1024;
+// 拖入界外文件的拷贝上限：防巨型文件（如数 GB 的 ISO）全量拷盘；
+// 工作目录内的文件零拷贝直接引用，不受此限
+const MAX_STAGE_FILE_BYTES = 1024 * 1024 * 1024;
 
 export function isPathInsideRoot(root: string, target: string): boolean {
   const r = path.resolve(root);
@@ -79,6 +82,11 @@ export async function stageFileIntoWorkDir(srcPath: string, workDir: string): Pr
     return toAttachment(src, stat.size, undefined, readImageHead(src));
   }
   const destDir = path.join(root, UPLOADS_DIR);
+  if (stat.size > MAX_STAGE_FILE_BYTES) {
+    throw new Error(
+      `文件超过 1GB（${(stat.size / 1024 ** 3).toFixed(1)}GB），未复制进工作目录。如确需使用，请先手动放进工作目录再附加。`,
+    );
+  }
   fs.mkdirSync(destDir, { recursive: true });
   const existing = new Set(fs.readdirSync(destDir).map((n) => n.toLowerCase()));
   const destName = uniqueDestName(existing, path.basename(src));

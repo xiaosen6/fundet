@@ -9,7 +9,8 @@
  * True for http(s) URLs only. Used to block `file://` / `chrome://` / `data:` on
  * actions that actually *navigate* (navigate / open). The *scheme* is the only
  * thing constrained — localhost / private-network HTTP hosts stay reachable by
- * design (internal tooling needs them; see browser.ts SSRF note).
+ * design (internal tooling needs them; see the host SSRF note in
+ * apps/desktop/src/main/browser/host.ts).
  *
  * NOTE: this is for navigation targets. It must NOT be applied to `responseBody`,
  * whose argument is a request-URL *match pattern* (e.g. `api/quotes`, `*​/api/*`),

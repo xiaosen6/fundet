@@ -324,9 +324,11 @@ export async function searchKnowledgeChunks(
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-  } catch {
-    // 嵌入服务不可达：语义检索无结果（关键词检索已按用户决策移除）
-    return [];
+  } catch (err) {
+    // 嵌入服务不可达：上抛让调用方区分「服务故障」与「真未命中」——此前静默
+    // 返回空，模型会替用户编造「库里没有」（关键词检索已按用户决策移除）
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`语义检索服务不可达（${msg}），无法判断知识库是否命中`);
   }
 }
 
@@ -371,11 +373,6 @@ export function getSessionKnowledgeBinding(sessionId: string): KnowledgeSessionB
   } catch {
     return { ids: [], auto: false };
   }
-}
-
-/** 兼容旧调用：只取绑定 id */
-export function getSessionKnowledgeKbs(sessionId: string): string[] {
-  return getSessionKnowledgeBinding(sessionId).ids;
 }
 
 export function setSessionKnowledgeBinding(

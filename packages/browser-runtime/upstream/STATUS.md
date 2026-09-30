@@ -2,6 +2,10 @@
 
 > 维护细节(架构、踩坑、上游同步)在 **`MAINTAINING.md`**,本文件只记交付现状。
 > 早期(2026-06-19)半成品评估快照见 git 历史,已被本现状取代——别再当作"还没建完"。
+>
+> **【2026-09-30 更正】** 下文包名/路径为 Cindy 时代布局：L1 即本包 `@fundet/browser-runtime`，
+> L2 即 `@fundet/browser-mcp`（现 **23** action），L3 host 在 `apps/desktop/src/main/browser/`；
+> `sync.mjs` 不在本仓（再同步=按 lock.json 人工比对，见 MAINTAINING 顶部更正）。
 
 ## 现状:已交付并接入
 

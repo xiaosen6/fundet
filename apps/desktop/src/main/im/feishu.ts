@@ -90,9 +90,11 @@ export async function startFeishu(): Promise<void> {
     autoReconnect: true,
   });
   try {
-    void ws.start({ eventDispatcher: dispatcher });
+    await ws.start({ eventDispatcher: dispatcher });
+    if (gen !== generation) return;
     setImRuntime('feishu', 'connected');
   } catch (err) {
+    if (gen !== generation) return;
     setImRuntime('feishu', 'error', err instanceof Error ? err.message : String(err));
   }
 }

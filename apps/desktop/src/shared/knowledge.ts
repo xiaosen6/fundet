@@ -1,5 +1,5 @@
 /**
- * 本地知识库共享常量与类型（纯关键词检索：FTS5 BM25，无 embedding/向量）。
+ * 本地知识库共享常量与类型（纯语义检索：向量余弦 TopN，见 main/knowledge/embeddings.ts）。
  */
 
 export const KNOWLEDGE_MCP_SERVER_NAME = 'knowledge';
@@ -56,7 +56,7 @@ export interface KnowledgeSearchResult {
   ord: number;
   /** 命中片段（原文窗口） */
   snippet: string;
-  /** BM25 相关度（越小越相关，仅排序用） */
+  /** 余弦相似度（越大越相关，仅排序用） */
   score: number;
 }
 

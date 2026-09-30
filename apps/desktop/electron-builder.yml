@@ -47,10 +47,6 @@ extraResources:
     to: icon.png
   - from: resources/fundet/icon.ico
     to: icon.ico
-  - from: ../../apps/cua-driver-bin/win32-x64
-    to: cua-driver/win32-x64
-    filter:
-      - '**/*'
 
 linux:
   category: Utility
@@ -85,7 +81,8 @@ nsis:
   artifactName: Fundet-Setup-${version}-${arch}.exe
 
 mac:
-  icon: resources/fundet/icon.png
+  # mac 要求 ≥512px（256 的 icon.png 会被 electron-builder 拒绝：CI mac job 曾恒红于此）
+  icon: resources/fundet/icon-512.png
   category: public.app-category.developer-tools
   identity: null
   target:

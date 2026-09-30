@@ -115,7 +115,6 @@ function UserTurn({
   canEdit,
   onEditStart,
   onEditSubmit,
-  isTurnRunning,
 }: {
   item: Extract<DisplayItem, { kind: 'user' }>;
   canFork?: boolean;
@@ -131,7 +130,6 @@ function UserTurn({
   onEditStart?: () => void;
   /** 提交编辑：截断该消息及之后全部内容并按新文本重发 */
   onEditSubmit?: (text: string, createdAt: number | undefined, attachments: SessionAttachment[] | undefined) => Promise<void>;
-  isTurnRunning?: boolean;
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   // ── inline 编辑态（Cindy UserMessageEditBox 同款交互）：气泡原位替换成
@@ -902,7 +900,6 @@ export function MessageStream({
                     canEdit={item.id === lastUserId && Boolean(onEditSubmit)}
                     onEditStart={onEditStart}
                     onEditSubmit={onEditSubmit}
-                    isTurnRunning={slice.isRunning}
                     onRewind={onRewind}
                     onShare={
                       userShareReply !== undefined

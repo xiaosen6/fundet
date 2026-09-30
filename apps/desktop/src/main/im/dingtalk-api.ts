@@ -360,8 +360,8 @@ export class DingTalkApiClient {
     });
     const downloadUrl = stringField(payload, 'downloadUrl');
     if (!downloadUrl) throw new Error('dingtalk media response missing downloadUrl');
-    const normalized = normalizeMediaDownloadUrl(downloadUrl);
-    let currentUrl = new URL(normalized);
+    // 签名 URL 可能带临时凭证查询串；域校验按 hostname 白名单（每跳重过），不受查询串影响
+    let currentUrl = new URL(downloadUrl);
     for (let redirects = 0; redirects <= MAX_MEDIA_REDIRECTS; redirects += 1) {
       if (!isAllowedMediaHost(currentUrl)) {
         throw new Error('dingtalk media response returned an untrusted URL');
@@ -394,9 +394,4 @@ export class DingTalkApiClient {
     });
     if (!res.ok) throw new Error(`dingtalk webhook failed: HTTP ${res.status}`);
   }
-}
-
-/** 签名 URL 里可能带临时凭证查询串——归一化只保协议/主机/路径用于域校验 */
-function normalizeMediaDownloadUrl(url: string): string {
-  return url;
 }

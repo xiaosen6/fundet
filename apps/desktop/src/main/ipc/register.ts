@@ -160,7 +160,7 @@ import type {
   SendResult,
 } from '../../shared/fundet-api.js';
 
-/** permission 审批的兜底超时：超时自动 deny，防 pi 侧永久挂起 */
+/** 交互（permission/ask/plan）的兜底超时：超时系统侧收口，防 pi 侧永久挂起 + Map 泄漏 */
 const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
@@ -312,17 +312,11 @@ export function wireSession(session: Session): void {
     (request) =>
       new Promise<InteractionDecision>((resolve) => {
         const entry: PendingInteraction = { sessionId: session.id, request, resolve, timer: null };
-        if (request.kind === 'permission') {
-          entry.timer = setTimeout(() => {
-            pendingInteractions.delete(request.requestId);
-            broadcast(FUNDET_PUSH.INTERACTION_DISMISSED, {
-              sessionId: session.id,
-              requestId: request.requestId,
-              reason: 'timeout',
-            });
-            resolve({ kind: 'permission', behavior: 'deny', reason: '审批超时自动拒绝' });
-          }, PERMISSION_INTERACTION_TIMEOUT_MS);
-        }
+        // 三类交互统一兜底超时（此前仅 permission 有：ask/plan 挂起时条目
+        // 常驻 pendingInteractions、promise 永不 resolve）
+        entry.timer = setTimeout(() => {
+          autoDismissInteraction(request.requestId, fallbackDecisionFor(request), 'timeout');
+        }, PERMISSION_INTERACTION_TIMEOUT_MS);
         pendingInteractions.set(request.requestId, entry);
         bridgeInteractionRequest(); // 桌宠提示需要确认（审批不走 agent 事件流）
         broadcast(FUNDET_PUSH.INTERACTION_REQUEST, { sessionId: session.id, request });
@@ -330,7 +324,15 @@ export function wireSession(session: Session): void {
   );
 
   session.onStatusChange((status) => {
-    if (status === 'closed' || status === 'error') wiredSessions.delete(session.id);
+    if (status !== 'closed' && status !== 'error') return;
+    wiredSessions.delete(session.id);
+    // 会话关闭/出错时清掉悬挂的审批/问答条目——否则 promise 永不 resolve、
+    // pendingInteractions 常驻（渲染层 getPendingInteractions 会一直拿到幽灵卡）
+    for (const [requestId, entry] of [...pendingInteractions]) {
+      if (entry.sessionId === session.id) {
+        autoDismissInteraction(requestId, fallbackDecisionFor(entry.request), 'session-closed');
+      }
+    }
   });
 }
 
@@ -458,6 +460,29 @@ function settleInteraction(requestId: string, decision: InteractionDecision): bo
     reason: 'resolved',
   });
   return true;
+}
+
+/** 系统侧收口（超时/会话关闭）：代用户落一个保守决定并关闭卡片 */
+function autoDismissInteraction(requestId: string, decision: InteractionDecision, reason: string): void {
+  const entry = pendingInteractions.get(requestId);
+  if (!entry) return;
+  if (entry.timer) clearTimeout(entry.timer);
+  pendingInteractions.delete(requestId);
+  broadcast(FUNDET_PUSH.INTERACTION_DISMISSED, { sessionId: entry.sessionId, requestId, reason });
+  entry.resolve(decision);
+}
+
+/** 系统侧收口的保守决定：permission/plan 拒绝；ask 每题提交空回答（与 IM 桥超时同口径） */
+function fallbackDecisionFor(request: InteractionRequest): InteractionDecision {
+  if (request.kind === 'ask_user_question') {
+    const answers: Record<string, string> = {};
+    for (const q of request.questions) answers[q.header || q.question] = '';
+    return { kind: 'ask_user_question', answers };
+  }
+  if (request.kind === 'plan_review') {
+    return { kind: 'plan_review', behavior: 'deny', reason: '交互超时或会话已关闭', dismissed: true };
+  }
+  return { kind: 'permission', behavior: 'deny', reason: '审批超时自动拒绝' };
 }
 
 async function buildUserMessage(
@@ -592,12 +617,20 @@ export function registerIpcHandlers(): void {
       const binding = getSessionKnowledgeBinding(session.id);
       let sendText = input.text;
       if (binding.auto && binding.ids.length > 0 && input.text.trim()) {
-        // 检索条数与 knowledge MCP 工具同源：读各绑定 KB 的 topK（多库取最大）
-        const hits = await searchKnowledgeChunks(binding.ids, input.text, resolveDefaultTopK(binding.ids));
-        if (hits.length > 0) {
-          sendText = `${formatKnowledgeContextBlock(hits)}
+        // 检索条数与 knowledge MCP 工具同源：读各绑定 KB 的 topK（多库取最大）；
+        // 服务不可达时跳过注入不阻断发送（检索失败 ≠ 发送失败）
+        try {
+          const hits = await searchKnowledgeChunks(binding.ids, input.text, resolveDefaultTopK(binding.ids));
+          if (hits.length > 0) {
+            sendText = `${formatKnowledgeContextBlock(hits)}
 
 ${input.text}`;
+          }
+        } catch (err) {
+          console.warn(
+            '[fundet:kb] 自动检索注入失败（已跳过）:',
+            err instanceof Error ? err.message : String(err),
+          );
         }
       }
       const result = await session.send(await buildUserMessage(sendText, attachments));
@@ -1321,12 +1354,24 @@ ${input.text}`;
         insertMessage(session.id, 'user', { text: instructions });
         const result = await session.send(await buildUserMessage(instructions, []));
         if (!result.accepted) throw new Error(result.reason ?? '发送被拒');
-        // 等本轮真正完成（done 事件）；send 的 resolve 只代表 pi 收下了输入
+        // 等本轮真正完成（done / 终止 error）；send 的 resolve 只代表 pi 收下了输入。
+        // 终止 error 快速失败（key 失效等几秒内报错，此前要白等满 10 分钟超时）
         await new Promise<void>((resolve, reject) => {
           const unsubscribe = session.onEvent((event: AgentEvent) => {
             if (event.type === 'done') {
               cleanup();
               resolve();
+              return;
+            }
+            if (event.type === 'error') {
+              const data = event.data as { isTerminal?: boolean; willRetry?: boolean; message?: string } | undefined;
+              const terminal =
+                data?.isTerminal === true ||
+                (data?.isTerminal === undefined && data?.willRetry !== true);
+              if (terminal) {
+                cleanup();
+                reject(new Error(data?.message || '任务失败'));
+              }
             }
           });
           const timeout = setTimeout(() => {

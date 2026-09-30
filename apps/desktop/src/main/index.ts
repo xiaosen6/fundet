@@ -258,6 +258,8 @@ function bootstrap(): void {
   void (async () => {
     const { spawn } = await import('node:child_process');
     const child = spawn(resolvePiBinaryPath(), ['--version'], { stdio: 'ignore', windowsHide: true });
+    // spawn 失败（二进制被杀软删除等竞态）不能变成主进程未捕获异常
+    child.on('error', () => undefined);
     child.on('exit', (code) => {
       if (code === 3221225501) {
         dialog.showErrorBox(

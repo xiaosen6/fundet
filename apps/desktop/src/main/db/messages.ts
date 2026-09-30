@@ -51,16 +51,24 @@ export function deleteMessagesInRange(sessionId: string, afterCreatedAt: number,
 export function copyMessagesUntil(fromId: string, toId: string, upToCreatedAt: number): void {
   const rows = listMessages(fromId).filter((m) => m.createdAt <= upToCreatedAt);
   const db = getDb();
+  const sqlite = getSqlite();
   for (const m of rows) {
+    const id = randomUUID();
     db.insert(messages)
       .values({
-        id: randomUUID(),
+        id,
         sessionId: toId,
         role: m.role,
         content: m.content,
         createdAt: m.createdAt,
       })
       .run();
+    // FTS 同步（与 insertMessage 同口径）：此前 fork 只插主表，
+    // 分叉会话的历史正文在搜索里永远命中不了
+    const row = sqlite.prepare('SELECT rowid FROM messages WHERE id = ?').get(id) as
+      | { rowid: number }
+      | undefined;
+    if (row) upsertMessageFts(sqlite, row.rowid, m.content);
   }
 }
 

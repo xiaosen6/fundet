@@ -4,7 +4,7 @@
  *
  * - 动态 import('mermaid')：未用到 mermaid 的会话不加载 ~1MB 依赖。
  * - 流式：半截语法解析失败静默回落源码视图，语法合法后下次渲染自动换 SVG。
- * - 主题：MutationObserver 盯 <html class="dark">，明暗主题自动重渲染。
+ * - 主题：MutationObserver 盯 <html data-theme="…">（useTheme 的写入方式），明暗主题自动重渲染。
  */
 import { memo, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
@@ -33,7 +33,7 @@ function MarkdownMermaidBlockImpl({ raw }: { raw: string }): React.JSX.Element {
   const themeRef = useRef(detectDark());
 
   function detectDark(): boolean {
-    return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
   }
 
   useEffect(() => {
@@ -83,7 +83,7 @@ function MarkdownMermaidBlockImpl({ raw }: { raw: string }): React.JSX.Element {
         }
       })();
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   }, [raw, renderId]);
 

@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
+import { confirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   CalendarClock,
   ChevronDown,
@@ -233,6 +234,13 @@ export function AutomationsPanel(): React.JSX.Element {
     setList(await window.fundet.automationsSetPaused(a.id, a.status === 'active'));
   };
   const del = async (a: AutomationView): Promise<void> => {
+    const ok = await confirmDialog({
+      title: '删除这个自动化任务？',
+      description: `「${a.name}」将被删除，运行历史一并清除，此操作不可撤销。`,
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
     await window.fundet.automationsDelete(a.id);
     await refresh();
   };
