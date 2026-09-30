@@ -6,16 +6,13 @@
  * 每条记忆是一个 .md 分片（type_title 格式），可查看/编辑/删除/新建；
  * digest 类型是助手压缩上下文时自动沉淀的摘要，只读。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { Brain, FolderOpen, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { MemoryRecordView, MemoryScopeView } from '../../../../shared/memory.ts';
-import { MEMORY_TYPE_LABELS } from '../../../../shared/memory.ts';
 import { cn } from '../../lib/cn';
 import { confirmDialog } from '../../components/ui/ConfirmDialog';
 import { toast } from '../../components/ui/toast';
-
-const CURATED_TYPES = ['user', 'feedback', 'project', 'reference'] as const;
 
 function relTime(iso: string): string {
   const t = Date.parse(iso);
@@ -59,7 +56,6 @@ export function MemoryPanel(): React.JSX.Element {
   const [activeScope, setActiveScope] = useState<string | null>(null);
   const [records, setRecords] = useState<MemoryRecordView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [searchHits, setSearchHits] = useState<Array<{ filename: string; type: string; title: string; snippet: string }> | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -123,11 +119,6 @@ export function MemoryPanel(): React.JSX.Element {
       toast.error(err instanceof Error ? err.message : String(err));
     }
   }, []);
-
-  const shown = useMemo(() => {
-    if (searchHits) return null; // 搜索态由命中列表渲染
-    return filter === 'all' ? records : records.filter((r) => r.type === filter);
-  }, [records, filter, searchHits]);
 
   const openRecord = useCallback((r: MemoryRecordView): void => {
     setDraft({
@@ -282,24 +273,9 @@ export function MemoryPanel(): React.JSX.Element {
         </div>
       )}
 
-      {/* ── 工具行：过滤 + 搜索 + 新建 ── */}
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {(['all', ...CURATED_TYPES, 'digest'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setFilter(t)}
-              className={cn(
-                'h-7 shrink-0 rounded-full border px-2.5 text-12 transition-colors',
-                filter === t ? 'border-accent text-primary' : 'border-board text-secondary hover:text-primary',
-              )}
-            >
-              {t === 'all' ? '全部' : (MEMORY_TYPE_LABELS[t] ?? t)}
-            </button>
-          ))}
-        </div>
-        <div className="relative h-8 w-48 shrink-0">
+      {/* ── 工具行：搜索 + 新建（类型分类是幕后概念，不给用户） ── */}
+      <div className="flex items-center justify-end gap-2">
+        <div className="relative h-8 w-56 shrink-0">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-placeholder" />
           <input
             value={query}
@@ -355,9 +331,9 @@ export function MemoryPanel(): React.JSX.Element {
                 className="fundet-surface flex flex-col items-start gap-1 border-b border-board px-4 py-3 text-left last:rounded-b-container hover:bg-chip"
               >
                 <div className="flex w-full items-center gap-2">
-                  <span className="rounded-full border border-board px-1.5 py-px text-10 text-secondary">
-                    {MEMORY_TYPE_LABELS[h.type] ?? h.type}
-                  </span>
+                  {h.type === 'digest' && (
+                    <span className="shrink-0 rounded-full border border-board px-1.5 py-px text-10 text-placeholder">自动</span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-13 text-primary">{h.title}</span>
                 </div>
                 <p className="line-clamp-2 w-full text-12 text-secondary">{h.snippet}</p>
@@ -367,19 +343,14 @@ export function MemoryPanel(): React.JSX.Element {
         )
       ) : (
         <div className="flex flex-col">
-          {(shown ?? []).map((r) => (
+          {records.map((r) => (
             <div
               key={r.filename}
               className="fundet-surface group flex items-center gap-3 border-b border-board px-4 py-3 first:border-t last:rounded-b-container"
             >
-              <span
-                className={cn(
-                  'shrink-0 rounded-full border px-1.5 py-px text-10',
-                  r.type === 'digest' ? 'border-board text-placeholder' : 'border-board text-secondary',
-                )}
-              >
-                {MEMORY_TYPE_LABELS[r.type] ?? r.type}
-              </span>
+              {r.type === 'digest' && (
+                <span className="shrink-0 rounded-full border border-board px-1.5 py-px text-10 text-placeholder">自动</span>
+              )}
               <button type="button" className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left" onClick={() => openRecord(r)}>
                 <div className="flex w-full items-baseline gap-2">
                   <span className="min-w-0 truncate text-13 text-primary">{r.title}</span>
@@ -401,9 +372,6 @@ export function MemoryPanel(): React.JSX.Element {
               </div>
             </div>
           ))}
-          {(shown ?? []).length === 0 && (
-            <p className="py-6 text-center text-13 text-secondary">这个类型下还没有记忆</p>
-          )}
         </div>
       )}
 
@@ -435,25 +403,18 @@ export function MemoryPanel(): React.JSX.Element {
               {draft.readonly ? (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-board px-2 py-px text-11 text-secondary">{MEMORY_TYPE_LABELS[draft.type] ?? draft.type}</span>
+                    <span className="rounded-full border border-board px-2 py-px text-11 text-placeholder">自动摘要 · 长对话压缩时沉淀</span>
                     <span className="text-11 text-placeholder tabular-nums">{relTime(records.find((r) => r.filename === draft.filename)?.updatedAt ?? '')}</span>
                   </div>
-                  <p className="text-13 text-secondary">{draft.description}</p>
                   <pre className="whitespace-pre-wrap rounded-xl border border-board bg-chip px-4 py-3 font-mono text-12 leading-relaxed text-primary">{draft.body}</pre>
                 </>
               ) : draft.filename ? (
-                /* 编辑：字段齐全，样式对齐新建 */
+                /* 编辑：标题 + 内容（摘要自动维护，不给用户填） */
                 <>
                   <input
                     value={draft.title}
                     onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                     placeholder="标题"
-                    className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
-                  />
-                  <input
-                    value={draft.description}
-                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                    placeholder="一行摘要"
                     className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
                   />
                   <textarea
