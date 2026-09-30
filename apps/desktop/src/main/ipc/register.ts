@@ -1161,7 +1161,15 @@ ${input.text}`;
     const bytes = Buffer.from(wavBase64, 'base64');
     if (bytes.length === 0) throw new Error('录音数据为空');
     if (bytes.length > 64 * 1024 * 1024) throw new Error('录音过大（上限 64MB）');
-    return transcribeAudio(bytes, 'input.wav');
+    // 转写计时（2026-09-30 用户实报「时快时慢」取证用）：服务端实测 68~352ms，
+    // 此处若见秒级 = 撞上网关拥堵时段（转码在渲染层、不在此链路）
+    const t0 = Date.now();
+    try {
+      return await transcribeAudio(bytes, 'input.wav');
+    } finally {
+      const sec = ((bytes.length - 44) / 2 / 16000).toFixed(1);
+      console.log(`[fundet:voice] 转写耗时 ${Date.now() - t0}ms（音频 ${sec}s / ${(bytes.length / 1024).toFixed(0)}KB）`);
+    }
   });
   ipcMain.handle(FUNDET_INVOKE.VOICE_TTS, async (_e, text: string) => {
     const trimmed = (text ?? '').trim();

@@ -64,7 +64,8 @@ export function createImagegenHandlers(deps: ImagegenDeps) {
     } catch (err) {
       return {
         text: `生图失败：${err instanceof Error ? err.message : String(err)}。` +
-          `多为生图服务繁忙或未就绪，可稍后重试或减小尺寸。`,
+          `多为生图服务繁忙或未就绪（本工具本身可用）——建议用户稍后重试或减小尺寸后重试一次，` +
+          `不要声称没有生图能力。`,
         isError: true,
       };
     }
