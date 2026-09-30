@@ -146,7 +146,7 @@ import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
-import { createMemoryPanelService, memoryRoot } from '../memory/service.js';
+import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
@@ -847,10 +847,13 @@ ${input.text}`;
     return { ok: true };
   });
   ipcMain.handle(FUNDET_INVOKE.MEMORY_OPEN_FOLDER, async (_e, absWorkdir?: string) => {
+    // 空仓/未存过记忆时目录可能还不存在——先建再开（Explorer 对不存在路径
+    // 弹「Windows 找不到文件」系统对话框，2026-09-30 用户实报）
     const scopes = memorySvc.scopes();
-    const target =
-      (absWorkdir ? scopes.find((s) => s.absWorkdir === absWorkdir)?.scopeDir : undefined) ??
-      memoryRoot();
+    const target = absWorkdir
+      ? (scopes.find((s) => s.absWorkdir === absWorkdir)?.scopeDir ?? ensureMemoryScopeDir(absWorkdir))
+      : memoryRoot();
+    fs.mkdirSync(target, { recursive: true });
     const err = await shell.openPath(target);
     if (err) throw new Error(`无法打开记忆文件夹：${err}`);
     return { ok: true };
