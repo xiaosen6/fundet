@@ -143,19 +143,33 @@ export function MemoryPanel(): React.JSX.Element {
 
   const saveDraft = useCallback(async (): Promise<void> => {
     if (!draft || !activeScope) return;
-    if (!draft.title.trim() || !draft.description.trim() || !draft.body.trim()) {
-      toast.error('标题、描述、正文都要填');
+    const body = draft.body.trim();
+    if (!body) {
+      toast.error('先写下要记住的内容');
       return;
     }
-    const name = draft.name.trim() || draft.title.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'note';
+    // 新建走「只写内容」极简流：标题/摘要自动从正文提取，用户不填表单
+    const firstLine = body.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+    const isCreate = !draft.filename;
+    const title =
+      draft.title.trim() || (isCreate ? firstLine.slice(0, 30) || '新记忆' : draft.title.trim());
+    const description =
+      draft.description.trim() || body.replace(/\s+/g, ' ').trim().slice(0, 40) || title;
+    // 文件名 slug 只认 [a-z0-9_-]，中文标题榨不出 → note 兜底；同名去重防撞（create 撞名会拒）
+    let name = draft.name.trim() || title.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'note';
+    if (isCreate) {
+      let n = 2;
+      const taken = new Set(records.map((r) => r.filename));
+      while (taken.has(`${draft.type}_${name}.md`)) name = `${name.replace(/-\d+$/, '')}-${n++}`;
+    }
     setSaving(true);
     try {
       await window.fundet.memorySave(activeScope, {
         type: draft.type,
         name,
-        title: draft.title.trim(),
-        description: draft.description.trim(),
-        body: draft.body,
+        title,
+        description,
+        body,
         ...(draft.filename ? { mode: 'update' as const } : {}),
       });
       toast.success('已保存');
@@ -167,7 +181,7 @@ export function MemoryPanel(): React.JSX.Element {
     } finally {
       setSaving(false);
     }
-  }, [draft, activeScope, refreshRecords, refreshScopes]);
+  }, [draft, activeScope, records, refreshRecords, refreshScopes]);
 
   const removeRecord = useCallback(
     async (r: MemoryRecordView): Promise<void> => {
@@ -393,62 +407,125 @@ export function MemoryPanel(): React.JSX.Element {
         </div>
       )}
 
-      {/* ── 详情/编辑弹层 ── */}
+      {/* ── 新建/编辑弹层 ── */}
       {draft && (
         <div role="dialog" className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-modal)] p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) setDraft(null); }}>
-          <div className="flex max-h-[80vh] w-full max-w-[640px] flex-col rounded-container border border-board bg-card shadow-[var(--shadow-menu)]">
-            <div className="flex items-center justify-between border-b border-board px-5 py-3">
-              <span className="text-15 font-semibold text-primary">
-                {draft.filename ? (draft.readonly ? '记忆详情' : '编辑记忆') : '新建记忆'}
-              </span>
+          <div className="flex max-h-[82vh] w-full max-w-[600px] flex-col overflow-hidden rounded-container border border-board bg-card shadow-[var(--shadow-menu)]">
+            {/* 头部：图标 + 标题 + 一句话说明 */}
+            <div className="flex items-start justify-between gap-3 px-6 pt-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-board bg-chip text-primary">
+                  <Brain size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-15 font-semibold text-primary">
+                    {draft.filename ? (draft.readonly ? '记忆详情' : '编辑记忆') : '新建记忆'}
+                  </p>
+                  {!draft.filename && (
+                    <p className="mt-0.5 text-12 text-secondary">写下要让助手记住的事，它会在以后的对话里自动参考</p>
+                  )}
+                </div>
+              </div>
               <button type="button" className="p-1 text-secondary hover:text-primary" onClick={() => setDraft(null)}>
                 <X size={14} />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
               {draft.readonly ? (
                 <>
-                  <p className="text-13 text-secondary">{draft.description}</p>
-                  <pre className="whitespace-pre-wrap rounded-xl border border-board bg-chip px-3 py-2 font-mono text-12 text-primary">{draft.body}</pre>
-                </>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <select
-                      value={draft.type}
-                      onChange={(e) => setDraft({ ...draft, type: e.target.value })}
-                      disabled={Boolean(draft.filename)}
-                      className="h-9 rounded-xl border border-board bg-card px-2 text-13 text-primary outline-none disabled:opacity-60"
-                    >
-                      {CURATED_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {MEMORY_TYPE_LABELS[t]}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      value={draft.title}
-                      onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                      placeholder="标题（如：偏好简洁回答）"
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
-                    />
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-board px-2 py-px text-11 text-secondary">{MEMORY_TYPE_LABELS[draft.type] ?? draft.type}</span>
+                    <span className="text-11 text-placeholder tabular-nums">{relTime(records.find((r) => r.filename === draft.filename)?.updatedAt ?? '')}</span>
                   </div>
+                  <p className="text-13 text-secondary">{draft.description}</p>
+                  <pre className="whitespace-pre-wrap rounded-xl border border-board bg-chip px-4 py-3 font-mono text-12 leading-relaxed text-primary">{draft.body}</pre>
+                </>
+              ) : draft.filename ? (
+                /* 编辑：字段齐全，样式对齐新建 */
+                <>
+                  <input
+                    value={draft.title}
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    placeholder="标题"
+                    className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
+                  />
                   <input
                     value={draft.description}
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                    placeholder="一行摘要（会进索引，帮助手快速回忆）"
+                    placeholder="一行摘要"
                     className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
                   />
                   <textarea
                     value={draft.body}
                     onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                    placeholder="正文（Markdown）。feedback 类建议写清 **Why:** 与 **How to apply:**"
-                    className="min-h-[160px] flex-1 resize-none rounded-xl border border-board bg-card px-3 py-2 text-13 text-primary outline-none placeholder:text-placeholder"
+                    className="min-h-[160px] flex-1 resize-none rounded-xl border border-board bg-card px-3 py-2.5 text-13 leading-relaxed text-primary outline-none placeholder:text-placeholder"
                   />
+                </>
+              ) : (
+                /* 新建：只写内容，标题/摘要自动提取，实时预览 */
+                <>
+                  <textarea
+                    autoFocus
+                    value={draft.body}
+                    onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                    placeholder={'例如：我是做运维的，回答尽量直接给具体命令\n或者：出差报销要在回来后 5 天内提交'}
+                    className="min-h-[140px] resize-none rounded-container border border-board bg-card px-4 py-3 text-14 leading-relaxed text-primary outline-none placeholder:text-placeholder"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    {CURATED_TYPES.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, type: t })}
+                        className={cn(
+                          'h-7 rounded-full border px-3 text-12 transition-colors',
+                          draft.type === t
+                            ? 'border-accent bg-accent text-card'
+                            : 'border-board text-secondary hover:text-primary',
+                        )}
+                      >
+                        {MEMORY_TYPE_LABELS[t]}
+                      </button>
+                    ))}
+                  </div>
+                  {/* 实时预览：保存后长这样 */}
+                  <div className="fundet-surface rounded-container border border-board px-4 py-3">
+                    <p className="mb-1.5 text-10 text-placeholder">保存后助手将看到 · 标题与摘要自动生成</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 rounded-full border border-board px-1.5 py-px text-10 text-secondary">
+                        {MEMORY_TYPE_LABELS[draft.type]}
+                      </span>
+                      <span className="min-w-0 truncate text-13 text-primary">
+                        {draft.body.trim() ? (draft.body.trim().split('\n').map((l) => l.trim()).find(Boolean) ?? '').slice(0, 30) || '新记忆' : '新记忆'}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-12 text-secondary">
+                      {draft.body.trim() ? draft.body.replace(/\s+/g, ' ').trim().slice(0, 40) || '（摘要）' : '输入内容后这里会显示自动摘要'}
+                    </p>
+                  </div>
+                  <details className="text-12 text-secondary">
+                    <summary className="cursor-pointer select-none hover:text-primary">自定义标题与摘要（可选）</summary>
+                    <div className="mt-2 flex flex-col gap-2">
+                      <input
+                        value={draft.title}
+                        onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                        placeholder="覆盖自动标题"
+                        className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
+                      />
+                      <input
+                        value={draft.description}
+                        onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                        placeholder="覆盖自动摘要"
+                        className="h-9 rounded-xl border border-board bg-card px-3 text-13 text-primary outline-none placeholder:text-placeholder"
+                      />
+                    </div>
+                  </details>
                 </>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-board px-5 py-3">
+
+            <div className="flex items-center justify-between border-t border-board px-6 py-4">
               {draft.filename ? (
                 <button
                   type="button"
@@ -461,7 +538,7 @@ export function MemoryPanel(): React.JSX.Element {
                   <Trash2 size={13} /> 删除
                 </button>
               ) : (
-                <span />
+                <span className="text-11 text-placeholder">保存在当前目录的记忆仓 · 纯本地</span>
               )}
               <div className="flex items-center gap-2">
                 <button type="button" className="h-8 rounded-xl border border-board px-4 text-13 text-secondary hover:text-primary" onClick={() => setDraft(null)}>
@@ -470,9 +547,9 @@ export function MemoryPanel(): React.JSX.Element {
                 {!draft.readonly && (
                   <button
                     type="button"
-                    disabled={saving}
+                    disabled={saving || !draft.body.trim()}
                     onClick={() => void saveDraft()}
-                    className="flex h-8 items-center gap-1.5 rounded-xl border border-accent bg-card px-4 text-13 text-primary hover:bg-chip disabled:opacity-50"
+                    className="flex h-8 items-center gap-1.5 rounded-xl bg-accent px-5 text-13 text-card disabled:opacity-50"
                   >
                     {saving && <Loader2 size={12} className="animate-spin" />} 保存
                   </button>
