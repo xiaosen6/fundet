@@ -146,6 +146,7 @@ import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
+import { createMemoryPanelService, memoryRoot } from '../memory/service.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
@@ -816,6 +817,42 @@ ${input.text}`;
   }));
   ipcMain.handle(FUNDET_INVOKE.NOTIFY_ENABLED_SET, (_e, enabled: boolean) => {
     setBoolSetting(COMPLETION_NOTIFY_SETTING, Boolean(enabled));
+    return { ok: true };
+  });
+
+  // ---------- memory（记忆面板）----------
+  // 服务层经 manager 实例池读写（与 MCP 工具同一 store，FTS 同步一致）
+  const memorySvc = createMemoryPanelService(getHost().memoryManager);
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_SCOPES, () => memorySvc.scopes());
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_LIST, (_e, absWorkdir: string) => memorySvc.list(absWorkdir));
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_GET, (_e, absWorkdir: string, filename: string) =>
+    memorySvc.get(absWorkdir, filename),
+  );
+  ipcMain.handle(
+    FUNDET_INVOKE.MEMORY_SAVE,
+    async (_e, absWorkdir: string, input: Parameters<typeof memorySvc.save>[1]) => ({
+      filename: await memorySvc.save(absWorkdir, input),
+    }),
+  );
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_DELETE, async (_e, absWorkdir: string, filename: string) => {
+    await memorySvc.remove(absWorkdir, filename);
+    return { ok: true };
+  });
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_SEARCH, (_e, absWorkdir: string, query: string) =>
+    memorySvc.search(absWorkdir, query),
+  );
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_ENABLED_GET, () => ({ enabled: memorySvc.enabled() }));
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_ENABLED_SET, async (_e, enabled: boolean) => {
+    await memorySvc.setEnabled(Boolean(enabled));
+    return { ok: true };
+  });
+  ipcMain.handle(FUNDET_INVOKE.MEMORY_OPEN_FOLDER, async (_e, absWorkdir?: string) => {
+    const scopes = memorySvc.scopes();
+    const target =
+      (absWorkdir ? scopes.find((s) => s.absWorkdir === absWorkdir)?.scopeDir : undefined) ??
+      memoryRoot();
+    const err = await shell.openPath(target);
+    if (err) throw new Error(`无法打开记忆文件夹：${err}`);
     return { ok: true };
   });
 

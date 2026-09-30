@@ -28,6 +28,7 @@ import { resolvePiBinaryPath, resolveRipgrepPath } from './pi-binary.js';
 import { createFundetMemoryManager } from './memory.js';
 import { lookupKnownModel } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
+import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
 import { createPreparePiExtraSpawnConfig } from './mcp-bridge.js';
 import systemPromptRaw from './system-prompt.md?raw';
 import dwsCheatSheetRaw from './dws-prompt.md?raw';
@@ -141,19 +142,21 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
   return { providers, env };
 }
 
-function buildRuntimeConfig(): AgentRuntimeConfig {
+function buildRuntimeConfig(memoryManager: MakerMemoryManager): AgentRuntimeConfig {
   return {
     // 无网关：endpoint 留空，所有会话走显式 BYOM providerId（pi 侧 fail-closed 保证不回落）
     // getter 每会话求值（agent-core startSession 现读）：dws CLI 已安装才追加钉钉速查段，
-    // 没装钉钉的用户零 token 开销；探测结果进程内缓存，应用内新装 dws 需重启生效
+    // 没装钉钉的用户零 token 开局；探测结果进程内缓存，应用内新装 dws 需重启生效
     get systemPrompt() {
       return isDwsCliInstalled() ? `${systemPrompt}\n\n${dwsCheatSheetRaw}`.trim() : systemPrompt.trim();
     },
     managedExecutablePaths: { ripgrep: resolveRipgrepPath() },
+    // pi 原生 auto-memory 不用（记忆走 Maker Memory：.md 分片 + FTS + 压缩 digest 沉淀）
     memoryEnabled: false,
-    // 产品面已去掉记忆：固定关闭。内核仍装配 manager，避免改 agent-core。
+    // Maker Memory 开关（getter 每会话求值：记忆面板开关即时生效于新会话；
+    // 开启时 pi 压缩上下文自动沉淀 digest——见 agents/pi/index.ts 压缩即记忆）
     get makerMemoryEnabled() {
-      return false;
+      return memoryManager.isEnabled();
     },
   };
 }
@@ -200,7 +203,7 @@ export function getHost(): FundetHost {
 
   const pi = new PiAgent({
     auth: createByokAuthAdapter(),
-    runtimeConfig: buildRuntimeConfig(),
+    runtimeConfig: buildRuntimeConfig(memoryManager),
     binaryPath,
     logger: logger.child('pi'),
     resolvePiAgentHome,
@@ -208,11 +211,13 @@ export function getHost(): FundetHost {
     // 记忆：压缩摘要沉淀 digest 的写入路径（gate 另看 runtimeConfig.makerMemoryEnabled）
     makerMemory: memoryManager,
     // MCP：内置搜索 + 用户表里的外部 server，经 CINDY_PI_MCP_BRIDGE 注入 cindy-bridge
-    preparePiExtraSpawnConfig: createPreparePiExtraSpawnConfig(logger.child('mcp')),
-    // 默认会话是 ask：内置搜索只打用户自己配的引擎、无本机副作用，免每次弹窗。
-    // 其它 MCP 仍要确认（设置里已去掉 MCP 页，这条主要防库里残留的外部 server）。
+    preparePiExtraSpawnConfig: createPreparePiExtraSpawnConfig(logger.child('mcp'), memoryManager),
+    // 默认会话是 ask：内置搜索/记忆只写用户自己的本地库（userData 内、有管理面
+    // 可删改），无外发无系统副作用，免每次弹窗。其它 MCP 仍要确认。
     getMcpToolApprovalPolicy: ({ serverName }) =>
-      serverName === SEARCH_MCP_SERVER_NAME ? 'auto-approve' : 'prompt',
+      serverName === SEARCH_MCP_SERVER_NAME || serverName === MEMORY_MCP_SERVER_NAME
+        ? 'auto-approve'
+        : 'prompt',
   });
   memoryManager.setAgents({ pi });
 
@@ -228,9 +233,10 @@ export function getHost(): FundetHost {
   return host;
 }
 
-/** app 退出前调用：关闭所有活跃会话（回收 pi 子进程） */
+/** app 退出前调用：关闭所有活跃会话（回收 pi 子进程）+ 记忆 store 句柄 */
 export async function shutdownHost(): Promise<void> {
   if (!host) return;
   await host.maker.shutdown();
+  host.memoryManager.dispose();
   host = null;
 }

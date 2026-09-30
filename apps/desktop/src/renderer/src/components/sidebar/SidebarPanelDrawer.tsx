@@ -13,8 +13,9 @@ import { SkillsPanel } from '../../pages/settings/SkillsPanel';
 import { KnowledgePanel } from '../../pages/settings/KnowledgePanel';
 import { DwsPanel } from '../../pages/settings/DwsPanel';
 import { AutomationsPanel } from '../../pages/settings/AutomationsPanel';
+import { MemoryPanel } from '../../pages/settings/MemoryPanel';
 
-export type SidebarPanelId = 'im' | 'skills' | 'knowledge' | 'dws' | 'automations';
+export type SidebarPanelId = 'im' | 'skills' | 'knowledge' | 'dws' | 'automations' | 'memory';
 
 const PANELS: Record<SidebarPanelId, () => React.JSX.Element> = {
   im: ImBotPanel,
@@ -22,6 +23,7 @@ const PANELS: Record<SidebarPanelId, () => React.JSX.Element> = {
   knowledge: KnowledgePanel,
   dws: DwsPanel,
   automations: AutomationsPanel,
+  memory: MemoryPanel,
 };
 
 export function PanelView({

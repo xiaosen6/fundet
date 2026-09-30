@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, Briefcase, CalendarClock, ChevronRight, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { BookOpen, Bot, Brain, Briefcase, CalendarClock, ChevronRight, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -73,6 +73,7 @@ const PANEL_BUTTONS: Array<{ id: SidebarPanelId; label: string; Icon: typeof Bot
   { id: 'dws', label: '钉钉工作台', Icon: Briefcase },
   { id: 'skills', label: '技能', Icon: Zap },
   { id: 'knowledge', label: '知识库', Icon: BookOpen },
+  { id: 'memory', label: '记忆', Icon: Brain },
 ];
 
 /** 会话行标题：真溢出时 hover 播一次匀速阅读滚动（Cindy SidebarTitleMarquee

@@ -990,6 +990,7 @@ export class PiAgent extends BaseAgent {
           sessionId: opts.sessionId,
           ...(opts.sessionInstanceId ? { sessionInstanceId: opts.sessionInstanceId } : {}),
           workingDir: opts.workingDir,
+          ...(opts.memoryScopeDir ? { memoryScopeDir: opts.memoryScopeDir } : {}),
           vendorOptions: mutableVendorOptions,
           mcpCallerKind: 'root',
           mcpCallerAttested: true,
@@ -1019,7 +1020,7 @@ export class PiAgent extends BaseAgent {
       (opts.makerMemoryEnabled ?? this.deps.runtimeConfig.makerMemoryEnabled ?? false) === true &&
       (this.memoryOverride ?? true) === true &&
       !!this.deps.makerMemory;
-    const memoryScopeKey = buildMemoryScopeKey(opts.workingDir, opts.remoteHostId);
+    const memoryScopeKey = buildMemoryScopeKey(opts.memoryScopeDir ?? opts.workingDir, opts.remoteHostId);
     const digestSlugBase = slugifyForMemory(opts.sessionId ?? `pi-${process.pid}`, 24);
     let digestSeq = 0;
     const writeCompactionDigest = async (summary: string, reason: string): Promise<void> => {

@@ -191,6 +191,8 @@ export interface PiExtraSpawnConfigContext {
   /** 当前 Maker Session 实例代号；用于阻断旧 bridge 请求借用新实例权限。 */
   sessionInstanceId?: string;
   workingDir: string;
+  /** 记忆仓作用域目录（缺省 workingDir）；内置 memory MCP 据此绑定 store。 */
+  memoryScopeDir?: string;
   vendorOptions?: Record<string, unknown>;
   mcpCallerKind?: 'root' | 'descendant' | 'unknown';
   mcpCallerAttested?: boolean;
@@ -515,6 +517,12 @@ export interface StartSessionOptions {
    */
   sessionInstanceId?: string;
   workingDir: string;
+  /**
+   * 记忆仓作用域目录（Maker Memory 的 per-workdir store 键来源）。缺省用
+   * workingDir（文件工作目录=记忆目录）。IM 机器人等共享场景传桌面默认工作
+   * 目录（如用户主目录），与桌面会话共享同一份记忆仓。
+   */
+  memoryScopeDir?: string;
   /**
    * Product workspace classification. `dialogue` sessions may still receive an
    * app-managed cwd, but must stay out of project grouping when persisted.

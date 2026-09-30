@@ -20,6 +20,7 @@
  * 在会话 close 时由 PiAgent 调用（幂等），关闭 http 代理 + 杀子进程。
  */
 import { type ChildProcess } from 'node:child_process';
+import os from 'node:os';
 import crossSpawn from 'cross-spawn';
 import { createInterface } from 'node:readline';
 import { createServer, type Server } from 'node:http';
@@ -44,6 +45,10 @@ import { getSessionKnowledgeBinding } from '../knowledge/store.js';
 import { startKnowledgeMcpServer } from '../knowledge/mcp-server.js';
 import { handleKnowledgeSearch, handleKnowledgeList } from '../knowledge/tool.js';
 import { formatDingtalkResults } from '../knowledge/dingtalk-format.js';
+import { startMemoryMcpServer } from '../memory/mcp-server.js';
+import { createMemoryToolHandlers, type MemoryStoreLike } from '../memory/handlers.ts';
+import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
+import type { MakerMemoryManager } from '@fundet/agent-core';
 import { resolveDws, execDws } from './dws.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
 import { startBrowserMcpServer } from '../browser/mcp-http.js';
@@ -334,7 +339,7 @@ export async function probeMcpServer(
  * AgentDeps.preparePiExtraSpawnConfig 的 Fundet 实现。
  * 始终注入内置搜索 MCP（设置里的 Tavily/Brave/博查/智谱）；再叠加用户表里的外部 server。
  */
-export function createPreparePiExtraSpawnConfig(logger: Logger) {
+export function createPreparePiExtraSpawnConfig(logger: Logger, memoryManager?: MakerMemoryManager) {
   return async (
     _providers: McpProvider[],
     ctx?: PiExtraSpawnConfigContext,
@@ -424,6 +429,33 @@ export function createPreparePiExtraSpawnConfig(logger: Logger) {
         }
       } catch (err) {
         logger.error('电脑操作 MCP 启动失败（跳过，其余 server 照常）', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+
+    // 记忆（记忆面板开关，默认开）：跨会话持久记忆，按作用域目录分仓（会话
+    // 的 memoryScopeDir ?? workingDir——IM 会话传桌面默认目录实现共享）。
+    // 渐进式发现（两入口工具）+ 审批 auto-approve（只写 userData 内记忆文件）。
+    tasks.push(async () => {
+      try {
+        if (memoryManager?.isEnabled()) {
+          const scopeDir = ctx?.memoryScopeDir ?? ctx?.workingDir ?? os.homedir();
+          const manager = memoryManager;
+          const memory = await startMemoryMcpServer(
+            token,
+            logger.child('memory-mcp'),
+            createMemoryToolHandlers({
+              isEnabled: () => manager.isEnabled(),
+              getStore: (dir) => manager.getStore(dir) as Promise<MemoryStoreLike>,
+              memoryScopeDir: scopeDir,
+            }),
+          );
+          disposers.push(memory.dispose);
+          servers.push({ name: MEMORY_MCP_SERVER_NAME, url: memory.url });
+        }
+      } catch (err) {
+        logger.error('记忆 MCP 启动失败（跳过，其余 server 照常）', {
           error: err instanceof Error ? err.message : String(err),
         });
       }

@@ -261,6 +261,9 @@ async function runTurn(msg: ImInbound, extras?: ImInboundExtras): Promise<string
       id: existing?.id ?? randomUUID(),
       title: `${CHANNEL_LABEL[msg.channel]} · ${msg.senderName || msg.chatId.slice(-6)}`,
       workingDir: workDir,
+      // 记忆共享（用户拍板 2026-09-30）：IM 会话不按 im-workspace 分仓，
+      // 与桌面默认会话共用主目录记忆仓——手机上问的事桌面接着聊
+      memoryScopeDir: os.homedir(),
       model,
       providerId,
       // 完全放行（用户 2026-09-23 拍板）：IM 会话的审批卡在微信/钉钉侧看不到，

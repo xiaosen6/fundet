@@ -16,6 +16,8 @@ import type { BrowserStatus } from './browser-settings.ts';
 export type { BrowserStatus } from './browser-settings.ts';
 import type { ComputerStatus } from './computer-settings.ts';
 export type { ComputerStatus } from './computer-settings.ts';
+import type { MemoryRecordView, MemoryScopeView } from './memory.ts';
+export type { MemoryRecordView, MemoryScopeView } from './memory.ts';
 
 export type ProviderApi = 'anthropic-messages' | 'openai-responses' | 'openai-completions';
 
@@ -601,6 +603,15 @@ export interface FundetApi {
   /** 完成提醒开关（设置 → 桌宠） */
   notifyEnabledGet(): Promise<{ enabled: boolean }>;
   notifyEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;
+  memoryScopes(): Promise<MemoryScopeView[]>;
+  memoryList(absWorkdir: string): Promise<MemoryRecordView[]>;
+  memoryGet(absWorkdir: string, filename: string): Promise<MemoryRecordView>;
+  memorySave(absWorkdir: string, input: { type: string; name: string; title: string; description: string; body: string; mode?: 'create' | 'update' | 'append' }): Promise<{ filename: string }>;
+  memoryDelete(absWorkdir: string, filename: string): Promise<{ ok: boolean }>;
+  memorySearch(absWorkdir: string, query: string): Promise<Array<{ filename: string; type: string; title: string; snippet: string }>>;
+  memoryEnabledGet(): Promise<{ enabled: boolean }>;
+  memoryEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;
+  memoryOpenFolder(absWorkdir?: string): Promise<{ ok: boolean }>;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
   onKbEmbedProgress(cb: (payload: KbImportProgress) => void): () => void;
