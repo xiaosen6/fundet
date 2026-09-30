@@ -169,26 +169,11 @@ function createWindow(): void {
   win.setMenuBarVisibility(false);
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
 
-  // 最大化时 UI 等比放大（用户拍板 2026-09-23：最大化后保持原大小=大片空白，
-  // 要跟全屏等比例放大）。锚定设计基线 1280（默认窗宽）而非「当前窗宽」：
-  // 窗口本就接近全屏时按当前宽算比率≈1，会出现「最大化没放大」（09-24 实报）；
-  // 基线锚定让效果稳定——最大化 CSS 宽 / 1280，0.05 步进、封顶 1.25，还原回 1.0。
-  // mac 走原生绿钮缩放语义，不掺和。
+  // 最大化不缩放（2026-09-30 用户拍板对齐 Cindy：0.3.11 的「最大化等比放大」
+  // 撤销——字体太大）。仍保留加载完成时复位 zoom=1：Chromium 按域名持久化
+  // 缩放（Ctrl+滚轮会被记住），不复位的话用户滚过的比例会带到下次启动
   if (process.platform === 'win32') {
-    const MAXIMIZE_ZOOM_CAP = 1.25;
-    const DESIGN_BASE_WIDTH = 1280;
-    const applyZoom = (): void => {
-      const bounds = win.getBounds();
-      if (bounds.width <= 0) return;
-      const ratio = bounds.width / DESIGN_BASE_WIDTH;
-      const zoom = Math.min(MAXIMIZE_ZOOM_CAP, Math.max(1, Math.round(ratio * 20) / 20));
-      win.webContents.setZoomFactor(zoom > 1.01 ? zoom : 1);
-    };
-    // Chromium 按域名持久化 zoom：上次最大化设置的 1.25 会被记住，重启后普通
-    // 窗口也顶着大字体（09-25 实报）——每次加载完成按当前窗口状态复位。
-    win.webContents.on('did-finish-load', () => applyZoom());
-    win.on('maximize', applyZoom);
-    win.on('unmaximize', () => win.webContents.setZoomFactor(1));
+    win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(1));
   }
 
   // 链接不许顶替应用窗口：新窗口一律 deny，页面内跳转只放行应用自身页面

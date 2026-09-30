@@ -55,6 +55,7 @@ function jsonRpcError(id: unknown, code: number, message: string): unknown {
 async function dispatch(
   msg: { id?: unknown; method?: string; params?: unknown },
   searchHandler: SearchToolHandler,
+  tool: typeof TOOL = TOOL,
 ): Promise<unknown> {
   const id = msg.id;
   const method = msg.method ?? '';
@@ -73,7 +74,7 @@ async function dispatch(
     return { jsonrpc: '2.0', id, result: {} };
   }
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: [TOOL] } };
+    return { jsonrpc: '2.0', id, result: { tools: [tool] } };
   }
   if (method === 'tools/call') {
     const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
@@ -98,7 +99,9 @@ export function startSearchMcpServer(
   token: string,
   logger: SearchMcpLogger,
   searchHandler: SearchToolHandler,
+  opts?: { toolDescription?: string },
 ): Promise<{ url: string; dispose: () => void }> {
+  const tool = opts?.toolDescription ? { ...TOOL, description: opts.toolDescription } : TOOL;
   return new Promise((resolve, reject) => {
     const server: Server = createServer((req, res) => {
       const reply = (status: number, body?: unknown, extra?: Record<string, string>): void => {
@@ -145,7 +148,7 @@ export function startSearchMcpServer(
             reply(202);
             return;
           }
-          const out = await dispatch(msg, searchHandler);
+          const out = await dispatch(msg, searchHandler, tool);
           reply(200, out ?? jsonRpcError(msg.id, -32603, 'empty'));
         } catch (err) {
           logger.warn('search mcp 请求失败', { error: String(err) });

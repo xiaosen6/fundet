@@ -345,6 +345,12 @@ export async function probeMcpServer(
  * AgentDeps.preparePiExtraSpawnConfig 的 Fundet 实现。
  * 始终注入内置搜索 MCP（设置里的 Tavily/Brave/博查/智谱）；再叠加用户表里的外部 server。
  */
+/** 该会话是否绑定了知识库（本地或钉钉）——绑定后搜索工具描述要声明知识库优先 */
+function kbBoundForSearch(ctx?: PiExtraSpawnConfigContext): boolean {
+  const binding = ctx?.sessionId ? getSessionKnowledgeBinding(ctx.sessionId) : null;
+  return Boolean(binding && (binding.ids.length > 0 || binding.dingtalk === true));
+}
+
 export function createPreparePiExtraSpawnConfig(logger: Logger, memoryManager?: MakerMemoryManager) {
   return async (
     _providers: McpProvider[],
@@ -365,7 +371,22 @@ export function createPreparePiExtraSpawnConfig(logger: Logger, memoryManager?: 
 
     tasks.push(async () => {
       try {
-        const search = await startSearchMcpServer(token, logger.child('search-mcp'), handleWebSearch);
+        const search = await startSearchMcpServer(
+          token,
+          logger.child('search-mcp'),
+          handleWebSearch,
+          // 会话绑定了知识库时改写描述声明优先级（2026-09-30 用户实报「勾了
+          // 知识库却跑去联网搜」——工具描述是 agent 选工具的唯一依据）
+          kbBoundForSearch(ctx)
+            ? {
+                toolDescription:
+                  `联网搜索公网（返回标题、链接、摘要）。注意：本会话已绑定本地知识库——` +
+                  `查资料/事实/制度/文档类问题请优先用 knowledge_search 工具，` +
+                  `本工具仅在用户明确要「联网/网上查/最新消息」、或知识库检索未命中时使用。` +
+                  'engine 可省略（用设置里的默认）；可选 tavily、brave、bocha、zhipu。',
+              }
+            : undefined,
+        );
         disposers.push(search.dispose);
         servers.push({ name: SEARCH_MCP_SERVER_NAME, url: search.url });
       } catch (err) {
