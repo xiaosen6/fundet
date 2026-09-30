@@ -612,6 +612,8 @@ export interface FundetApi {
   memoryEnabledGet(): Promise<{ enabled: boolean }>;
   memoryEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;
   memoryOpenFolder(absWorkdir?: string): Promise<{ ok: boolean }>;
+  checkpointDiskUsage(): Promise<{ bytes: number }>;
+  checkpointPurge(): Promise<{ ok: boolean; bytes: number }>;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;
   onKbImportProgress(cb: (payload: KbImportProgress) => void): () => void;
   onKbEmbedProgress(cb: (payload: KbImportProgress) => void): () => void;

@@ -207,6 +207,8 @@ const api: FundetApi = {
   memoryEnabledGet: () => invoke(FUNDET_INVOKE.MEMORY_ENABLED_GET),
   memoryEnabledSet: (enabled) => invoke(FUNDET_INVOKE.MEMORY_ENABLED_SET, enabled),
   memoryOpenFolder: (absWorkdir) => invoke(FUNDET_INVOKE.MEMORY_OPEN_FOLDER, absWorkdir),
+  checkpointDiskUsage: () => invoke(FUNDET_INVOKE.CHECKPOINT_DISK_USAGE),
+  checkpointPurge: () => invoke(FUNDET_INVOKE.CHECKPOINT_PURGE),
   findInPage: (text, opts) => invoke(FUNDET_INVOKE.FIND_START, text, opts),
   stopFindInPage: () => invoke(FUNDET_INVOKE.FIND_STOP),
 

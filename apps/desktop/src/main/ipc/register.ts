@@ -150,6 +150,7 @@ import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
+import { checkpointDiskUsage, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
@@ -889,6 +890,15 @@ ${input.text}`;
     const err = await shell.openPath(target);
     if (err) throw new Error(`无法打开记忆文件夹：${err}`);
     return { ok: true };
+  });
+
+  // ---------- checkpoint（快照磁盘治理） ----------
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_DISK_USAGE, () => ({
+    bytes: checkpointDiskUsage(),
+  }));
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_PURGE, () => {
+    purgeAllCheckpoints();
+    return { ok: true, bytes: checkpointDiskUsage() };
   });
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) =>

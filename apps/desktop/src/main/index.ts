@@ -3,6 +3,9 @@
 import './browser/runtime-env.js';
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
+import { cleanupOrphanCheckpoints } from './checkpoint/store.js';
+import { getDb } from './db/client.js';
+import { sessions } from './db/schema.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDatabase } from './db/client.js';
@@ -218,6 +221,14 @@ function bootstrap(): void {
   );
   // 1) 数据库（含 better-sqlite3 原生模块自查日志）
   initDatabase();
+
+  // 快照治理（0.3.30，用户实报 26GB 膨胀）：清扫 sessions 表已不存在的孤儿仓
+  {
+    const validIds = new Set(
+      getDb().select({ id: sessions.id }).from(sessions).all().map((r) => r.id),
+    );
+    cleanupOrphanCheckpoints(validIds);
+  }
   // 1b) 安装包预制技能 → ~/.agents/skills（Pi 启动后即可 /skill: 点名）
   // Fundet 品牌不预装技能
   if (brand.bundledSkills) {

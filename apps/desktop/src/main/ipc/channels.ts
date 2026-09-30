@@ -141,6 +141,8 @@ export const FUNDET_INVOKE = {
   MEMORY_ENABLED_GET: 'memory:enabled-get',
   MEMORY_ENABLED_SET: 'memory:enabled-set',
   MEMORY_OPEN_FOLDER: 'memory:open-folder',
+  CHECKPOINT_DISK_USAGE: 'checkpoint:disk-usage',
+  CHECKPOINT_PURGE: 'checkpoint:purge',
   FIND_START: 'find:start',
   FIND_STOP: 'find:stop',
 } as const;

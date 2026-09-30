@@ -42,6 +42,66 @@ const EXCLUDES = [
   '.venv/',
   'venv/',
   '__pycache__/',
+  // 0.3.30 大扩充（用户实报 26GB 膨胀：D:\AI 含 IDE/依赖树全量入库）
+  'site-packages/',
+  '.idea/',
+  '.vscode/',
+  '.vs/',
+  'target/',
+  'build/',
+  'dist/',
+  'out/',
+  'vendor/',
+  'bin/Debug/',
+  'bin/Release/',
+  'obj/',
+  '.terraform/',
+  '.serverless/',
+  '.next/',
+  '.nuxt/',
+  '.svelte-kit/',
+  '.turbo/',
+  '.parcel-cache/',
+  '.eslintcache',
+  '*.class',
+  '*.jar',
+  '*.war',
+  '*.ear',
+  '*.dll',
+  '*.so',
+  '*.dylib',
+  '*.dylib.*',
+  '*.a',
+  '*.lib',
+  '*.o',
+  '*.ko',
+  '*.pyd',
+  '*.wasm',
+  '*.pdb',
+  '*.exe',
+  '*.bin',
+  '*.dat',
+  '*.pack',
+  '*.idx',
+  '*.fcgi',
+  '*.d',
+  '*.suo',
+  '*.user',
+  '*.sln.docstates',
+  '*.ipch',
+  '*.tlog',
+  '*.lastbuildstate',
+  '*.idb',
+  '*.ilk',
+  '*.ncb',
+  '*.sdf',
+  '*.opensdf',
+  '*.aps',
+  '*.rc',
+  '*.res',
+  '*.tlb',
+  '*.iobj',
+  '*.ipdb',
 ];
 
 /** git 超时被 SIGTERM 后残留的 index.lock 视为陈旧的最短年龄（快照已按会话串行，
@@ -196,9 +256,12 @@ export async function createSnapshot(
     ['-c', 'user.name=Fundet', '-c', 'user.email=checkpoint@fundet.local', 'commit', '--quiet', '-m', sanitizeLabel(label)],
     workDir,
   );
+  const sha = await headSha(dir);
+  // 后台维护（LRU 修剪 + 定期 gc）——不等它，不挡返回
+  void maintainRepo(sessionId, dir);
   const ms = Date.now() - started;
   if (ms > 1500) console.log(`[fundet:checkpoint] 快照耗时 ${ms}ms（${count} 文件）`);
-  return headSha(dir);
+  return sha;
 }
 
 async function headSha(dir: string): Promise<string | null> {
@@ -285,7 +348,103 @@ export function deleteCheckpoints(sessionId: string): void {
   }
 }
 
-/* ---------------- 发送路径的后台快照队列 ---------------- */
+/* ---------------- 磁盘治理（0.3.30，用户实报 26GB 膨胀根修） ---------------- */
+
+/** 每会话保留的最大快照条数（超出删最旧提交） */
+const MAX_SNAPSHOTS_PER_SESSION = 20;
+/** 快照仓体积软上限（超过时启动 gc 并警告日志） */
+const REPO_GC_THRESHOLD_BYTES = 512 * 1024 * 1024; // 512MB
+/** 轮末触发的 gc 间隔（每 N 次快照跑一次 gc --prune） */
+const GC_EVERY_N_SNAPSHOTS = 10;
+
+/** 启动时清扫孤儿仓：checkpoints 目录里有 .git 但 sessions 表里无对应会话 */
+export function cleanupOrphanCheckpoints(validSessionIds: Set<string>): number {
+  if (!isCheckpointAvailable()) return 0;
+  const root = checkpointsRoot();
+  let removed = 0;
+  try {
+    const entries = fs.readdirSync(root, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || !e.name.endsWith('.git')) continue;
+      const sessionId = e.name.replace(/\.git$/, '');
+      if (!validSessionIds.has(sessionId)) {
+        try {
+          fs.rmSync(path.join(root, e.name), { recursive: true, force: true });
+          removed++;
+          console.warn(`[fundet:checkpoint] 清扫孤儿仓 ${e.name}（sessions 表无此会话）`);
+        } catch {
+          /* 清理失败不阻断启动 */
+        }
+      }
+    }
+  } catch {
+    /* 目录不存在（从未拍过快照） */
+  }
+  if (removed > 0) console.log(`[fundet:checkpoint] 启动清扫孤儿仓 ${removed} 个`);
+  return removed;
+}
+
+/** 递归算目录磁盘占用（bytes） */
+export function checkpointDiskUsage(): number {
+  const root = checkpointsRoot();
+  let total = 0;
+  const walk = (dir: string): void => {
+    try {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else total += fs.statSync(p).size;
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  walk(root);
+  return total;
+}
+
+/** 删除全部快照（设置页一键清理） */
+export function purgeAllCheckpoints(): void {
+  const root = checkpointsRoot();
+  try {
+    fs.rmSync(root, { recursive: true, force: true });
+    console.log('[fundet:checkpoint] 全量清理完成');
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 每会话的快照计数器（够 GC_EVERY_N_SNAPSHOTS 时触发 gc） */
+const snapshotCounters = new Map<string, number>();
+
+/** 快照后维护：LRU 修剪 + 定期 gc + 体积监控 */
+async function maintainRepo(sessionId: string, dir: string): Promise<void> {
+  try {
+    // 计数器递增
+    const count = (snapshotCounters.get(sessionId) ?? 0) + 1;
+    snapshotCounters.set(sessionId, count);
+
+    // LRU 修剪：超出上限删最旧提交
+    const logOut = await run(dir, ['log', '--format=%H']);
+    const shas = logOut.split('\n').filter(Boolean);
+    if (shas.length > MAX_SNAPSHOTS_PER_SESSION) {
+      // 保留前 MAX_SNAPSHOTS_PER_SESSION 个，把更老的分支截断到第 N 个的 parent
+      const keepSha = shas[MAX_SNAPSHOTS_PER_SESSION - 1];
+      // git update-ref refs/heads/main <keepSha> + git reflog expire --expire=now --all + git gc --prune=now
+      await run(dir, ['update-ref', 'HEAD', keepSha]);
+      await run(dir, ['reflog', 'expire', '--expire=now', '--all']);
+      await run(dir, ['gc', '--prune=now', '--quiet']);
+      console.log(`[fundet:checkpoint] LRU 修剪：${shas.length} → ${MAX_SNAPSHOTS_PER_SESSION} 条`);
+    }
+
+    // 定期 gc（松散对象打包，防磁盘膨胀）
+    if (count % GC_EVERY_N_SNAPSHOTS === 0) {
+      await run(dir, ['gc', '--auto', '--quiet']);
+    }
+  } catch (err) {
+    console.warn('[fundet:checkpoint] 快照后维护失败（不影响快照）', err);
+  }
+}
 
 /** 每会话一条串行链：同一 bare 仓上并发 git 会撞 index.lock */
 const snapshotChains = new Map<string, Promise<void>>();
