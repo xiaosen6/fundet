@@ -24,6 +24,20 @@ export async function blobToWavBase64(blob: Blob): Promise<string> {
   const rendered = await offline.startRendering();
   const samples = rendered.getChannelData(0);
 
+  // 无声检测：Windows 麦克风隐私被关（「允许桌面应用访问麦克风」）时
+  // getUserMedia 不报错、只交全零数据，直送 ASR 会转出随机字符（实测 "그."，
+  // 2026-09-30 探针 RMS=0/peak=0 实锤）——提前拦下给可行动的中文提示
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const v = Math.abs(samples[i]);
+    if (v > peak) peak = v;
+  }
+  if (peak < 0.005) {
+    throw new Error(
+      '麦克风没有采集到声音：请检查 Windows 设置 → 隐私和安全性 → 麦克风（确认「允许桌面应用访问麦克风」已开启），以及 系统设置 → 声音 → 输入 的设备与音量',
+    );
+  }
+
   const bytes = encodeWavPcm16(samples, targetRate);
   return arrayBufferToBase64(bytes);
 }
