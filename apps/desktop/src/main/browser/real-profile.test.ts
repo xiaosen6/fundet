@@ -53,17 +53,18 @@ describe('managedRuntimeNeedsStop（#3751 pid 判停）', () => {
 });
 
 describe('profileUsesAppBoundEncryption（#3751 App-Bound 检测）', () => {
+  // App-Bound 加密是 Windows 独有概念，显式传 'win32' 让用例在 Linux CI 上也走真代码路径
   it('检出 v20 前缀加密行报 true', () => {
     const dir = makeCookieDb([{ encrypted: V20 }]);
-    assert.equal(profileUsesAppBoundEncryption(dir), true);
+    assert.equal(profileUsesAppBoundEncryption(dir, 'win32'), true);
   });
   it('普通加密行报 false', () => {
     const dir = makeCookieDb([{ encrypted: Buffer.alloc(32, 1) }]);
-    assert.equal(profileUsesAppBoundEncryption(dir), false);
+    assert.equal(profileUsesAppBoundEncryption(dir, 'win32'), false);
   });
   it('无 encrypted_value 列的旧库报 false', () => {
     const dir = makeCookieDb([{ noColumn: true }]);
-    assert.equal(profileUsesAppBoundEncryption(dir), false);
+    assert.equal(profileUsesAppBoundEncryption(dir, 'win32'), false);
   });
   it('非 Windows 直接 false，不读库', () => {
     assert.equal(profileUsesAppBoundEncryption('Z:/definitely-not-there', 'linux'), false);

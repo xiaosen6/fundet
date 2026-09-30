@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { test } from 'node:test';
 import { decideGitRuntimeExtract } from './git-runtime-logic.ts';
 
@@ -26,7 +27,7 @@ test('decideGitRuntimeExtract：无 tgz / 无版本 → 不解压', () => {
 test('decideGitRuntimeExtract：同版本标记 + bash 在场 → 跳过（幂等）', () => {
   assert.equal(
     decideGitRuntimeExtract(
-      mk({ [base.bundledTgz]: true, [base.extractedMarker]: '2.55', [`${base.targetDir}\\bin\\bash.exe`]: true }),
+      mk({ [base.bundledTgz]: true, [base.extractedMarker]: '2.55', [path.join(base.targetDir, 'bin', 'bash.exe')]: true }),
       { ...base, bundledVersion: '2.55' },
     ),
     false,
@@ -36,7 +37,7 @@ test('decideGitRuntimeExtract：同版本标记 + bash 在场 → 跳过（幂�
 test('decideGitRuntimeExtract：版本不匹配 / 无标记 / bash 缺失 → 重解', () => {
   assert.equal(
     decideGitRuntimeExtract(
-      mk({ [base.bundledTgz]: true, [base.extractedMarker]: '2.54', [`${base.targetDir}\\bin\\bash.exe`]: true }),
+      mk({ [base.bundledTgz]: true, [base.extractedMarker]: '2.54', [path.join(base.targetDir, 'bin', 'bash.exe')]: true }),
       { ...base, bundledVersion: '2.55' },
     ),
     true,
