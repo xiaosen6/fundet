@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { collectArtifacts } from './artifacts.ts';
 
 describe('collectArtifacts', () => {
-  it('includes writes of html/video and reads of any file', () => {
+  it('includes writes of html/video; reads excluded (2026-09-30 Cindy 对照：read 是噪音)', () => {
     const items = [
       {
         kind: 'tool',
@@ -26,13 +26,20 @@ describe('collectArtifacts', () => {
         input: { command: 'ls' },
         done: true,
       },
+      {
+        kind: 'tool',
+        id: '4',
+        toolName: 'mcp__browser__navigate',
+        input: { path: 'shot.mp4' },
+        done: true,
+      },
     ];
     const arts = collectArtifacts(items as Parameters<typeof collectArtifacts>[0]);
     assert.deepEqual(
       arts.map((a) => [a.path, a.kind]),
       [
         ['site/index.html', 'html'],
-        ['clip.mp4', 'video'],
+        ['shot.mp4', 'video'],
       ],
     );
   });

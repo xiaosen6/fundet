@@ -52,6 +52,7 @@ import { SessionRenameInput } from '../components/SessionRenameInput';
 import { MessageStream } from '../components/MessageStream';
 import { PermissionPrompt } from '../components/PermissionPrompt';
 import { RunningStatus } from '../components/RunningStatus';
+import { TurnChangesBar, type TurnChangeEntry } from '../components/TurnChangesBar';
 import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { DwsWidgets } from '../components/dws/DwsWidgets';
@@ -87,6 +88,16 @@ export function ChatPage(): React.JSX.Element {
   const [input, setInput] = useState('');
   const [notice, setNotice] = useState('');
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
+  const [turnChanges, setTurnChanges] = useState<TurnChangeEntry[] | null>(null);
+
+  // 轮末改动（对齐 Cindy v1）：只显示当前会话最新一轮；切会话清空
+  useEffect(() => {
+    setTurnChanges(null);
+    const off = window.fundet.onTurnChanges((p) => {
+      if (p.sessionId === activeId) setTurnChanges(p.files);
+    });
+    return off;
+  }, [activeId]);
 
   // 钉钉组件：订阅主进程 push + 回焦触发刷新（主进程按 TTL 去抖，不会刷爆）
   useEffect(() => {
@@ -1066,6 +1077,11 @@ export function ChatPage(): React.JSX.Element {
                       status={slice.statusText}
                       tokenUsage={slice.usage.tokenUsage}
                     />
+                    {!slice.isRunning && slice.items.length > 0 && turnChanges && turnChanges.length > 0 && (
+                      <div className="mb-1.5">
+                        <TurnChangesBar files={turnChanges} onOpenFile={openCanvas} />
+                      </div>
+                    )}
                     <ChatInput
                       value={input}
                       onChange={setInput}
@@ -1149,6 +1165,7 @@ export function ChatPage(): React.JSX.Element {
                 activePath={canvasPath}
                 onSelect={setCanvasPath}
                 onClose={() => setCanvasOpen(false)}
+                turnActive={slice.isRunning}
               />
             )}
           </div>

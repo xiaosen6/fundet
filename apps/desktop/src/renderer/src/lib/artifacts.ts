@@ -30,7 +30,6 @@ function pathFromInput(input: Record<string, unknown>): string | null {
 }
 
 const WRITE_TOOLS = new Set(['write', 'edit', 'create', 'write_file', 'edit_file']);
-const READ_TOOLS = new Set(['read', 'read_file']);
 
 export function collectArtifacts(items: DisplayItem[]): Artifact[] {
   const seen = new Set<string>();
@@ -51,10 +50,10 @@ export function collectArtifacts(items: DisplayItem[]): Artifact[] {
     const short = name.includes('__') ? (name.split('__').pop() ?? name) : name;
     const p = pathFromInput(it.input);
     if (!p) continue;
+    // 只收写入类（2026-09-30 Cindy 对照批）：read 文件是噪音，Canvas 是产物面板
     const isWrite =
       WRITE_TOOLS.has(name) || WRITE_TOOLS.has(short) || name.includes('write') || name.includes('edit');
-    const isRead = READ_TOOLS.has(name) || READ_TOOLS.has(short) || name.includes('read');
-    if (!isWrite && !isRead) continue;
+    if (!isWrite) continue;
     add(p, it.toolName);
   }
   return out;

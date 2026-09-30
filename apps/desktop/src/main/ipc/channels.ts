@@ -157,6 +157,8 @@ export const FUNDET_PUSH = {
   /** 审批已收敛（被本端或其它端解决）：payload { sessionId, requestId, reason } */
   INTERACTION_DISMISSED: 'interaction:dismissed',
   SESSION_LIST_CHANGED: 'session:list-changed',
+  /** 轮末改动文件统计（对齐 Cindy TurnChangesCard 数据面 v1）：payload { sessionId, files: [{path, additions, deletions}] } */
+  TURN_CHANGES: 'turn:changes',
   IM_STATUS_CHANGED: 'im:status-changed',
   /** 钉钉组件板快照变化：payload = DwsWidgetsSnapshot */
   DWS_WIDGETS_CHANGED: 'dws:widgets-changed',

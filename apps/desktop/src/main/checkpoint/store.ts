@@ -313,7 +313,69 @@ export function enqueueSnapshot(sessionId: string, workDir: string, label: strin
   });
 }
 
-/** 单测用：等待某会话的后台快照链排空 */
-export function snapshotChainsForTest(sessionId: string): Promise<void> {
+/** 等待某会话的后台快照链排空（轮末 diff 取基准前用；单测也用） */
+export function waitForSnapshotQueue(sessionId: string): Promise<void> {
   return snapshotChains.get(sessionId) ?? Promise.resolve();
+}
+
+/** 兼容旧名单测引用 */
+export const snapshotChainsForTest = waitForSnapshotQueue;
+
+export interface TurnFileChange {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** git 空树对象（首轮无 base 时 diff 出全量新增） */
+const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/**
+ * 轮末改动统计（2026-09-30，对齐 Cindy TurnChangesCard 的数据面 v1）：
+ * 调用方先 waitForSnapshotQueue 取 base=HEAD（轮前快照已落），再本函数补拍
+ * 轮末快照后 numstat。无仓/无变更返回 []。口径：轮内用户手改也会计入（v1
+ * 接受， Cindy 式前像捕获是后续精度升级）。
+ */
+export async function captureTurnDiff(
+  sessionId: string,
+  workDir: string,
+  baseSha: string | null,
+  label: string,
+): Promise<TurnFileChange[]> {
+  if (!isCheckpointAvailable()) return [];
+  if (path.resolve(workDir) === homedir()) return [];
+  await createSnapshot(sessionId, workDir, label);
+  const dir = repoDir(sessionId);
+  if (!fs.existsSync(path.join(dir, 'HEAD'))) return [];
+  const head = await headSha(dir);
+  if (!head) return [];
+  const base = baseSha ?? EMPTY_TREE_SHA;
+  if (base === head) return [];
+  let out: string;
+  try {
+    out = await run(dir, ['diff', '--numstat', base, head]);
+  } catch {
+    return [];
+  }
+  const files: TurnFileChange[] = [];
+  for (const line of out.split('\n')) {
+    if (!line) continue;
+    const [a, d, p] = line.split('\t');
+    if (!p) continue;
+    // 二进制文件 numstat 显示 "-\t-"：计 0/0 但保留行（能点开看）
+    files.push({
+      path: p,
+      additions: Number.isFinite(Number(a)) ? Number(a) : 0,
+      deletions: Number.isFinite(Number(d)) ? Number(d) : 0,
+    });
+  }
+  return files;
+}
+
+/** 当前 HEAD（无仓/空仓 null）——轮末 diff 的 base 取值用 */
+export async function currentCheckpointHead(sessionId: string): Promise<string | null> {
+  if (!isCheckpointAvailable()) return null;
+  const dir = repoDir(sessionId);
+  if (!fs.existsSync(path.join(dir, 'HEAD'))) return null;
+  return headSha(dir);
 }

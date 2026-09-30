@@ -290,12 +290,13 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
         <img
           src={src}
           alt={alt}
+          draggable={false}
           className="max-h-[360px] max-w-full cursor-zoom-in rounded-inner object-contain"
           onClick={() => {
             if (src) showLightbox({ kind: 'image', src, alt });
           }}
           onMouseEnter={(e) => {
-            if (src) scheduleHoverPreview(src, e.clientX, e.clientY);
+            if (src) scheduleHoverPreview(src, e.clientX, e.clientY, e.currentTarget);
           }}
           onMouseLeave={cancelScheduledHoverPreview}
           onMouseDown={cancelScheduledHoverPreview}

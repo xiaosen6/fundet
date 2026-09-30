@@ -600,6 +600,8 @@ export interface FundetApi {
   onNotifyOpenSession(cb: (payload: { sessionId: string }) => void): () => void;
   /** 完成提醒提示音（渲染层 WebAudio 播放） */
   onNotifyChime(cb: () => void): () => void;
+  /** 轮末改动文件统计（对齐 Cindy TurnChangesCard v1，仅最新一轮） */
+  onTurnChanges(cb: (payload: { sessionId: string; files: Array<{ path: string; additions: number; deletions: number }> }) => void): () => void;
   /** 完成提醒开关（设置 → 桌宠） */
   notifyEnabledGet(): Promise<{ enabled: boolean }>;
   notifyEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;

@@ -33,6 +33,9 @@ import {
   listCheckpoints,
   previewRewind,
   rewindTo,
+  captureTurnDiff,
+  currentCheckpointHead,
+  waitForSnapshotQueue,
 } from '../checkpoint/store.js';
 import {
   createProvider,
@@ -169,8 +172,27 @@ const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
  * 终止 error 判定与 events.ts 语义对齐：先看 isTerminal，缺省但有 willRetry
  * 时用 !willRetry 兜底，两者都缺的老事件按终止处理。
  */
-function maybeNotifyCompletion(sessionId: string, event: AgentEvent): void {
-  let summary = '';
+/** 轮末改动统计（后台，fire-and-forget）：base=轮前快照链落完后的 HEAD */
+async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
+  try {
+    if (!isCheckpointAvailable()) return;
+    const workDir = getDb()
+      .select({ workDir: sessions.workDir })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .get()?.workDir;
+    if (!workDir) return;
+    await waitForSnapshotQueue(sessionId);
+    const base = await currentCheckpointHead(sessionId);
+    const files = await captureTurnDiff(sessionId, workDir, base, `turn-end`);
+    if (files.length === 0) return;
+    broadcast(FUNDET_PUSH.TURN_CHANGES, { sessionId, files });
+  } catch (err) {
+    console.warn('[fundet:checkpoint] 轮末改动统计失败（不影响会话）', err);
+  }
+}
+
+function maybeNotifyCompletion(sessionId: string, event: AgentEvent): void {  let summary = '';
   if (event.type === 'done') {
     const data = event.data as { result?: string } | undefined;
     if (typeof data?.result === 'string') summary = data.result;
@@ -302,6 +324,16 @@ export function wireSession(session: Session): void {
     // 桌宠状态桥（0.3.18）：agent 事件 → 桌宠动作
     bridgeAgentEvent(event.type, event.data as Record<string, unknown>);
     maybeNotifyCompletion(session.id, event);
+    // 轮终态 → 轮末改动统计（Cindy TurnChangesCard v1）：等轮前快照链落完取
+    // base=HEAD，补拍轮末快照后 numstat。后台跑不挡事件流；失败静默。
+    if (
+      event.type === 'done' ||
+      (event.type === 'error' &&
+        (event.data as { isTerminal?: boolean; willRetry?: boolean } | undefined)?.isTerminal !== false &&
+        (event.data as { willRetry?: boolean } | undefined)?.willRetry !== true)
+    ) {
+      void captureAndPushTurnChanges(session.id);
+    }
   });
 
   session.onStatusChange((status) => {
