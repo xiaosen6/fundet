@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import type { InteractionRequest } from '@fundet/agent-core';
 import { visibleAskOptions } from '../../../shared/ask-options.js';
+import { shouldCardShortcutYield } from '../lib/card-shortcut-yield.js';
 
 type AskRequest = Extract<InteractionRequest, { kind: 'ask_user_question' }>;
 type AskQuestion = AskRequest['questions'][number];
@@ -60,6 +61,7 @@ export function AskUserQuestionPrompt({
   const [customInput, setCustomInput] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const currentQ = questions[currentIndex];
   const isMultiSelect = currentQ?.multiSelect === true;
@@ -137,7 +139,9 @@ export function AskUserQuestionPrompt({
     setShowCustomInput(false);
   }, [customInput, isMultiSelect, advance]);
 
-  // 快捷键：数字选项 / N+1 自由输入 / Esc 跳过；自由输入展开时 Esc 只收起输入
+  // 快捷键：数字选项 / N+1 自由输入 / Esc 跳过；自由输入展开时 Esc 只收起输入。
+  // 让位判据（Cindy #5256）：侧栏搜索等别处输入框里打数字、卡片外浮层/控件上的
+  // 按键不属于本卡，不能替用户选选项/跳题
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (showCustomInput) {
@@ -151,18 +155,21 @@ export function AskUserQuestionPrompt({
       if (options.length > 0) {
         const num = Number.parseInt(e.key, 10);
         if (num >= 1 && num <= options.length) {
+          if (shouldCardShortcutYield(e, 'character', rootRef.current)) return;
           e.preventDefault();
           if (isMultiSelect) handleToggle(options[num - 1]!.label);
           else advance(options[num - 1]!.label);
           return;
         }
         if (num === options.length + 1) {
+          if (shouldCardShortcutYield(e, 'character', rootRef.current)) return;
           e.preventDefault();
           openCustomInput();
           return;
         }
       }
       if (e.key === 'Escape') {
+        if (shouldCardShortcutYield(e, 'dismiss', rootRef.current)) return;
         e.preventDefault();
         advance('');
       }
@@ -175,7 +182,7 @@ export function AskUserQuestionPrompt({
   const showNext = isMultiSelect || (!isLast && existingAnswer !== undefined);
 
   return (
-    <div className="w-full rounded-container border border-board bg-card p-4">
+    <div ref={rootRef} className="w-full rounded-container border border-board bg-card p-4">
       {/* 标题行：问题 + 多题进度 */}
       <div className="flex items-start justify-between gap-3">
         <p className="text-15 leading-tight font-semibold text-primary">{currentQ?.question}</p>

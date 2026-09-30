@@ -731,7 +731,6 @@ export function ChatPage(): React.JSX.Element {
       )}
 
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
         {rewindOpen && activeId && (
           <RewindDialog sessionId={activeId} onClose={() => setRewindOpen(false)} />
         )}
@@ -746,7 +745,8 @@ export function ChatPage(): React.JSX.Element {
           // 空态（对齐 cindy-02 首页解剖）：品牌 wordmark 居中 + 引导卡
           <div className="flex min-h-0 flex-1 flex-col">
             {/* 拖拽条在窗口按钮左侧截止（mr 而非 pr：app-region 按元素矩形算，
-                padding 缩不掉；悬浮 no-drag 挖洞在 Electron 37/Windows 上不可靠） */}
+                padding 缩不掉）。no-drag 挖洞规则（Cindy #5202 修正）：先序上报、
+                重叠处靠后者胜——挖洞元素须在布局树中位于 drag 元素之后 */}
             <div className={cn('drag-region h-[46px] shrink-0', hasFramelessControls() && 'mr-[150px]')} />
           {/* 整列撑满可用高度（h-full + 板区 flex-1）：右侧主区永不因内容超高出滚动条 */}
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
@@ -1154,6 +1154,11 @@ export function ChatPage(): React.JSX.Element {
           </div>
         )}
         </FadeSwitcher>
+        {/* FindBar 必须排在 FadeSwitcher（含各视图 46px 拖拽条）**之后**：
+            Electron 拖拽区按布局树先序上报 drag/no-drag 矩形、重叠处列表靠后者胜
+            （Cindy #5202 实测修正，2026-09-30 继承）——排在前面的话挖洞会被
+            后上报的拖拽条盖回去，关闭/翻页按钮会被当拖窗吞掉 */}
+        <FindBar open={findOpen} onClose={() => setFindOpen(false)} />
       </main>
     </div>
   );

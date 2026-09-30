@@ -61,7 +61,13 @@ export function FindBar({ open, onClose }: { open: boolean; onClose: () => void 
   };
 
   return (
-    <div className="absolute top-1 right-4 z-50 flex h-9 items-center gap-1 rounded-full border border-board bg-card pl-3 pr-1 shadow-[var(--shadow-menu)]">
+    // no-drag 挖洞（Cindy #5202）：顶行 46px 拖拽条与本栏几何重叠，不挖的话
+    // 关闭/翻页按钮的点击会被当拖窗吞掉；挖洞生效依赖 ChatPage 里本组件
+    // 排在承载拖拽条的容器之后（见 ChatPage 内注释）
+    <div
+      className="absolute top-1 right-4 z-50 flex h-9 items-center gap-1 rounded-full border border-board bg-card pl-3 pr-1 shadow-[var(--shadow-menu)]"
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    >
       <input
         ref={inputRef}
         value={text}
