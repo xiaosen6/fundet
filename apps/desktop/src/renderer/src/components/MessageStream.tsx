@@ -418,7 +418,6 @@ function AssistantTurn({
         <MessageActionBar
           createdAt={item.createdAt}
           copyText={item.text}
-          speakText={item.text}
           usage={item.usage}
           hovered={hovered}
           pinned={pinned}

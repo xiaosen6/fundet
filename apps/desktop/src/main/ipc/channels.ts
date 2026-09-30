@@ -92,7 +92,6 @@ export const FUNDET_INVOKE = {
   CLIPBOARD_WRITE_PNG: 'clipboard:write-png',
   SEARCH_STATUS: 'search:status',
   VOICE_TRANSCRIBE: 'voice:transcribe',
-  VOICE_TTS: 'voice:tts',
   VOICE_GATEWAY_STATUS: 'voice:gateway-status',
   VOICE_GATEWAY_SET_URL: 'voice:gateway-set-url',
   VOICE_ENABLED: 'voice:enabled',

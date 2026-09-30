@@ -151,7 +151,6 @@ const api: FundetApi = {
 
   searchStatus: () => invoke(FUNDET_INVOKE.SEARCH_STATUS),
   voiceTranscribe: (wavBase64) => invoke(FUNDET_INVOKE.VOICE_TRANSCRIBE, wavBase64),
-  voiceSpeak: (text) => invoke(FUNDET_INVOKE.VOICE_TTS, text),
   voiceGatewayStatus: () => invoke(FUNDET_INVOKE.VOICE_GATEWAY_STATUS),
   voiceGatewaySetUrl: (url) => invoke(FUNDET_INVOKE.VOICE_GATEWAY_SET_URL, url),
   voiceEnabled: () => invoke(FUNDET_INVOKE.VOICE_ENABLED),

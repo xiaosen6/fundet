@@ -69,7 +69,7 @@ import {
 import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
-import { transcribeAudio, synthesizeSpeech, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
+import { transcribeAudio, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
 import { embedKbChunks } from '../knowledge/embeddings.js';
 import { bridgeAgentEvent, bridgeInteractionRequest, bridgeReset } from '../host/pet-state-bridge.js';
 
@@ -1202,13 +1202,6 @@ ${input.text}`;
       const sec = ((bytes.length - 44) / 2 / 16000).toFixed(1);
       console.log(`[fundet:voice] 转写耗时 ${Date.now() - t0}ms（音频 ${sec}s / ${(bytes.length / 1024).toFixed(0)}KB）`);
     }
-  });
-  ipcMain.handle(FUNDET_INVOKE.VOICE_TTS, async (_e, text: string) => {
-    const trimmed = (text ?? '').trim();
-    if (!trimmed) throw new Error('没有可朗读的文本');
-    if (trimmed.length > 2000) throw new Error('文本过长（朗读上限 2000 字）');
-    const { wav } = await synthesizeSpeech(trimmed);
-    return { wavBase64: wav.toString('base64') };
   });
   ipcMain.handle(FUNDET_INVOKE.VOICE_GATEWAY_STATUS, () => probeGateway());
   ipcMain.handle(FUNDET_INVOKE.VOICE_GATEWAY_SET_URL, (_e, url: string) => {

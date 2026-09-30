@@ -48,31 +48,6 @@ export async function transcribeAudio(
   }
 }
 
-export interface TtsResult {
-  wav: Buffer;
-}
-
-/** 中文文本 → 24kHz wav。POST /v1/audio/speech。 */
-export async function synthesizeSpeech(text: string, timeoutMs = 120_000): Promise<TtsResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(joinUrl(gatewayUrl(), '/v1/audio/speech'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'cosyvoice2', input: text, speed: 1.0 }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const detail = (await res.text()).slice(0, 200);
-      throw new Error(`语音合成失败（HTTP ${res.status}）：${detail}`);
-    }
-    return { wav: Buffer.from(await res.arrayBuffer()) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export interface EmbedResult {
   vectors: number[][];
 }
@@ -109,19 +84,14 @@ export async function embedTexts(
   }
 }
 
-/** 网关健康探测（ASR/TTS 任一通即可，返回人话状态 + 结构化地址） */
+/** 网关健康探测（ASR 通即可，返回人话状态 + 结构化地址；TTS 已随 0.3.29 朗读功能移除） */
 export async function probeGateway(): Promise<{ ok: boolean; detail: string; url: string }> {
   const base = gatewayUrl();
-  for (const [path, label] of [
-    ['/asr/health', 'ASR'],
-    ['/tts/health', 'TTS'],
-  ] as const) {
-    try {
-      const res = await fetch(joinUrl(base, path), { signal: AbortSignal.timeout(5000) });
-      if (res.ok) return { ok: true, detail: `${label} 服务正常`, url: base };
-    } catch {
-      /* 试下一个 */
-    }
+  try {
+    const res = await fetch(joinUrl(base, '/asr/health'), { signal: AbortSignal.timeout(5000) });
+    if (res.ok) return { ok: true, detail: `ASR 服务正常`, url: base };
+  } catch {
+    /* fallthrough */
   }
   return { ok: false, detail: `网关不可达`, url: base };
 }

@@ -495,9 +495,7 @@ export interface FundetApi {
   searchStatus(): Promise<SearchStatus>;
   /** 语音转写：wav（base64）→ 文本（网关 ASR） */
   voiceTranscribe(wavBase64: string): Promise<{ text: string }>;
-  /** 文本转语音：返回 wav 的 base64（网关 TTS，供朗读） */
-  voiceSpeak(text: string): Promise<{ wavBase64: string }>;
-  /** 网关连通性（ASR/TTS 任一通即 ok） */
+  /** 网关连通性（ASR 通即 ok） */
   voiceGatewayStatus(): Promise<{ ok: boolean; detail: string; url: string }>;
   voiceGatewaySetUrl(url: string): Promise<{ ok: boolean }>;
   /** 语音输入开关（含查询） */
