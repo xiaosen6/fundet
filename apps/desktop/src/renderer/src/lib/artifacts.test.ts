@@ -29,7 +29,7 @@ describe('collectArtifacts', () => {
       {
         kind: 'tool',
         id: '4',
-        toolName: 'mcp__browser__navigate',
+        toolName: 'mcp__browser__edit_file',
         input: { path: 'shot.mp4' },
         done: true,
       },
