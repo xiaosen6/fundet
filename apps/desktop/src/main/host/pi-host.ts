@@ -29,6 +29,7 @@ import { createFundetMemoryManager } from './memory.js';
 import { lookupKnownModel } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
+import { IMAGEGEN_MCP_SERVER_NAME } from '../../shared/imagegen.ts';
 import { createPreparePiExtraSpawnConfig } from './mcp-bridge.js';
 import systemPromptRaw from './system-prompt.md?raw';
 import dwsCheatSheetRaw from './dws-prompt.md?raw';
@@ -215,7 +216,9 @@ export function getHost(): FundetHost {
     // 默认会话是 ask：内置搜索/记忆只写用户自己的本地库（userData 内、有管理面
     // 可删改），无外发无系统副作用，免每次弹窗。其它 MCP 仍要确认。
     getMcpToolApprovalPolicy: ({ serverName }) =>
-      serverName === SEARCH_MCP_SERVER_NAME || serverName === MEMORY_MCP_SERVER_NAME
+      serverName === SEARCH_MCP_SERVER_NAME ||
+      serverName === MEMORY_MCP_SERVER_NAME ||
+      serverName === IMAGEGEN_MCP_SERVER_NAME
         ? 'auto-approve'
         : 'prompt',
   });

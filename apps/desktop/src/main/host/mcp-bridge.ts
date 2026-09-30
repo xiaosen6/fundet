@@ -48,6 +48,12 @@ import { formatDingtalkResults } from '../knowledge/dingtalk-format.js';
 import { startMemoryMcpServer } from '../memory/mcp-server.js';
 import { createMemoryToolHandlers, type MemoryStoreLike } from '../memory/handlers.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
+import { IMAGEGEN_ENABLED_SETTING, IMAGEGEN_MCP_SERVER_NAME } from '../../shared/imagegen.ts';
+import { startImagegenMcpServer } from '../imagegen/mcp-server.ts';
+import { createImagegenHandlers } from '../imagegen/handlers.ts';
+import { slugOf as slugOfPrompt } from '../imagegen/handlers.ts';
+import { activeImageGenProvider } from '../imagegen/gateway.ts';
+import { saveGeneratedImage } from '../imagegen/save.ts';
 import type { MakerMemoryManager } from '@fundet/agent-core';
 import { resolveDws, execDws } from './dws.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
@@ -429,6 +435,33 @@ export function createPreparePiExtraSpawnConfig(logger: Logger, memoryManager?: 
         }
       } catch (err) {
         logger.error('电脑操作 MCP 启动失败（跳过，其余 server 照常）', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+
+    // 生图（v1 内置网关 Qwen-Image-2.1，provider 口留给后续接入其他生图服务）：
+    // 对话里说「画一个/生成一张」即可用；产物落工作目录 fundet-images/。
+    // auto-approve（用户拍板「随时可以生成」；走用户自己的网关无外发）。
+    tasks.push(async () => {
+      try {
+        if (getBoolSetting(IMAGEGEN_ENABLED_SETTING, true)) {
+          const workdir = ctx?.workingDir ?? os.homedir();
+          const imagegen = await startImagegenMcpServer(
+            token,
+            logger.child('imagegen-mcp'),
+            createImagegenHandlers({
+              provider: activeImageGenProvider(),
+              workingDir: workdir,
+              saveImage: (dir, result, prompt) =>
+                saveGeneratedImage(dir, result, slugOfPrompt(prompt)),
+            }),
+          );
+          disposers.push(imagegen.dispose);
+          servers.push({ name: IMAGEGEN_MCP_SERVER_NAME, url: imagegen.url });
+        }
+      } catch (err) {
+        logger.error('生图 MCP 启动失败（跳过，其余 server 照常）', {
           error: err instanceof Error ? err.message : String(err),
         });
       }
