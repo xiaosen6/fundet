@@ -230,7 +230,9 @@ export function listKnowledgeDocs(kbId: string): KnowledgeDocView[] {
   }));
 }
 
-/** 导入一份已提取的正文：分块 → 入库（单事务）。 */
+/** 导入一份已提取的正文：分块 → 入库（单事务）。
+ *  同名文档自动删旧版（P2-4：此前重导入叠加 chunks+embedding BLOB 翻倍，
+ *  新旧版共存挤占 TopN——改块参数需重导是官方指引，必须幂等）。 */
 export function importDocumentChunks(kbId: string, name: string, text: string): { docId: string; chunks: number } {
   ensureTables();
   const db = getSqlite();
@@ -245,6 +247,12 @@ export function importDocumentChunks(kbId: string, name: string, text: string): 
     'INSERT INTO kb_chunks (chunk_id, kb_id, doc_id, ord, text) VALUES (?, ?, ?, ?, ?)',
   );
   const txn = db.transaction(() => {
+    // 同名文档删旧版（幂等重导入）
+    const oldDocs = db.prepare('SELECT id FROM knowledge_docs WHERE kb_id = ? AND name = ?').all(kbId, name) as Array<{ id: string }>;
+    for (const old of oldDocs) {
+      db.prepare('DELETE FROM kb_chunks WHERE doc_id = ?').run(old.id);
+      db.prepare('DELETE FROM knowledge_docs WHERE id = ?').run(old.id);
+    }
     insertDoc.run(docId, kbId, name, text.length, Date.now());
     for (const piece of pieces) {
       const chunkId = db.prepare('SELECT COALESCE(MAX(chunk_id), 0) + 1 AS id FROM kb_chunks').get() as {

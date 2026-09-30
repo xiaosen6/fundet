@@ -11,8 +11,8 @@
  */
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/client.ts';
-import { automations, automationRuns } from '../db/schema.ts';
-import { eq } from 'drizzle-orm';
+import { automations, automationRuns, sessions, messages } from '../db/schema.ts';
+import { eq, like } from 'drizzle-orm';
 import type { AutomationInput, AutomationView, AutomationRunView } from '../../shared/automations.ts';
 
 import { nextRunAt } from './automation-schedule.ts';
@@ -119,8 +119,38 @@ export function updateAutomation(id: string, input: AutomationInput): Automation
   return toView(getDb().select().from(automations).where(eq(automations.id, id)).get()!);
 }
 
+/** 删除一个 auto- 会话及其全部消息（级联清理） */
+function deleteAutoSessionData(sessionId: string): void {
+  getDb().delete(messages).where(eq(messages.sessionId, sessionId)).run();
+  getDb().delete(sessions).where(eq(sessions.id, sessionId)).run();
+}
+
 export function deleteAutomation(id: string): void {
+  // 级联删除关联的 auto- 会话及其消息（0.3.30 P1-2：此前只删任务行，
+  // auto- 会话的消息（含工具结果全文）永久残留在 DB，且用户不可见不可删）
+  const runs = getDb().select({ sessionId: automationRuns.sessionId }).from(automationRuns).where(eq(automationRuns.automationId, id)).all();
   getDb().delete(automations).where(eq(automations.id, id)).run();
+  for (const r of runs) {
+    if (r.sessionId?.startsWith('auto-')) deleteAutoSessionData(r.sessionId);
+  }
+}
+
+/** 启动清扫：删除所有 auto- 会话数据（孤儿——任务可能已被用户删除但会话残留；
+    也回收已完成 run 的消息体积。运行中的会话不会被碰——它们在 sessions 表里
+    有对应任务且调度器还没标记完成） */
+export function cleanupAutoSessionData(): number {
+  // 只删 auto- 前缀且无关联 run 的会话（run 被删了的）
+  const autoSessions = getDb().select({ id: sessions.id }).from(sessions).where(like(sessions.id, 'auto-%')).all();
+  let removed = 0;
+  for (const s of autoSessions) {
+    const hasRun = getDb().select({ id: automationRuns.id }).from(automationRuns).where(eq(automationRuns.sessionId, s.id)).all();
+    if (hasRun.length === 0) {
+      deleteAutoSessionData(s.id);
+      removed++;
+    }
+  }
+  if (removed > 0) console.log(`[fundet:automations] 启动清扫孤儿 auto- 会话 ${removed} 个`);
+  return removed;
 }
 
 export function setAutomationPaused(id: string, paused: boolean): void {

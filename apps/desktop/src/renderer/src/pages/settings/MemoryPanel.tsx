@@ -8,10 +8,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
-import { Brain, FolderOpen, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Brain, Eraser, FolderOpen, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { MemoryRecordView, MemoryScopeView } from '../../../../shared/memory.ts';
 import { cn } from '../../lib/cn';
 import { confirmDialog } from '../../components/ui/ConfirmDialog';
+import { Tooltip } from '../../components/ui/Tooltip';
 import { toast } from '../../components/ui/toast';
 
 function relTime(iso: string): string {
@@ -227,6 +228,36 @@ export function MemoryPanel(): React.JSX.Element {
             >
               <FolderOpen size={13} /> 文件夹
             </button>
+            {records.some((r) => r.type === 'digest') && (
+              <Tooltip label="清空全部自动沉淀的压缩摘要（保留手动记忆）" side="bottom">
+                <button
+                  type="button"
+                  className="flex h-8 items-center gap-1.5 rounded-xl border border-board px-3 text-12 text-secondary transition-colors hover:text-primary"
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await confirmDialog({
+                        title: '清空压缩摘要？',
+                        description: '长对话压缩时自动沉淀的摘要将被删除（手动记忆不受影响），此操作不可撤销。',
+                        confirmText: '清空',
+                        danger: true,
+                      });
+                      if (!ok || !activeScope) return;
+                      try {
+                        const digests = records.filter((r) => r.type === 'digest');
+                        for (const d of digests) await window.fundet.memoryDelete(activeScope, d.filename);
+                        toast.success(`已清空 ${digests.length} 条摘要`);
+                        if (activeScope) await refreshRecords(activeScope);
+                        await refreshScopes();
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : '清空失败');
+                      }
+                    })();
+                  }}
+                >
+                  <Eraser size={13} /> 清空摘要
+                </button>
+              </Tooltip>
+            )}
             <Switch.Root
               checked={enabled}
               onCheckedChange={(v) => void toggleEnabled(v)}

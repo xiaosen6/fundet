@@ -419,6 +419,7 @@ export interface FundetApi {
   sendMessage(input: SessionSendInput): Promise<SendResult>;
   abortSession(id: string): Promise<void>;
   closeSession(id: string): Promise<void>;
+  sessionClose(id: string): Promise<void>;
   deleteTurn(sessionId: string, afterCreatedAt: number, untilCreatedAt: number): Promise<void>;
   forkSession(sessionId: string, upToCreatedAt: number): Promise<string>;
   setSessionModel(id: string, model: string, providerId?: string): Promise<void>;

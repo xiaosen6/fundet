@@ -223,11 +223,22 @@ function bootstrap(): void {
   initDatabase();
 
   // 快照治理（0.3.30，用户实报 26GB 膨胀）：清扫 sessions 表已不存在的孤儿仓
+  // + 十联修启动清扫（agent-home 死重/auto- 孤儿/uploads TTL/WAL/settings 孤儿键/skillhub-tmp）
   {
     const validIds = new Set(
       getDb().select({ id: sessions.id }).from(sessions).all().map((r) => r.id),
     );
     cleanupOrphanCheckpoints(validIds);
+    // 同步 import（whenReady 回调非 async，不能 await import）
+    const { runMaintenanceCleanup } = require('./host/maintenance.js') as typeof import('./host/maintenance.js');
+    const { cleanupAutoSessionData } = require('./host/automations.js') as typeof import('./host/automations.js');
+    cleanupAutoSessionData();
+    const workDirs = Array.from(
+      new Set(
+        getDb().select({ workDir: sessions.workDir }).from(sessions).all().map((r) => r.workDir),
+      ),
+    );
+    runMaintenanceCleanup(validIds, workDirs);
   }
   // 1b) 安装包预制技能 → ~/.agents/skills（Pi 启动后即可 /skill: 点名）
   // Fundet 品牌不预装技能

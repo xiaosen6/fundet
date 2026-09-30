@@ -71,6 +71,7 @@ const api: FundetApi = {
   sendMessage: (input) => invoke(FUNDET_INVOKE.SESSION_SEND, input),
   abortSession: (id) => invoke(FUNDET_INVOKE.SESSION_ABORT, id),
   closeSession: (id) => invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
+  sessionClose: (id) => invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
   deleteTurn: (sessionId, afterCreatedAt, untilCreatedAt) =>
     invoke(FUNDET_INVOKE.SESSION_DELETE_TURN, sessionId, afterCreatedAt, untilCreatedAt),
   forkSession: (sessionId, upToCreatedAt) =>

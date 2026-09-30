@@ -299,11 +299,40 @@ async function runTurn(msg: ImInbound, extras?: ImInboundExtras): Promise<string
     console.warn('[fundet:im] 会话拒收', { sessionId: session.id, reason: sent.reason });
     return `没发出去：${sent.reason ?? '未知原因'}`;
   }
+  markImActive(msg.channel, msg.chatId);
   return collector.promise;
 }
 
 /** 长连重连重推去重窗口（按渠道消息 id） */
 const inboundDedup = createInboundDedup();
+
+/** IM 闲置会话回收（P2-7）：30 分钟无消息的 IM 会话自动 closeSession
+ *  回收 pi 子进程——IM 每 (channel,chatId) 一条会话永不关是内存泄漏
+ *  （每 pi 会话 RSS 50~150MB，多聊天=多 GB）。下一条消息 lazy-create 复活。 */
+const IM_IDLE_MS = 30 * 60 * 1000;
+const imLastActive = new Map<string, number>();
+
+// 在 handleImMessage 成功后更新活跃时间
+function markImActive(channel: ImChannelId, chatId: string): void {
+  imLastActive.set(sessionMapKey(channel, chatId), Date.now());
+}
+
+// 定期检查并回收闲置 IM 会话
+setInterval(() => {
+  const { maker } = getHost();
+  const now = Date.now();
+  for (const [key, lastActive] of imLastActive) {
+    if (now - lastActive < IM_IDLE_MS) continue;
+    const sessionId = getSetting(`im.session.${key}`);
+    if (sessionId && maker.isSessionAlive(sessionId)) {
+      void maker
+        .closeSession(sessionId, 'requested')
+        .then(() => console.log('[fundet:im] 闲置会话回收', { key }))
+        .catch(() => undefined);
+    }
+    imLastActive.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
 
 export function handleImMessage(msg: ImInbound, extras?: ImInboundExtras): Promise<string> {
   if (msg.dedupeKey && inboundDedup.seen(msg.dedupeKey)) {

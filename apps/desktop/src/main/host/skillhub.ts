@@ -214,6 +214,13 @@ export function setSkillhubDeps(d: Partial<SkillhubDeps>): void {
 const cache = new Map<string, { at: number; data: unknown }>();
 
 function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  // P2-8：过期条目即时淘汰（此前只判命中不删——每个不同搜索词永久占一条 10KB）
+  if (cache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (now - v.at >= LIST_TTL_MS) cache.delete(k);
+    }
+  }
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < LIST_TTL_MS) return Promise.resolve(hit.data as T);
   return load().then((data) => {
