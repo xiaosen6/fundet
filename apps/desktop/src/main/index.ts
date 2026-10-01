@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import { cleanupOrphanCheckpoints } from './checkpoint/store.js';
 import { getDb } from './db/client.js';
 import { sessions } from './db/schema.js';
+import { runMaintenanceCleanup } from './host/maintenance.js';
+import { cleanupAutoSessionData } from './host/automations.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDatabase } from './db/client.js';
@@ -229,9 +231,6 @@ function bootstrap(): void {
       getDb().select({ id: sessions.id }).from(sessions).all().map((r) => r.id),
     );
     cleanupOrphanCheckpoints(validIds);
-    // 同步 import（whenReady 回调非 async，不能 await import）
-    const { runMaintenanceCleanup } = require('./host/maintenance.js') as typeof import('./host/maintenance.js');
-    const { cleanupAutoSessionData } = require('./host/automations.js') as typeof import('./host/automations.js');
     cleanupAutoSessionData();
     const workDirs = Array.from(
       new Set(

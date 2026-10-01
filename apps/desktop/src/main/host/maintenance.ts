@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import { getSqlite } from '../db/client.js';
+import { cleanupAgentHome } from './agent-home-cleanup.js';
 
 const UPLOADS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const UPLOADS_DIR_MAX_BYTES = 512 * 1024 * 1024; // 512MB 总量上限
@@ -104,17 +105,9 @@ function cleanupSkillhubTmp(): void {
 
 /** 主入口：启动时调用一次 */
 export function runMaintenanceCleanup(validSessionIds: Set<string>, workDirs: string[]): void {
-  cleanupAgentHomeSafe();
+  try { cleanupAgentHome(); } catch { /* ignore */ }
   cleanupUploadsDir(workDirs);
   checkpointWal();
   cleanupOrphanSettings(validSessionIds);
   cleanupSkillhubTmp();
-}
-
-/** agent-home 清理的本地包装（不 import electron 以保可测） */
-function cleanupAgentHomeSafe(): void {
-  try {
-    const { cleanupAgentHome } = require('./agent-home-cleanup.js');
-    cleanupAgentHome();
-  } catch { /* ignore */ }
 }
