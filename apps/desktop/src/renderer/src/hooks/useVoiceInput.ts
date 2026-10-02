@@ -68,7 +68,17 @@ export function useVoiceInput(onText: (text: string) => void) {
   const start = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 显式关闭 Chromium 默认的音频处理（回声消除/降噪/自动增益）——
+      // Electron 的默认处理比 Chrome 更激进，会劣化录音质量导致 ASR 把
+      // 中文听成英文（用户实测同段话浏览器正确 vs 应用出错，2026-10-02）
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+        },
+      });
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       chunksRef.current = [];
