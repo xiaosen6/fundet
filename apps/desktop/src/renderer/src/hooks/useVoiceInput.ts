@@ -1,30 +1,48 @@
 /**
- * 语音输入 hook：MediaRecorder 录音 → WAV 转码 → 网关 ASR 转写。
+ * 语音输入 hook v2：直接采集 PCM → WAV → 网关 ASR 转写。
+ *
+ * 2026-10-02 重写：MediaRecorder（webm/opus）管线在 Electron 里转写质量
+ * 差（同段话浏览器正确 vs 应用出错，多次调约束/码率未根治）——改为
+ * ScriptProcessorNode 直采 Float32 PCM，跳过 Opus 编码/解码整个有损循环，
+ * 从麦克风原始数据直接出 16kHz WAV。
+ *
  * 服务端 SenseVoice 无 VAD，单段上限 30s——25s 自动停留余量。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { blobToWavBase64 } from '../lib/wav-encode';
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing';
 
 const MAX_SECONDS = 25;
+const INPUT_RATE = 48000;
+const TARGET_RATE = 16000;
 
 export function useVoiceInput(onText: (text: string) => void) {
   const [state, setState] = useState<VoiceState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const pcmRef = useRef<Float32Array[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
+  const stoppingRef = useRef(false);
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
-    recorderRef.current?.stream.getTracks().forEach((t) => t.stop());
-    recorderRef.current = null;
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (ctxRef.current) {
+      void ctxRef.current.close();
+      ctxRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
@@ -36,25 +54,69 @@ export function useVoiceInput(onText: (text: string) => void) {
       if (e.key === 'Escape') {
         e.stopPropagation();
         cancelledRef.current = true;
-        recorderRef.current?.stop();
+        stopCapture();
       }
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  const finish = useCallback(async () => {
-    const chunks = chunksRef.current;
+  const stopCapture = useCallback(() => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    const pcmChunks = pcmRef.current;
     cleanup();
-    if (cancelledRef.current || chunks.length === 0) {
+    void finish(pcmChunks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleanup]);
+
+  const finish = useCallback(async (pcmChunks: Float32Array[]) => {
+    if (cancelledRef.current || pcmChunks.length === 0) {
       setState('idle');
       setSeconds(0);
+      cancelledRef.current = false;
+      stoppingRef.current = false;
       return;
     }
     setState('transcribing');
     try {
-      const wavBase64 = await blobToWavBase64(new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' }));
-      const { text } = await window.fundet.voiceTranscribe(wavBase64);
+      // 拼接所有 PCM 块
+      const totalLen = pcmChunks.reduce((n, c) => n + c.length, 0);
+      const pcm = new Float32Array(totalLen);
+      let offset = 0;
+      for (const chunk of pcmChunks) {
+        pcm.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // 无声检测：峰值过低说明麦克风没采集到声音
+      let peak = 0;
+      for (let i = 0; i < pcm.length; i++) {
+        const v = Math.abs(pcm[i]);
+        if (v > peak) peak = v;
+      }
+      if (peak < 0.005) {
+        throw new Error(
+          '麦克风没有采集到声音：请检查 Windows 设置 → 隐私和安全性 → 麦克风（确认「允许桌面应用访问麦克风」已开启）',
+        );
+      }
+
+      // 降采样 48k → 16k（线性插值，与 OfflineAudioContext 同效果但更透明）
+      const ratio = INPUT_RATE / TARGET_RATE;
+      const outLen = Math.floor(pcm.length / ratio);
+      const resampled = new Float32Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const pos = i * ratio;
+        const i0 = Math.floor(pos);
+        const i1 = Math.min(pcm.length - 1, i0 + 1);
+        resampled[i] = pcm[i0] + (pcm[i1] - pcm[i0]) * (pos - i0);
+      }
+
+      // PCM16 WAV 编码
+      const wav = encodeWav(resampled, TARGET_RATE);
+      const b64 = uint8ToBase64(wav);
+      const { text } = await window.fundet.voiceTranscribe(b64);
       if (text) onTextRef.current(text);
       setError(null);
     } catch (err) {
@@ -62,41 +124,59 @@ export function useVoiceInput(onText: (text: string) => void) {
     } finally {
       setState('idle');
       setSeconds(0);
+      cancelledRef.current = false;
+      stoppingRef.current = false;
     }
-  }, [cleanup]);
+  }, []);
 
   const start = useCallback(async () => {
     setError(null);
     try {
-      // 显式关闭 Chromium 默认的音频处理（回声消除/降噪/自动增益）——
-      // Electron 的默认处理比 Chrome 更激进，会劣化录音质量导致 ASR 把
-      // 中文听成英文（用户实测同段话浏览器正确 vs 应用出错，2026-10-02）
+      // 关闭 Chromium 默认音频处理 + 锁单声道
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
           channelCount: 1,
+          sampleRate: INPUT_RATE,
         },
       });
-      const recorder = new MediaRecorder(stream);
-      recorderRef.current = recorder;
-      chunksRef.current = [];
+      streamRef.current = stream;
+
+      // AudioContext 直采 PCM（不走 MediaRecorder/Opus）
+      const ctx = new AudioContext({ sampleRate: INPUT_RATE });
+      ctxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+
+      // ScriptProcessorNode 每回调收 4096 样本（~85ms @ 48kHz）
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+      pcmRef.current = [];
       cancelledRef.current = false;
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+      stoppingRef.current = false;
+
+      processor.onaudioprocess = (e) => {
+        if (cancelledRef.current) return;
+        const ch = e.inputBuffer.getChannelData(0);
+        pcmRef.current.push(new Float32Array(ch)); // 拷贝（buffer 会被复用）
       };
-      recorder.onstop = () => void finish();
-      recorder.start();
+
+      source.connect(processor);
+      // ScriptProcessor 需连到 destination 才会触发回调（但会回放声音——
+      // 用零增益器阻断回放）
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      processor.connect(mute);
+      mute.connect(ctx.destination);
+
       setState('recording');
       setSeconds(0);
       const t0 = Date.now();
       timerRef.current = setInterval(() => {
         const s = Math.floor((Date.now() - t0) / 1000);
         setSeconds(s);
-        if (s >= MAX_SECONDS) {
-          recorderRef.current?.stop();
-        }
+        if (s >= MAX_SECONDS) stopCapture();
       }, 250);
     } catch (err) {
       cleanup();
@@ -109,16 +189,16 @@ export function useVoiceInput(onText: (text: string) => void) {
       );
       setState('idle');
     }
-  }, [cleanup, finish]);
+  }, [cleanup, stopCapture]);
 
   const stop = useCallback(() => {
-    recorderRef.current?.stop();
-  }, []);
+    stopCapture();
+  }, [stopCapture]);
 
   const cancel = useCallback(() => {
     cancelledRef.current = true;
-    recorderRef.current?.stop();
-  }, []);
+    stopCapture();
+  }, [stopCapture]);
 
   const toggle = useCallback(() => {
     if (state === 'recording') stop();
@@ -126,4 +206,34 @@ export function useVoiceInput(onText: (text: string) => void) {
   }, [state, start, stop]);
 
   return { state, seconds, error, start, stop, cancel, toggle };
+}
+
+function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const w = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  w(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+  w(8, 'WAVE'); w(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); w(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Uint8Array(buffer);
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
