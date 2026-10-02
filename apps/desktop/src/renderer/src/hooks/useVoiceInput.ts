@@ -90,7 +90,8 @@ export function useVoiceInput(onText: (text: string) => void) {
         offset += chunk.length;
       }
 
-      // 无声检测：峰值过低说明麦克风没采集到声音
+      // 无声/低音量检测：峰值过低提示用户调音量（用户实报 root cause：
+      // 系统麦克风输入音量太小导致 ASR 把中文听成英文，2026-10-02）
       let peak = 0;
       for (let i = 0; i < pcm.length; i++) {
         const v = Math.abs(pcm[i]);
@@ -100,6 +101,10 @@ export function useVoiceInput(onText: (text: string) => void) {
         throw new Error(
           '麦克风没有采集到声音：请检查 Windows 设置 → 隐私和安全性 → 麦克风（确认「允许桌面应用访问麦克风」已开启）',
         );
+      }
+      if (peak < 0.03) {
+        // 不阻断，但提示——低音量会让 ASR 质量骤降
+        console.warn(`[fundet:voice] 麦克风音量偏低（峰值 ${(peak * 100).toFixed(1)}%），建议调高系统麦克风输入音量`);
       }
 
       // 降采样 48k → 16k（线性插值，与 OfflineAudioContext 同效果但更透明）
