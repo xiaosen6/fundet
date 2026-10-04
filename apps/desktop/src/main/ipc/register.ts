@@ -724,9 +724,6 @@ ${input.text}`;
     async (_e, id: string, model: string, providerId?: string) => {
       const session = getHost().maker.getSession(id);
       if (session) {
-        // pi 忙于跑 turn 时 set_model RPC 排队等回复（默认 30s 超时）→按钮卡死。
-        // 3s 内没回包就先落库返回（下次发送 ensureSession 按新 model lazy-create /
-        // 后台继续等 pi 确认），UI 不等。
         const UI_TIMEOUT_MS = 3_000;
         const dbUpdate = () => {
           getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
@@ -741,9 +738,8 @@ ${input.text}`;
           dbUpdate();
         } catch (err) {
           if (err instanceof Error && err.message === 'UI_TIMEOUT') {
-            // 落库返回，pi 侧切换后台继续
             dbUpdate();
-            console.log(`[fundet:session] setModel 超过 ${UI_TIMEOUT_MS}ms，已先落库（pi 侧后台继续切）`);
+            console.log(`[fundet:session] setModel 超时，已先落库`);
           } else {
             throw err;
           }
@@ -753,6 +749,8 @@ ${input.text}`;
         if (!row) throw new Error(`会话不存在: ${id}`);
         getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
       }
+      // 通知渲染层刷新（此前缺这行：切换成功但 UI 不知道，用户以为没反应）
+      broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED);
     },
   );
 
@@ -786,6 +784,8 @@ ${input.text}`;
       .set({ permissionMode: mode, updatedAt: Date.now() })
       .where(eq(sessions.id, id))
       .run();
+    // 通知渲染层刷新（此前缺这行：切换成功但 UI 不知道）
+    broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED);
   });
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_SET_TITLE, async (_e, id: string, title: string) => {

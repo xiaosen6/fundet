@@ -1,0 +1,51 @@
+﻿#-------- 公共配置 --------
+
+﻿# Copyright (c) 1993-2009 Microsoft Corp.
+#
+# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.
+#
+# This file contains the mappings of IP addresses to host names. Each
+# entry should be kept on an individual line. The IP address should
+# be placed in the first column followed by the corresponding host name.
+# The IP address and the host name should be separated by at least one
+# space.
+#
+# Additionally, comments (such as these) may be inserted on individual
+# lines or following the machine name denoted by a '#' symbol.
+#
+# For example:
+#
+#      102.54.94.97     rhino.acme.com          # source server
+#       38.25.63.10     x.acme.com              # x client host
+
+# localhost name resolution is handled within DNS itself.
+#	127.0.0.1       localhost
+#	::1             localhost
+
+
+#-------- 开发环境 --------
+
+10.110.9.10   ragflow.dev.qs
+10.110.9.10   ollama.dev.qs
+10.110.9.10   dify.dev.qs
+10.110.9.10   spug.dev.qs
+10.110.9.188   git.dev.qs
+10.110.9.10   bt.dev.qs
+10.110.9.10   admin.teacher.qs
+10.110.9.10   web.teacher.qs
+10.110.9.10   teacher.qs
+10.110.9.10   admin.starwalk.qs
+10.110.9.10   web.starwalk.qs
+10.110.9.10   starwalk.qs
+10.110.9.10   *.dev.qs
+10.110.9.10   *.qs
+10.110.9.10   *.test.qs
+10.110.9.10   cfy.dev.qs
+10.110.9.100   main.dev.qs
+10.110.9.101   mact.dev.qs
+# Added by Docker Desktop
+192.168.0.50 host.docker.internal
+192.168.0.50 gateway.docker.internal
+# To allow the same kube context to work on the host and the container:
+127.0.0.1 kubernetes.docker.internal
+# End of section
