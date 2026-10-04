@@ -750,7 +750,7 @@ ${input.text}`;
         getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
       }
       // 通知渲染层刷新（此前缺这行：切换成功但 UI 不知道，用户以为没反应）
-      broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED);
+      broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, {});
     },
   );
 
@@ -785,7 +785,7 @@ ${input.text}`;
       .where(eq(sessions.id, id))
       .run();
     // 通知渲染层刷新（此前缺这行：切换成功但 UI 不知道）
-    broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED);
+    broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, {});
   });
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_SET_TITLE, async (_e, id: string, title: string) => {
