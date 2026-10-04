@@ -135,6 +135,14 @@ function notifyList(): void {
   for (const l of listListeners) l();
 }
 
+/** 乐观更新：立即改本地会话列表某个字段（不等服务器回包）——权限/模型
+ *  切换的 chip 标签即时更新（用户实报 toast 弹了但标签不变，2026-10-04） */
+export function patchSessionInList(sessionId: string, patch: Partial<SessionListItem>): void {
+  sessionList = sessionList.map((s) => (s.id === sessionId ? { ...s, ...patch } : s));
+  rebuildCombinedList();
+  notifyList();
+}
+
 /** 任意 slice 变化的订阅者（sidebar 呼吸点等跨会话视图用） */
 const anyListeners = new Set<() => void>();
 /** 运行中 sessionId 集合快照（useSyncExternalStore 需要引用稳定） */
