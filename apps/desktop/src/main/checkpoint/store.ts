@@ -384,22 +384,24 @@ export function cleanupOrphanCheckpoints(validSessionIds: Set<string>): number {
   return removed;
 }
 
-/** 递归算目录磁盘占用（bytes） */
-export function checkpointDiskUsage(): number {
+/** 递归算目录磁盘占用（bytes）——异步版（此前同步递归走整个 checkpoints 目录
+ *  会阻塞主进程事件循环冻结全部 IPC，用户实报按钮无响应，2026-10-04） */
+export async function checkpointDiskUsageAsync(): Promise<number> {
   const root = checkpointsRoot();
   let total = 0;
-  const walk = (dir: string): void => {
+  const walk = async (dir: string): Promise<void> => {
     try {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
         const p = path.join(dir, e.name);
-        if (e.isDirectory()) walk(p);
-        else total += fs.statSync(p).size;
+        if (e.isDirectory()) await walk(p);
+        else total += (await fs.promises.stat(p)).size;
       }
     } catch {
       /* ignore */
     }
   };
-  walk(root);
+  await walk(root);
   return total;
 }
 

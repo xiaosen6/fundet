@@ -150,7 +150,7 @@ import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
-import { checkpointDiskUsage, purgeAllCheckpoints } from '../checkpoint/store.js';
+import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
@@ -724,14 +724,35 @@ ${input.text}`;
     async (_e, id: string, model: string, providerId?: string) => {
       const session = getHost().maker.getSession(id);
       if (session) {
-        await session.setModel(model, providerId !== undefined ? { providerId } : undefined);
+        // pi 忙于跑 turn 时 set_model RPC 排队等回复（默认 30s 超时）→按钮卡死。
+        // 3s 内没回包就先落库返回（下次发送 ensureSession 按新 model lazy-create /
+        // 后台继续等 pi 确认），UI 不等。
+        const UI_TIMEOUT_MS = 3_000;
+        const dbUpdate = () => {
+          getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
+        };
+        try {
+          await Promise.race([
+            session.setModel(model, providerId !== undefined ? { providerId } : undefined),
+            new Promise((_resolve, reject) =>
+              setTimeout(() => reject(new Error('UI_TIMEOUT')), UI_TIMEOUT_MS),
+            ),
+          ]);
+          dbUpdate();
+        } catch (err) {
+          if (err instanceof Error && err.message === 'UI_TIMEOUT') {
+            // 落库返回，pi 侧切换后台继续
+            dbUpdate();
+            console.log(`[fundet:session] setModel 超过 ${UI_TIMEOUT_MS}ms，已先落库（pi 侧后台继续切）`);
+          } else {
+            throw err;
+          }
+        }
       } else {
-        // 会话不在内存（重启后未发消息 / 上一轮出错被回收）：只落库，
-        // 下次发送时 ensureSession 会按新 model lazy-create，不能在这里判死。
         const row = getDb().select({ id: sessions.id }).from(sessions).where(eq(sessions.id, id)).get();
         if (!row) throw new Error(`会话不存在: ${id}`);
+        getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
       }
-      getDb().update(sessions).set({ model, updatedAt: Date.now() }).where(eq(sessions.id, id)).run();
     },
   );
 
@@ -893,12 +914,10 @@ ${input.text}`;
   });
 
   // ---------- checkpoint（快照磁盘治理） ----------
-  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_DISK_USAGE, () => ({
-    bytes: checkpointDiskUsage(),
-  }));
+  ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_DISK_USAGE, () => checkpointDiskUsageAsync().then((bytes) => ({ bytes })));
   ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_PURGE, () => {
     purgeAllCheckpoints();
-    return { ok: true, bytes: checkpointDiskUsage() };
+    return checkpointDiskUsageAsync().then((bytes) => ({ ok: true, bytes }));
   });
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) =>

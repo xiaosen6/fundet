@@ -13,19 +13,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 
-export function cleanupAgentHome(): { removed: number; freedBytes: number } {
+export async function cleanupAgentHome(): Promise<{ removed: number; freedBytes: number }> {
   const root = path.join(app.getPath('userData'), 'agent-home');
   let removed = 0;
   let freedBytes = 0;
   try {
-    const entries = fs.readdirSync(root, { withFileTypes: true });
+    const entries = await fs.promises.readdir(root, { withFileTypes: true });
     for (const e of entries) {
       if (!e.isDirectory()) continue;
       const dir = path.join(root, e.name);
       try {
-        // 算体积再删（给日志用）
-        freedBytes += dirSize(dir);
-        fs.rmSync(dir, { recursive: true, force: true });
+        freedBytes += await dirSizeAsync(dir);
+        await fs.promises.rm(dir, { recursive: true, force: true });
         removed++;
       } catch {
         /* 删不掉的（被锁等）跳过，下次启动再试 */
@@ -42,19 +41,20 @@ export function cleanupAgentHome(): { removed: number; freedBytes: number } {
   return { removed, freedBytes };
 }
 
-function dirSize(dir: string): number {
+async function dirSizeAsync(dir: string): Promise<number> {
   let total = 0;
-  const walk = (d: string): void => {
+  const walk = async (d: string): Promise<void> => {
     try {
-      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const entries = await fs.promises.readdir(d, { withFileTypes: true });
+      for (const e of entries) {
         const p = path.join(d, e.name);
-        if (e.isDirectory()) walk(p);
-        else total += fs.statSync(p).size;
+        if (e.isDirectory()) await walk(p);
+        else total += (await fs.promises.stat(p)).size;
       }
     } catch {
       /* ignore */
     }
   };
-  walk(dir);
+  await walk(dir);
   return total;
 }

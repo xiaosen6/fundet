@@ -237,7 +237,7 @@ function bootstrap(): void {
         getDb().select({ workDir: sessions.workDir }).from(sessions).all().map((r) => r.workDir),
       ),
     );
-    runMaintenanceCleanup(validIds, workDirs);
+    void runMaintenanceCleanup(validIds, workDirs);
   }
   // 1b) 安装包预制技能 → ~/.agents/skills（Pi 启动后即可 /skill: 点名）
   // Fundet 品牌不预装技能

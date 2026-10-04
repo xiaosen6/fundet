@@ -103,9 +103,9 @@ function cleanupSkillhubTmp(): void {
   } catch { /* ignore */ }
 }
 
-/** 主入口：启动时调用一次 */
-export function runMaintenanceCleanup(validSessionIds: Set<string>, workDirs: string[]): void {
-  try { cleanupAgentHome(); } catch { /* ignore */ }
+/** 主入口：启动时调用一次（agent-home 清扫改异步，不阻塞事件循环） */
+export async function runMaintenanceCleanup(validSessionIds: Set<string>, workDirs: string[]): Promise<void> {
+  try { await cleanupAgentHome(); } catch { /* ignore */ }
   cleanupUploadsDir(workDirs);
   checkpointWal();
   cleanupOrphanSettings(validSessionIds);
