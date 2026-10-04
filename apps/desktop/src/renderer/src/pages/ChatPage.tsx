@@ -649,13 +649,15 @@ export function ChatPage(): React.JSX.Element {
       // 草稿还没有 main 侧会话，只改本地；首条消息 send 时随 create 参数生效
       if (isDraftSession(activeId)) {
         updateDraftSession(activeId, { providerId, model: modelId });
+        toast.success(`模型已切换为 ${modelId}`);
         return;
       }
       try {
         await window.fundet.setSessionModel(activeId, modelId, providerId);
         await refreshSessionList();
+        toast.success(`模型已切换为 ${modelId}`);
       } catch (err) {
-        setNotice(`切换模型失败：${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`切换模型失败：${err instanceof Error ? err.message : String(err)}`);
       }
     },
     [activeId],
@@ -665,16 +667,19 @@ export function ChatPage(): React.JSX.Element {
   const selectPermission = useCallback(
     async (mode: PermissionMode): Promise<void> => {
       if (!activeId) return;
+      const labels: Record<string, string> = { ask: '每次询问', auto: '自动审批', bypassPermissions: '完全放行' };
       // 草稿同上：纯本地
       if (isDraftSession(activeId)) {
         updateDraftSession(activeId, { permissionMode: mode });
+        toast.success(`权限已切换为「${labels[mode] ?? mode}」`);
         return;
       }
       try {
         await window.fundet.setSessionPermissionMode(activeId, mode);
         await refreshSessionList();
+        toast.success(`权限已切换为「${labels[mode] ?? mode}」`);
       } catch (err) {
-        setNotice(`切换权限档位失败：${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`切换权限档位失败：${err instanceof Error ? err.message : String(err)}`);
       }
     },
     [activeId],
