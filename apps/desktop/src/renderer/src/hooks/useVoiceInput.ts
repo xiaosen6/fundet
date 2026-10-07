@@ -1,11 +1,12 @@
 /**
- * 语音输入 hook v3：直接采集 PCM → OfflineAudioContext 滤波降采样 → WAV → 网关 ASR。
+ * 语音输入 hook v4：AudioWorklet 采集 PCM → OfflineAudioContext 滤波降采样 → WAV → 网关 ASR。
  *
- * 演进：v1 MediaRecorder（webm/opus）质量差 → v2（2026-10-02）改 ScriptProcessorNode
- * 直采 PCM，但两处退步：getUserMedia 关掉了降噪/自动增益（纯净原始流对 ASR 更差），
- * 且手写线性插值降采样无抗混叠滤波（8kHz+ 噪声折叠进语音频带，「DeepSeek→Deep sick」
- * 实报）→ v3（2026-10-07）：降噪/增益对齐浏览器默认（网页实测正确的环境），降采样
- * 交给 OfflineAudioContext（Chromium 多相重采样器，与浏览器测试页同款）。
+ * 演进：v1 MediaRecorder（webm/opus）质量差 → v2（2026-10-02）ScriptProcessorNode
+ * 直采，但三处退步：关掉降噪/自动增益、手写线性插值降采样无抗混叠滤波（8kHz+ 噪声
+ * 折叠进语音频带，「DeepSeek→Deep sick」实报）、回调在主线程遇阻塞丢帧 → v3
+ * （2026-10-07）降噪/增益对齐浏览器默认 + OfflineAudioContext 滤波降采样 →
+ * v4：采集节点换 AudioWorklet（独立音频线程，主线程繁忙不丢帧）。
+ * 「DeepSeek→deeps」经 TTS 干净音频基准证实为 SenseVoice 模型上限，非采集问题。
  *
  * 服务端 SenseVoice 无 VAD，单段上限 30s——25s 自动停留余量。
  */
@@ -23,6 +24,7 @@ export function useVoiceInput(onText: (text: string) => void) {
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletRef = useRef<AudioWorkletNode | null>(null);
   const pcmRef = useRef<Float32Array[]>([]);
   const inputRateRef = useRef<number>(48000);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -34,6 +36,11 @@ export function useVoiceInput(onText: (text: string) => void) {
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    if (workletRef.current) {
+      workletRef.current.port.onmessage = null;
+      workletRef.current.disconnect();
+      workletRef.current = null;
+    }
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current = null;
@@ -163,25 +170,51 @@ export function useVoiceInput(onText: (text: string) => void) {
       inputRateRef.current = ctx.sampleRate;
       const source = ctx.createMediaStreamSource(stream);
 
-      // ScriptProcessorNode 每回调收 4096 样本（~85ms @ 48kHz）
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      // 采集节点：优先 AudioWorklet（独立音频线程，主线程繁忙/React 渲染/
+      // dev 日志刷屏都不会丢帧——ScriptProcessor 回调在主线程，任何 >85ms
+      // 阻塞都会啃掉音频碎片，2026-10-07 对照 TTS 基准后换掉）；不可用时
+      // 回落 ScriptProcessor。
       pcmRef.current = [];
       cancelledRef.current = false;
       stoppingRef.current = false;
+      let captureNode: AudioNode;
+      try {
+        const workletCode = `
+class VoiceCaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) this.port.postMessage(ch);
+    return true;
+  }
+}
+registerProcessor('voice-capture', VoiceCaptureProcessor);`;
+        const workletUrl = URL.createObjectURL(new Blob([workletCode], { type: 'application/javascript' }));
+        await ctx.audioWorklet.addModule(workletUrl);
+        URL.revokeObjectURL(workletUrl);
+        const node = new AudioWorkletNode(ctx, 'voice-capture');
+        node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+          if (cancelledRef.current) return;
+          pcmRef.current.push(new Float32Array(e.data)); // 拷贝（消息数据可能被复用）
+        };
+        workletRef.current = node;
+        captureNode = node;
+      } catch {
+        // 回落：ScriptProcessorNode 每回调收 4096 样本（~85ms @ 48kHz）
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        processor.onaudioprocess = (e) => {
+          if (cancelledRef.current) return;
+          const ch = e.inputBuffer.getChannelData(0);
+          pcmRef.current.push(new Float32Array(ch)); // 拷贝（buffer 会被复用）
+        };
+        captureNode = processor;
+      }
 
-      processor.onaudioprocess = (e) => {
-        if (cancelledRef.current) return;
-        const ch = e.inputBuffer.getChannelData(0);
-        pcmRef.current.push(new Float32Array(ch)); // 拷贝（buffer 会被复用）
-      };
-
-      source.connect(processor);
-      // ScriptProcessor 需连到 destination 才会触发回调（但会回放声音——
-      // 用零增益器阻断回放）
+      source.connect(captureNode);
+      // 采集节点连到 destination 才保持在音频图内（零增益阻断回放）
       const mute = ctx.createGain();
       mute.gain.value = 0;
-      processor.connect(mute);
+      captureNode.connect(mute);
       mute.connect(ctx.destination);
 
       setState('recording');
