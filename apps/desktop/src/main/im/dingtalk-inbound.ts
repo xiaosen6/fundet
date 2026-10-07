@@ -92,6 +92,25 @@ export function parseInboundEnvelope(raw: unknown): DingTalkInboundEnvelope | nu
 
 export function parseInboundContent(envelope: DingTalkInboundEnvelope): DingTalkInboundContent {
   const raw = envelope.raw;
+  const content = parseContentByMsgType(envelope, raw);
+  // 群聊纯 @：钉钉回调剥掉 @ 后正文为空，下游按空消息静默丢弃 → 用户 @ 了没反应。
+  // 回退占位文本让轮次照跑（Cindy #5516 同款修复语义）。仅救群聊 @（单聊发不出空消息）。
+  if (
+    !content.text
+    && content.downloadCodes.length === 0
+    && content.unsupported.length === 0
+    && envelope.conversationType === '2'
+    && envelope.mentioned
+  ) {
+    return { ...content, text: '@机器人' };
+  }
+  return content;
+}
+
+function parseContentByMsgType(
+  envelope: DingTalkInboundEnvelope,
+  raw: Record<string, unknown>,
+): DingTalkInboundContent {
   switch (envelope.messageType) {
     case 'text':
       return result(readNestedString(raw, 'text', 'content'));
