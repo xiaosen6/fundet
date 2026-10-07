@@ -13,7 +13,7 @@
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
 import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BookOpen, Bot, Brain, Briefcase, CalendarClock, ChevronRight, CirclePlus, CircleSlash, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { BookOpen, Bot, Brain, Briefcase, CalendarClock, ChevronRight, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
 import { cn } from '../lib/cn';
@@ -304,20 +304,6 @@ const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionR
                 <Pencil size={13} />
               </button>
             </Tooltip>
-            {!isRunning && (
-              <Tooltip label="关闭（回收后台进程，聊天记录保留）" side="bottom">
-                <button
-                  type="button"
-                  className={cn(ACTION_BTN, isActive ? 'text-accent-fg hover:opacity-70' : 'text-muted hover:text-primary')}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void window.fundet.sessionClose(session.id).catch(() => undefined);
-                  }}
-                >
-                  <CircleSlash size={13} />
-                </button>
-              </Tooltip>
-            )}
             <Tooltip label="删除会话" side="bottom">
               <button
                 type="button"
