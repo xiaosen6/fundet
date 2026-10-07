@@ -85,6 +85,37 @@ describe('parseInboundContent', () => {
     assert.equal(parseInboundContent(env).text, '语音内容');
   });
 
+  it('群聊纯 @（正文为空）回退占位文本，不再产生空消息', () => {
+    // 钉钉回调剥掉 @ 后 text.content 为空：群聊 mentioned 时必须回退，
+    // 否则下游按空消息静默丢弃，用户 @ 了没反应（Cindy #5516 同款）。
+    const env = parseInboundEnvelope({
+      ...baseRaw,
+      conversationType: '2',
+      isInAtList: true,
+      text: { content: '  ' },
+    })!;
+    const c = parseInboundContent(env);
+    assert.equal(c.text, '@机器人');
+    assert.equal(c.downloadCodes.length, 0);
+    assert.equal(c.unsupported.length, 0);
+  });
+
+  it('单聊正文为空保持空消息（回退只救群聊 @）', () => {
+    const env = parseInboundEnvelope({ ...baseRaw, text: { content: '' } })!;
+    const c = parseInboundContent(env);
+    assert.equal(c.text, '');
+  });
+
+  it('群聊未 @ 且正文为空不回退', () => {
+    const env = parseInboundEnvelope({
+      ...baseRaw,
+      conversationType: '2',
+      isInAtList: false,
+      text: { content: '' },
+    })!;
+    assert.equal(parseInboundContent(env).text, '');
+  });
+
   it('video/file/未知类型 → 不支持清单', () => {
     for (const t of ['video', 'file', 'sticker']) {
       const env = parseInboundEnvelope({ ...baseRaw, msgtype: t })!;

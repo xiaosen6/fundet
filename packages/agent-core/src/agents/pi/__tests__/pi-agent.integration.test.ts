@@ -1108,6 +1108,98 @@ describe.skipIf(!piAvailable)('PiAgent integration (real pi binary + fake gatewa
   );
 
   it(
+    'BYOM completions: no explicit effort → outbound reasoning_effort falls back to a supported map level',
+    { timeout: 60_000 },
+    async () => {
+      const nativeSeen: string[] = [];
+      const nativeServer = createServer((req, res) => {
+        let body = '';
+        req.on('data', (chunk) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          nativeSeen.push(body);
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+          });
+          res.end(responsesStreamBody('pong', 'probe-glm'));
+        });
+      });
+      await new Promise<void>((resolve) => nativeServer.listen(0, '127.0.0.1', resolve));
+      const nativeAddr = nativeServer.address();
+      const nativeUrl =
+        typeof nativeAddr === 'object' && nativeAddr ? `http://127.0.0.1:${nativeAddr.port}` : '';
+
+      const deps = buildDeps();
+      deps.auth.getState = async (options) =>
+        options?.providerId === 'probezai'
+          ? { authenticated: true, identity: 'Probe ZAI', authSource: 'api-key' as const }
+          : { authenticated: false };
+      deps.auth.getAuthEnv = async () => ({
+        CINDY_PI_API_KEY: 'gateway-unavailable-placeholder',
+      });
+      deps.resolvePiNativeProviders = async () => ({
+        providers: [
+          {
+            id: 'probezai',
+            name: 'Probe ZAI',
+            baseUrl: nativeUrl,
+            api: 'openai-completions',
+            apiKeyEnvVar: 'CINDY_PI_KEY_PROBEZAI',
+            models: [
+              {
+                // glm-5.3 同款目录（off/medium 不支持，low/high/max 支持）：
+                // 用户未显式选档时 pi 必须回落到 map 支持档，绝不能序列化成
+                // "关闭思考"（智谱推理端点会 1210，上游 #5408 同域）。
+                id: 'probe-glm',
+                name: 'Probe GLM',
+                reasoning: true,
+                thinkingLevelMap: {
+                  off: null,
+                  minimal: null,
+                  low: 'low',
+                  medium: null,
+                  high: 'high',
+                  xhigh: null,
+                  max: 'max',
+                },
+              },
+            ],
+          },
+        ],
+        env: { CINDY_PI_KEY_PROBEZAI: 'probe-secret' },
+      });
+      const agent = new PiAgent(deps);
+      const workingDir = mkdtempSync(path.join(tmpdir(), 'pi-probe-zai-cwd-'));
+      let handle: AgentSessionHandle | null = null;
+      try {
+        handle = await agent.startSession({
+          sessionId: 'probe-zai-session',
+          workingDir,
+          providerId: 'probezai',
+          model: 'probe-glm',
+        });
+        const done = (async () => {
+          for await (const event of handle!.events()) {
+            if (event.type === 'done') break;
+          }
+        })();
+        await handle.send({ type: 'user', content: 'hi' });
+        await done;
+        expect(nativeSeen.length).toBeGreaterThan(0);
+        const body = JSON.parse(nativeSeen[0] ?? '{}');
+        expect(['low', 'high', 'max']).toContain(body.reasoning_effort);
+        expect(body.thinking).toBeUndefined();
+      } finally {
+        await handle?.close();
+        await new Promise<void>((resolve) => nativeServer.close(() => resolve()));
+        rmSync(workingDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it(
     'exportSessionHtml writes a real HTML file via pi export_html (offline, no gateway)',
     { timeout: 60_000 },
     async () => {
