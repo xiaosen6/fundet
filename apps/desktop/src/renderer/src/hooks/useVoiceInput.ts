@@ -1,10 +1,11 @@
 /**
- * 语音输入 hook v2：直接采集 PCM → WAV → 网关 ASR 转写。
+ * 语音输入 hook v3：直接采集 PCM → OfflineAudioContext 滤波降采样 → WAV → 网关 ASR。
  *
- * 2026-10-02 重写：MediaRecorder（webm/opus）管线在 Electron 里转写质量
- * 差（同段话浏览器正确 vs 应用出错，多次调约束/码率未根治）——改为
- * ScriptProcessorNode 直采 Float32 PCM，跳过 Opus 编码/解码整个有损循环，
- * 从麦克风原始数据直接出 16kHz WAV。
+ * 演进：v1 MediaRecorder（webm/opus）质量差 → v2（2026-10-02）改 ScriptProcessorNode
+ * 直采 PCM，但两处退步：getUserMedia 关掉了降噪/自动增益（纯净原始流对 ASR 更差），
+ * 且手写线性插值降采样无抗混叠滤波（8kHz+ 噪声折叠进语音频带，「DeepSeek→Deep sick」
+ * 实报）→ v3（2026-10-07）：降噪/增益对齐浏览器默认（网页实测正确的环境），降采样
+ * 交给 OfflineAudioContext（Chromium 多相重采样器，与浏览器测试页同款）。
  *
  * 服务端 SenseVoice 无 VAD，单段上限 30s——25s 自动停留余量。
  */
@@ -13,7 +14,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type VoiceState = 'idle' | 'recording' | 'transcribing';
 
 const MAX_SECONDS = 25;
-const INPUT_RATE = 48000;
 const TARGET_RATE = 16000;
 
 export function useVoiceInput(onText: (text: string) => void) {
@@ -24,6 +24,7 @@ export function useVoiceInput(onText: (text: string) => void) {
   const ctxRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const pcmRef = useRef<Float32Array[]>([]);
+  const inputRateRef = useRef<number>(48000);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
   const stoppingRef = useRef(false);
@@ -107,19 +108,24 @@ export function useVoiceInput(onText: (text: string) => void) {
         console.warn(`[fundet:voice] 麦克风音量偏低（峰值 ${(peak * 100).toFixed(1)}%），建议调高系统麦克风输入音量`);
       }
 
-      // 降采样 48k → 16k（线性插值，与 OfflineAudioContext 同效果但更透明）
-      const ratio = INPUT_RATE / TARGET_RATE;
-      const outLen = Math.floor(pcm.length / ratio);
-      const resampled = new Float32Array(outLen);
-      for (let i = 0; i < outLen; i++) {
-        const pos = i * ratio;
-        const i0 = Math.floor(pos);
-        const i1 = Math.min(pcm.length - 1, i0 + 1);
-        resampled[i] = pcm[i0] + (pcm[i1] - pcm[i0]) * (pos - i0);
-      }
+      // 降采样 → 16kHz：OfflineAudioContext（Chromium 多相重采样器，自带抗混叠
+      // 低通）。2026-10-07 教训：此前手写线性插值无滤波，8kHz 以上噪声混叠折叠进
+      // 语音频带污染辅音（「DeepSeek→Deep sick」实报），且源采样率必须用采集时
+      // 记录的 ctx.sampleRate（getUserMedia 的 sampleRate 约束只是理想值）。
+      const srcRate = inputRateRef.current;
+      const frames = Math.max(1, Math.floor((pcm.length * TARGET_RATE) / srcRate));
+      const offline = new OfflineAudioContext(1, frames, TARGET_RATE);
+      const srcBuf = offline.createBuffer(1, pcm.length, srcRate);
+      srcBuf.copyToChannel(pcm, 0);
+      const srcNode = offline.createBufferSource();
+      srcNode.buffer = srcBuf;
+      srcNode.connect(offline.destination);
+      srcNode.start();
+      const rendered = await offline.startRendering();
+      const samples = rendered.getChannelData(0);
 
       // PCM16 WAV 编码
-      const wav = encodeWav(resampled, TARGET_RATE);
+      const wav = encodeWav(samples, TARGET_RATE);
       const b64 = uint8ToBase64(wav);
       const { text } = await window.fundet.voiceTranscribe(b64);
       if (text) onTextRef.current(text);
@@ -137,21 +143,24 @@ export function useVoiceInput(onText: (text: string) => void) {
   const start = useCallback(async () => {
     setError(null);
     try {
-      // 关闭 Chromium 默认音频处理 + 锁单声道
+      // 降噪/自动增益对齐浏览器默认环境（网页实测转写正确的链路开着这两项；
+      // 2026-10-02 曾全关追求「纯净」，实测纯净原始流对 ASR 反而更差——稳态
+      // 噪声与低电平都拉低识别质量）。回声消除保持关：应用静音录制无回声可消，
+      // 且 Windows 阵列麦上 AEC 有干扰波束成形的先例。
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          noiseSuppression: true,
+          autoGainControl: true,
           channelCount: 1,
-          sampleRate: INPUT_RATE,
         },
       });
       streamRef.current = stream;
 
       // AudioContext 直采 PCM（不走 MediaRecorder/Opus）
-      const ctx = new AudioContext({ sampleRate: INPUT_RATE });
+      const ctx = new AudioContext();
       ctxRef.current = ctx;
+      inputRateRef.current = ctx.sampleRate;
       const source = ctx.createMediaStreamSource(stream);
 
       // ScriptProcessorNode 每回调收 4096 样本（~85ms @ 48kHz）
