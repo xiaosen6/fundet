@@ -143,6 +143,15 @@ export function patchSessionInList(sessionId: string, patch: Partial<SessionList
   notifyList();
 }
 
+/** 删除会话的乐观更新：立即从列表移除（主进程清 DB/杀进程/删快照仓均后台异步，
+ *  不再等 invoke 返回——删除卡顿的渲染层半边，2026-10-07） */
+export function removeSessionFromList(sessionId: string): void {
+  sessionList = sessionList.filter((s) => s.id !== sessionId);
+  if (drafts.has(sessionId)) drafts.delete(sessionId);
+  rebuildCombinedList();
+  notifyList();
+}
+
 /** 任意 slice 变化的订阅者（sidebar 呼吸点等跨会话视图用） */
 const anyListeners = new Set<() => void>();
 /** 运行中 sessionId 集合快照（useSyncExternalStore 需要引用稳定） */

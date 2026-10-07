@@ -338,11 +338,22 @@ export async function rewindTo(sessionId: string, workDir: string, sha: string):
   return { ...preview, preRollbackSha };
 }
 
-/** 删除会话的快照仓（session:delete 时调用） */
+/** 删除会话的快照仓（session:delete 时调用）。同步版：启动清扫等阻塞场景 */
 export function deleteCheckpoints(sessionId: string): void {
   const dir = repoDir(sessionId);
   try {
     fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* 快照清理失败不阻断删会话 */
+  }
+}
+
+/** 删除会话的快照仓——异步版（session:delete 用）：仓可达数百 MB，
+ *  同步 rmSync 会冻结主进程事件循环，删除会话即整体卡顿（2026-10-07 实报） */
+export async function deleteCheckpointsAsync(sessionId: string): Promise<void> {
+  const dir = repoDir(sessionId);
+  try {
+    await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 3 });
   } catch {
     /* 快照清理失败不阻断删会话 */
   }

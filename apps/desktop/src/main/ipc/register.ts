@@ -29,6 +29,7 @@ import { searchSessions } from '../db/session-search.js';
 import {
   enqueueSnapshot,
   deleteCheckpoints,
+  deleteCheckpointsAsync,
   isCheckpointAvailable,
   listCheckpoints,
   previewRewind,
@@ -613,9 +614,17 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_DELETE, async (_e, id: string) => {
     const { maker } = getHost();
-    if (maker.isSessionAlive(id)) await maker.closeSession(id, 'requested');
+    // DB 先删（毫秒级）立即返回；杀 pi 与删快照仓放后台——同步 rmSync 删大仓
+    // 会冻结主进程事件循环，点删除整体卡顿（2026-10-07 用户实报根因）
     getDb().delete(sessions).where(eq(sessions.id, id)).run();
-    deleteCheckpoints(id);
+    void (async () => {
+      try {
+        if (maker.isSessionAlive(id)) await maker.closeSession(id, 'requested');
+      } catch {
+        /* 回收失败不影响删除结果 */
+      }
+      await deleteCheckpointsAsync(id);
+    })();
   });
 
   ipcMain.handle(

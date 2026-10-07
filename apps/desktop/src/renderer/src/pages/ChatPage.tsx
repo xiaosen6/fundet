@@ -27,6 +27,7 @@ import {
   markSessionSeen,
   refreshSessionList,
   patchSessionInList,
+  removeSessionFromList,
   renameSession,
   resendTurn,
   resolveAskUser,
@@ -428,9 +429,11 @@ export function ChatPage(): React.JSX.Element {
         danger: true,
       });
       if (!ok) return;
-      await window.fundet.deleteSession(id);
+      // 乐观删除：列表立即移除；主进程杀 pi/删快照仓均已后台异步，
+      // invoke 仅删 DB（毫秒级）——不再等它返回后刷新（删除卡顿渲染层半边）
+      removeSessionFromList(id);
       if (activeId === id) setActiveId(null);
-      await refreshSessionList();
+      void window.fundet.deleteSession(id).catch(() => undefined);
     },
     [activeId],
   );
