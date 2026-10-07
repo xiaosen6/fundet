@@ -476,16 +476,16 @@ Fundet/
 - **钉钉完整集成（2026-09-18 已移植，Cindy lizi-im 同机制）**：API 客户端 `im/dingtalk-api.ts`（token 双轨缓存+图片下载/上传+robot 主动发+webhook 过期回退）；入站纯函数 `im/dingtalk-inbound.ts`（text/richText/picture/audio/video/file）；图片收发全链（入站 downloadCode→下载→stage→image 块；出站本地图片→上传→单独发图）；**审批问答桥** `im/im-interaction.ts` + dispatcher（IM 会话 ask 档，交互转文本问答，回复旁路防死锁，9min 超时 deny）；per-bot 工作目录。29 IM 单测全绿。
 - **钉钉/IM 与 Cindy 差距裁决（2026-09-18 核查留案）**：协议层同款（同 dingtalk-stream SDK/个人凭证/TOPIC_ROBOT）；Cindy 多出的属边界裁剪非欠账——IM 内审批问答（interaction.ts 文本问答桥，P2：需要在 IM 跑 ask 档任务时做）、IM 图片收发与流式卡片（lizi-im 885 行适配层，P2：手机发图给机器人的真实需求出现时做）、per-bot 工作目录隔离（多 bot 同机时再做）。
 - IPC 错误已统一剥壳（2026-09-11）：preload `invoke()` helper 按 channel 精确剥 `Error invoking remote method <channel>: ` 前缀（`shared/friendly-error.ts` 的 `stripIpcErrorPrefix`，有单测），UI 只显业务原文。
-- 文件夹拖入 composer；Canvas 未覆盖类型已有「用系统打开」兜底（CanvasPane 右上角常驻按钮，2026-09-23 核实非待办）。**遗留小洞**：`FS_OPEN_PATH` 无文件类型闸（register.ts 直接 shell.openPath）——agent 产出可执行文件被点开即执行，待加扩展名 deny-list。
+- 文件夹拖入 composer；Canvas 未覆盖类型已有「用系统打开」兜底（CanvasPane 右上角常驻按钮，2026-09-23 核实非待办）。~~FS_OPEN_PATH 无文件类型闸~~ **已修（0.3.13）**：`filePathPolicy.isShellExecutablePath` 26 可执行扩展拦截（register.ts:1200）。
 
 > **全仓代码研究盘点（2026-09-23，接手四路深挖，均已亲核）**：
 > - **规模修正**：browser-runtime src 实为 ~3.4 万行（`_generated/` 31k 同步自 openclaw + `shim/` 1.7k 垫片 + 根适配层 526 行）——"小包"印象作废；全仓 TS ≈11.4 万行（agent-core 源/测各 ~2 万）。IPC 通道共 ~128 个（invoke+push）。
-> - **渲染层小 bug（待修）**：ChatPage.tsx ~1014 `!activeId.startsWith('draft-')` 恒真（草稿 id 是 crypto.randomUUID），空草稿也显示会话 ID 段；判草稿应走 `isDraftSession()`。
-> - **注释漂移**：sessionStore.ts 头注释写「100ms 节流」，实现是 FLUSH_MS=32。
-> - **agent-core 未接线面（死代码/负债，非待办）**：desktop 只消费 Maker 6 方法、Session 9 方法；steer/getUsageSnapshot/sessionTree/planMode/compact/exportHtml/fork/reviewMode 整链、memory 模块（~1500 行装配、makerMemoryEnabled 恒 false）均未消费。包内数十文件、数百处 cindy/CINDY 命名（env `CINDY_PI_*`、provider id `'cindy'`、`XDT_SESSION_TURN_STALL_MS`）是底座机制名（pi 扩展与 bridge 依赖），**不是待清理项，改名即断**。
+> - ~~渲染层小 bug：ChatPage `!activeId.startsWith('draft-')` 恒真~~ **已修（0.3.11 ⑦）**。
+> - ~~注释漂移：sessionStore 头注释 100ms~~ **已修（0.3.11 ⑦，现为 32ms）**。
+> - **agent-core 未接线面（死代码/负债，非待办）**：desktop 只消费 Maker 6 方法、Session 9 方法；steer/getUsageSnapshot/sessionTree/planMode/compact/exportHtml/fork/reviewMode 整链均未消费（**memory 模块已于 0.3.27 接线消费**：MakerMemoryManager + fundet-memory MCP + MemoryPanel + IM 共享）。包内数十文件、数百处 cindy/CINDY 命名（env `CINDY_PI_*`、provider id `'cindy'`、`XDT_SESSION_TURN_STALL_MS`）是底座机制名（pi 扩展与 bridge 依赖），**不是待清理项，改名即断**。
 > - **审批超时语义澄清**：10min 兜底 deny 在 desktop 宿主层（register.ts pendingInteractions）；agent-core 核心交互卡本身无超时；auto-review delegate（reviewAutoPermissionAction）Fundet 未接 → 灰区一律 ask。
 > - **browser-runtime 同步工具缺失**：lock.json/MAINTAINING.md 引用的 `scripts/browser-runtime/sync.mjs` 不在本仓（留在上游），`_generated/` 禁手改 = 再同步能力已失，升级 vendored 需整目录人工比对；upstream lock b972feb3 + 2 条 LOCAL_PATCHES（fake-IP 豁免、去上游自动 profile）。
-> - **杂项**：localStorage key 品牌分裂（fundet.* 为主、longma.* 残留在 sidebar-width/profile/font）；checkpoint 环境变量 typo `FUNET_CHECKPOINT_ROOT`（少 D，测试专用自洽）；with-brand.mjs 已硬编码只收 fundet（longma 分支仅存参考）；`.msg-stream-items > *:not([data-virtual])` 的 content-visibility 规则虚拟化后仅剩空态命中（优化已被真虚拟化取代）；resendLast 绕过 lastSendInputs 不享自动重试。
+> - ~~杂项：localStorage 品牌分裂~~ **已修（0.3.11 ⑩迁移，残余仅 BrandMark.tsx 无害变量名与测试 fixture 路径）**；~~checkpoint 环境变量 typo `FUNET_CHECKPOINT_ROOT`~~ 测试专用自洽保留；with-brand.mjs 已硬编码只收 fundet（longma 分支仅存参考）；~~`.msg-stream-items` content-visibility 死规则~~ **已删（0.3.11 ⑧）**；~~resendLast 绕过 lastSendInputs~~ **已修（0.3.11 ⑨ resendTurn）**。（2026-10-07 复核清理：本块原列待修项经代码验证均已在 0.3.11/0.3.13 落地，历史盘点保留备查。）
 
 > **全仓代码研究复扫（2026-09-29，0.3.18 后，六路深挖 + 两 bug 亲核实证；同日修复批见 §6 在途事项）**：
 > - **规模**：全仓 TS 116,061 行/590 文件（browser-runtime `_generated` ≈3 万行占 1/4）；渲染层 ≈2.03 万行；agent-core 源/测各 ≈2.03 万行；`ipc/register.ts` 1442 行。IPC = FUNDET_INVOKE **125** + FUNDET_PUSH **12** + **pet 11 个字符串散写**（未进 channels.ts 收口，是「新 IPC 四处一起改」铁律的存量例外）；WINDOW_MINIMIZE 等四个定义在 INVOKE 组但实际走单向 send。
