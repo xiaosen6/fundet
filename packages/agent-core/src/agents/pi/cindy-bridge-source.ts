@@ -1077,6 +1077,38 @@ export default async function cindyBridge(pi: any) {
     },
   });
 
+  // ── 模型目录热刷新桥 ──────────────────────────────────────────────────────
+  // RPC 没有 reload-models command;set_model 查的是进程内存快照,host 只重写
+  // configHome/models.json 不刷新进程侧目录时切不了模型。host 重写文件后经本命令
+  // 触发 modelRegistry.refresh 重读。env 是 host 补注入的 BYOM key(会话启动后新增
+  // provider:$ENV 按请求期从 process.env 解析),并加入 bash 剥离名单 —— 与 spawn
+  // 时注入的 key 同口径,不给 LLM shell 可乘之机。
+  pi.registerCommand('cindy-reload-models', {
+    description: 'Cindy internal model catalog hot reload',
+    handler: async (args: string, ctx: any) => {
+      let payload: { env?: unknown };
+      try {
+        payload = JSON.parse(decodeURIComponent((args ?? '').trim()));
+      } catch {
+        payload = {};
+      }
+      const env =
+        payload && typeof payload.env === 'object' && payload.env !== null
+          ? (payload.env as Record<string, unknown>)
+          : {};
+      for (const [name, value] of Object.entries(env)) {
+        if (!/^CINDY_PI_KEY_[A-Z0-9_]{1,64}$/.test(name)) continue;
+        if (typeof value !== 'string' || value.length === 0 || value.length > 4096) continue;
+        process.env[name] = value;
+        SECRET_ENV_NAMES.add(name);
+      }
+      if (!ctx || typeof ctx.modelRegistry?.refresh !== 'function') {
+        throw new Error('Cindy model registry unavailable');
+      }
+      await ctx.modelRegistry.refresh({ allowNetwork: false });
+    },
+  });
+
   // ── 权限门 ────────────────────────────────────────────────────────────────
   pi.on('tool_call', async (event: any, ctx: any) => {
     const permission = currentPermissionState();

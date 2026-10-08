@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { PiAgent } from '../index.js';
 import { TurnPermissionPolicyUnsupportedError, type AgentDeps, type AgentSessionHandle } from '../../base-agent.js';
+import type { PiNativeProviderSpec, PiNativeProvidersResult } from '../../base-agent.js';
 import type { AgentEvent } from '../../../types/events.js';
 import type { Logger } from '../../../interfaces/logger.js';
 
@@ -2096,6 +2097,110 @@ describe.skipIf(!piAvailable)('PiAgent integration (real pi binary + fake gatewa
       } finally {
         await handle?.close();
         await new Promise<void>((r) => nativeServer.close(() => r()));
+        rmSync(workingDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it(
+    'hot-reloads the model catalog: lazy setModel + refreshModelCatalog pick up post-startup providers (key env injected)',
+    { timeout: 90_000 },
+    async () => {
+      // 可变 native 解析结果：模拟“会话启动后用户扫描/新增供应商”。
+      // 启动快照只有 hot-a/hot-a-model；之后 hot-a 加 hot-a-model-b、再新增
+      // keyed provider hot-b（$ENV 引用的 key 不在 spawn env 里 —— 只能靠 reload
+      // payload 补注入 process.env，pi 的 $ENV 按请求期现读）。
+      const providerA = (models: Array<{ id: string; reasoning?: boolean }>): PiNativeProviderSpec => ({
+        id: 'hot-a',
+        name: 'Hot A',
+        baseUrl: `${endpoint}/v1`,
+        api: 'anthropic-messages',
+        apiKeyEnvVar: 'CINDY_PI_KEY_HOT_A',
+        models,
+      });
+      const providerB: PiNativeProviderSpec = {
+        id: 'hot-b',
+        name: 'Hot B',
+        baseUrl: `${endpoint}/v2`,
+        api: 'anthropic-messages',
+        apiKeyEnvVar: 'CINDY_PI_KEY_HOT_B',
+        models: [{ id: 'hot-b-model', reasoning: false }],
+      };
+      let native: PiNativeProvidersResult = {
+        providers: [providerA([{ id: 'hot-a-model', reasoning: false }])],
+        env: { CINDY_PI_KEY_HOT_A: 'hot-a-key' },
+      };
+      const deps = buildDeps();
+      deps.resolvePiNativeProviders = async () => native;
+
+      const agent = new PiAgent(deps);
+      const workingDir = mkdtempSync(path.join(tmpdir(), 'pi-hotreload-'));
+      let handle: AgentSessionHandle | null = null;
+      try {
+        handle = await agent.startSession({
+          sessionId: 'itest-hotreload',
+          workingDir,
+          model: 'hot-a-model',
+          providerId: 'hot-a',
+        });
+
+        // 负对照：目标模型不在启动快照 → fail-closed（不许静默回落网关/乱切）。
+        await expect(
+          handle.setModel!('hot-a-model-b', { providerId: 'hot-a' }),
+        ).rejects.toThrow(/cannot serve model/);
+
+        // 模拟“扫描后保存”：hot-a 多了 hot-a-model-b。setModel 走懒同步路径
+        // （重写 models.json → /cindy-reload-models → 验证可用 → set_model）。
+        native = {
+          providers: [providerA([
+            { id: 'hot-a-model', reasoning: false },
+            { id: 'hot-a-model-b', reasoning: false },
+          ])],
+          env: { CINDY_PI_KEY_HOT_A: 'hot-a-key' },
+        };
+        await expect(
+          handle.setModel!('hot-a-model-b', { providerId: 'hot-a' }),
+        ).resolves.toBeUndefined();
+        expect(handle.model).toBe('hot-a-model-b');
+
+        // 模拟“新增了一个带 key 的供应商”：key env 不在 spawn env 里。
+        native = {
+          providers: [
+            providerA([
+              { id: 'hot-a-model', reasoning: false },
+              { id: 'hot-a-model-b', reasoning: false },
+            ]),
+            providerB,
+          ],
+          env: { CINDY_PI_KEY_HOT_A: 'hot-a-key', CINDY_PI_KEY_HOT_B: 'hot-b-key' },
+        };
+        await expect(
+          handle.setModel!('hot-b-model', { providerId: 'hot-b' }),
+        ).resolves.toBeUndefined();
+        expect(handle.model).toBe('hot-b-model');
+
+        // 路由实证：切到 hot-b 后发一条消息，请求必须打到 hot-b 的 baseUrl
+        // 并携带补注入的 key（不是网关 key、不是 hot-a key）。
+        const done = (async () => {
+          for await (const ev of handle!.events()) {
+            if (ev.type === 'done') break;
+          }
+        })();
+        await handle.send({ type: 'user', content: 'route check' });
+        await done;
+        const routed = seenRequests.filter(
+          (r) => r.url.startsWith('/v2') && (r.auth ?? '').includes('hot-b-key'),
+        );
+        expect(routed.length).toBeGreaterThan(0);
+
+        // 广播路径（供应商面板保存触发的全量热同步）单独可用，且幂等成功。
+        native = {
+          providers: [providerA([{ id: 'hot-a-model', reasoning: false }])],
+          env: { CINDY_PI_KEY_HOT_A: 'hot-a-key' },
+        };
+        await expect(handle.refreshModelCatalog?.()).resolves.toBe(true);
+      } finally {
+        await handle?.close();
         rmSync(workingDir, { recursive: true, force: true });
       }
     },

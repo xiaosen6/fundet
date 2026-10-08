@@ -138,6 +138,7 @@ export type MessageRow = typeof messages.$inferSelect;
 export type ProviderRow = typeof providers.$inferSelect;
 export type SettingRow = typeof settings.$inferSelect;
 export type McpServerRow = typeof mcpServers.$inferSelect;
+export type PromptTemplateRow = typeof promptTemplates.$inferSelect;
 
 /** providers.models 列的 JSON 元素形状 */
 export interface ProviderModelSpec {
@@ -152,6 +153,20 @@ export interface ProviderModelSpec {
   /** 显式声明的输入模态；只信库值（预设标注 / 编辑对话框勾选） */
   input?: Array<'text' | 'image'>;
 }
+
+/**
+ * 提示词模板：用户保存的常用提示词（设置页管理，composer 一键插入）。
+ * 幂等建表在 client.ts initDatabase 里 raw SQL 创建（对齐 automations 做法）。
+ */
+export const promptTemplates = sqliteTable('prompt_templates', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  /** 手动序（小者靠前）；v1 不开放排序，恒 0 */
+  sort: integer('sort').notNull().default(0),
+});
 
 /** 每日用量累计（turn 级增量落库；tokenUsage/costUsd 均为会话累计值做差） */
 export const usageDaily = sqliteTable('usage_daily', {

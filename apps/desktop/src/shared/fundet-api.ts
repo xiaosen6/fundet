@@ -18,6 +18,8 @@ import type { ComputerStatus } from './computer-settings.ts';
 export type { ComputerStatus } from './computer-settings.ts';
 import type { MemoryRecordView, MemoryScopeView } from './memory.ts';
 export type { MemoryRecordView, MemoryScopeView } from './memory.ts';
+import type { PromptTemplateInput, PromptTemplateView } from './prompt-templates.ts';
+export type { PromptTemplateInput, PromptTemplateView } from './prompt-templates.ts';
 
 export type ProviderApi = 'anthropic-messages' | 'openai-responses' | 'openai-completions';
 
@@ -385,6 +387,18 @@ export interface SessionSearchHit {
   snippet: string;
 }
 
+/** 正文搜索入参（session:search-content）：<2 字符渲染层已拦，主进程同样返回空 */
+export interface SessionContentSearchInput {
+  query: string;
+  /** 结果上限（按会话数，默认 20） */
+  limit?: number;
+}
+
+/** 正文搜索结果：同会话聚合（最优匹配段作 snippet），按会话 updatedAt 倒序 */
+export interface SessionContentSearchResult {
+  sessions: SessionSearchHit[];
+}
+
 /** 会话快照（每轮发送前对工作目录的 git 快照；git 不可用则列表恒空） */
 export interface CheckpointInfo {
   sha: string;
@@ -434,6 +448,8 @@ export interface FundetApi {
   reorderSessions(ids: string[]): Promise<void>;
   /** 搜索会话（标题 + 消息正文）；空串返回空 */
   searchSessions(query: string): Promise<SessionSearchHit[]>;
+  /** 搜索会话消息正文（FTS5，同会话聚合）；<2 字符返回空 */
+  searchSessionContent(input: SessionContentSearchInput): Promise<SessionContentSearchResult>;
   listCheckpoints(sessionId: string): Promise<CheckpointInfo[]>;
   previewRewind(sessionId: string, sha: string): Promise<RewindPreview>;
   rewindTo(sessionId: string, sha: string): Promise<RewindResult>;
@@ -617,6 +633,10 @@ export interface FundetApi {
   memoryEnabledGet(): Promise<{ enabled: boolean }>;
   memoryEnabledSet(enabled: boolean): Promise<{ ok: boolean }>;
   memoryOpenFolder(absWorkdir?: string): Promise<{ ok: boolean }>;
+  /** 提示词模板（常用提示词）：composer 一键插入的数据源；save 空 id=新建、带 id=编辑 */
+  listPromptTemplates(): Promise<PromptTemplateView[]>;
+  savePromptTemplate(input: PromptTemplateInput): Promise<PromptTemplateView>;
+  deletePromptTemplate(id: string): Promise<void>;
   checkpointDiskUsage(): Promise<{ bytes: number }>;
   checkpointPurge(): Promise<{ ok: boolean; bytes: number }>;
   onImStatusChanged(cb: (payload: ImBotsStatus) => void): () => void;

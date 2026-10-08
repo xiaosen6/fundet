@@ -854,6 +854,12 @@ export interface AgentSessionHandle {
   /** 运行时切换模型 —— 不支持时抛 NotSupportedError */
   setModel?(model: string, opts?: { providerId?: string | null; effort?: Effort }): Promise<void>;
 
+  /**
+   * 热刷新模型目录：供应商集合变化后重写本会话的 models.json 并让运行中的
+   * agent 进程重读。best-effort 语义 —— 不支持或本次未成功返回 false，不抛错。
+   */
+  refreshModelCatalog?(): Promise<boolean>;
+
   /** 运行时切换 effort */
   setEffort?(effort: Effort): Promise<void>;
 

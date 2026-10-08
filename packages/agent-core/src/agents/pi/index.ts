@@ -42,6 +42,12 @@ import {
   CINDY_BRIDGE_EXTENSION_SOURCE,
 } from './cindy-bridge-source.js';
 import {
+  PI_RELOAD_MODELS_COMMAND,
+  availablePiModelKeys,
+  encodeReloadModelsPayload,
+  piCatalogOffers,
+} from './model-catalog.js';
+import {
   CINDY_SUBAGENT_ENV,
   CINDY_SUBAGENT_EXTENSION_FILENAME,
   CINDY_SUBAGENT_EXTENSION_SOURCE,
@@ -563,7 +569,7 @@ export class PiAgent extends BaseAgent {
         });
       }
     }
-    const nativeProviderById = new Map(
+    let nativeProviderById = new Map(
       nativeProviders
         .filter((provider) => provider.id !== PI_PROVIDER_ID)
         .map((provider) => [provider.id, provider] as const),
@@ -669,10 +675,11 @@ export class PiAgent extends BaseAgent {
       });
     }
 
-    // Pi 子进程只读取本次启动生成的 models.json。renderer 目录热更新后，不能把新出现的
-    // effort 直接发送给仍在运行的旧进程；否则 Pi 会把 thinkingLevelMap 中的 null 当作
-    // 关闭 reasoning。这里冻结每个可路由模型在该启动快照中的能力，setModel 成功后只
-    // 切换到同一快照里已有的目标模型能力。
+    // Pi 子进程只在启动时读 models.json（热刷新需经 /cindy-reload-models 显式重读）。
+    // renderer 目录热更新后，不能把新出现的 effort 直接发送给仍在运行的旧进程；否则
+    // Pi 会把 thinkingLevelMap 中的 null 当作关闭 reasoning。这里冻结每个可路由模型在
+    // 当前快照中的能力，setModel 成功后只切换到同一快照里已有的目标模型能力；
+    // hotReloadModelCatalog 确认 pi 重读新目录后会把本快照整体切到新集合。
     const resolveStartupEffortSnapshot = (
       providerId: string,
       modelId: string,
@@ -744,7 +751,7 @@ export class PiAgent extends BaseAgent {
       configHomeCleaned = true;
       void fs.rm(configHome, { recursive: true, force: true }).catch(() => {});
     };
-    const gatewayImageInputByModel = await this.writeModelsJson(
+    let gatewayImageInputByModel = await this.writeModelsJson(
       configHome,
       nativeProviders,
       retainedRuntimeModel,
@@ -1074,6 +1081,18 @@ export class PiAgent extends BaseAgent {
     } catch {
       /* 缺失 → 不挂载 plan-mode */
     }
+    // todo 扩展(官方示例,同分发策略):给 agent 一个 todo 工具(list/add/toggle/clear),
+    // 桌面端把结果渲染成待办清单卡;plan 模式执行计划也用它跟踪进度。
+    const todoExtPath = path.join(
+      path.dirname(this.deps.binaryPath),
+      'examples', 'extensions', 'todo.ts',
+    );
+    let todoExtAvailable = false;
+    try {
+      todoExtAvailable = (await fs.stat(todoExtPath)).isFile();
+    } catch {
+      /* 缺失 → 不挂载 todo */
+    }
 
     const args = [
       '--mode', 'rpc',
@@ -1083,6 +1102,7 @@ export class PiAgent extends BaseAgent {
       ...(reviewMode ? ['--tools', 'read,grep,find,ls'] : []),
       ...(appendSystemPrompt.length > 0 ? ['--append-system-prompt', appendSystemPrompt] : []),
       ...(!reviewMode && planModeExtAvailable ? ['--extension', planModeExtPath] : []),
+      ...(!reviewMode && todoExtAvailable ? ['--extension', todoExtPath] : []),
     ];
 
     const queue: AsyncQueue<AgentEvent> = createAsyncQueue<AgentEvent>();
@@ -1636,6 +1656,87 @@ export class PiAgent extends BaseAgent {
 
     /** setModel 的串行闸(见 handle.setModel)。 */
     let setModelChain: Promise<void> = Promise.resolve();
+
+    /**
+     * 模型目录热刷新（host 供应商变化广播 / setModel 懒同步共用）：
+     *  1) 重新解析 native providers（host 现读 providers 表，含最新 key env）；
+     *  2) 复用 startSession 的 writeModelsJson 重写本会话 configHome 的 models.json；
+     *  3) 经 /cindy-reload-models prompt 命令让运行中的 pi 进程重读目录 —— set_model
+     *     查的是进程内存快照，光改文件不刷新进程侧目录切不了模型；补注入的 key env
+     *     让会话启动后新增的 provider 也能通过 $ENV 鉴权进入可用目录；
+     *  4) 带 target 时用 get_available_models 确认目标真的可用。
+     * 全程 best-effort：任一步失败仅 warn 并返回 false，不抛错、不动会话状态。
+     * 成功时把会话内的路由/effort 冻结快照切到新目录 —— pi 进程刚重读的就是同一份
+     * models.json，「进程目录已新、宿主快照仍旧」会造成 effort 误判与错误的路由拒绝。
+     * 与 setModelChain 刻意不共闸：广播同步不应被一次卡住的模型切换阻塞；交错时
+     * 旧切换按旧快照路由（本就自洽），新模型等下一次 setModel/懒同步。
+     */
+    const hotReloadModelCatalog = async (
+      target?: { provider: string; model: string },
+    ): Promise<boolean> => {
+      if (closed) return false;
+      let fresh: { providers: PiNativeProviderSpec[]; env: Record<string, string> } | null = null;
+      if (this.deps.resolvePiNativeProviders) {
+        try {
+          fresh = await this.deps.resolvePiNativeProviders({
+            workingDir: opts.workingDir,
+            remoteHostId: opts.remoteHostId,
+          });
+        } catch (err) {
+          deps.logger.warn('pi: model catalog hot reload failed to resolve native providers', {
+            message: err instanceof Error ? err.message : String(err),
+          });
+          return false;
+        }
+      }
+      const providers = fresh?.providers ?? [];
+      const env = fresh?.env ?? {};
+      try {
+        gatewayImageInputByModel = await this.writeModelsJson(configHome, providers, retainedRuntimeModel);
+      } catch (err) {
+        deps.logger.warn('pi: model catalog hot reload failed to rewrite models.json', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return false;
+      }
+      try {
+        const reload = await proc.request({
+          type: 'prompt',
+          message: '/' + PI_RELOAD_MODELS_COMMAND + ' ' + encodeReloadModelsPayload(env),
+        });
+        if (!reload.success) {
+          deps.logger.warn('pi: model catalog hot reload command rejected', {
+            error: reload.error ?? 'unknown',
+          });
+          return false;
+        }
+      } catch (err) {
+        // 命令 handler 异常时 prompt 仍回 success（pi 吞成 extension_error），这里只拦
+        // RPC 层失败；目标是否真进入目录由下方 get_available_models 兜底确认。
+        deps.logger.warn('pi: model catalog hot reload rpc failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return false;
+      }
+      nativeProviders = providers;
+      nativeProviderById = new Map(
+        providers
+          .filter((provider) => provider.id !== PI_PROVIDER_ID)
+          .map((provider) => [provider.id, provider] as const),
+      );
+      if (!target) return true;
+      try {
+        const available = await proc.request({ type: 'get_available_models' });
+        if (!available.success) return false;
+        return piCatalogOffers(availablePiModelKeys(available.data), target.provider, target.model);
+      } catch (err) {
+        deps.logger.warn('pi: model catalog hot reload verification failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return false;
+      }
+    };
+
     /**
      * setModel 的临界区正文。经 `setModelChain` 串行化后调用 —— 不要直接调它,
      * 并发进入会让 pending / 落定两次写交错。
@@ -1651,13 +1752,20 @@ export class PiAgent extends BaseAgent {
       // closed:要么该 provider 是会话启动后才新增的(不在快照),要么它虽在、但用户编辑
       // 配置后从中删/改了这个 model。两种都会让 resolveProviderForModel 静默回落 cindy 网关;
       // 若该 model id 也在网关目录里则 set_model “成功”、后续 prompt 发往网关而非用户选的
-      // 本地/自定义端点(codex review P1)。提示重启会话以刷新启动快照,而不是静默换目的地。
+      // 本地/自定义端点(codex review P1)。先走一次懒同步(重写 models.json + 让运行中的
+      // pi 进程重读)给「启动后新增」的场景就地热切;仍不可解析才提示重启会话 ——
+      // 绝不静默换目的地。
       if (explicitByomUnresolvable(requestedProviderId, model)) {
-        throw new Error(
-          `pi: BYOM provider '${requestedProviderId}' cannot serve model '${model}' in this session's ` +
-            'startup provider set (provider not present, or it no longer offers this model); restart the ' +
-            'session to use it (refusing to fall back to the Cindy gateway).',
+        const lazilySynced = await hotReloadModelCatalog(
+          requestedProviderId ? { provider: requestedProviderId, model } : undefined,
         );
+        if (!lazilySynced || explicitByomUnresolvable(requestedProviderId, model)) {
+          throw new Error(
+            `pi: BYOM provider '${requestedProviderId}' cannot serve model '${model}' in this session's ` +
+              'startup provider set (provider not present, or it no longer offers this model); restart the ' +
+              'session to use it (refusing to fall back to the Cindy gateway).',
+          );
+        }
       }
       const provider = resolveProviderForModel(model, requestedProviderId);
       // effort 能力校验必须排在写路由快照**之前**:它会抛错中止本次切换,而快照一旦落盘就
@@ -1956,6 +2064,11 @@ export class PiAgent extends BaseAgent {
         // 链永不停在 rejected 上:一次失败之后的切换仍要能排进来。
         setModelChain = run.then(() => {}, () => {});
         return run;
+      },
+
+      async refreshModelCatalog(): Promise<boolean> {
+        // host 在供应商集合变化时对所有活会话广播；会话内部怎么刷新见 hotReloadModelCatalog。
+        return hotReloadModelCatalog();
       },
 
       async setEffort(effort: Effort): Promise<void> {
