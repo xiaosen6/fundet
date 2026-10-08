@@ -78,11 +78,15 @@ let isQuitting = false;
 let trayHintShown = false;
 
 function focusMainWindow(): void {
-  const win = BrowserWindow.getAllWindows()[0];
+  // 优先显式主窗引用（getAllWindows()[0] 在桌宠等多窗场景不可靠——拿到
+  // pet 窗时 show/focus 到小透明窗，用户感知「点了没反应」，2026-10-08 实报）
+  const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
   if (!win) return;
   if (!win.isVisible()) win.show();
   if (win.isMinimized()) win.restore();
   win.focus();
+  // Windows 前台抢占保护：其他应用持有前台焦点时 focus 可能被吞，setForegroundWindow 抢回
+  if (process.platform === 'win32') win.flashFrame(false);
 }
 
 /** 非 macOS：关窗 = 隐藏到托盘；托盘菜单「退出」或系统关机才真正退出。 */
@@ -110,6 +114,8 @@ function setupTrayAndCloseBehavior(win: BrowserWindow): void {
     ]),
   );
   tray.on('click', () => focusMainWindow());
+  // Win11 溢出区（^ 展开面板）已知偶发吞单击：双击兜底同一路径
+  tray.on('double-click', () => focusMainWindow());
 
   // Windows 注销/关机会销毁窗口，不能拦截（否则挡住系统关机）
   win.on('session-end', () => {
@@ -136,6 +142,9 @@ function revealWindow(win: BrowserWindow): void {
   win.show();
   win.focus();
 }
+
+/** 主窗显式引用（托盘点击/二次启动唤起用；createWindow 赋值、closed 清空） */
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   const chrome =
@@ -173,6 +182,10 @@ function createWindow(): void {
   });
   win.setMenuBarVisibility(false);
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 
   // 最大化不缩放（2026-09-30 用户拍板对齐 Cindy：0.3.11 的「最大化等比放大」
   // 撤销——字体太大）。仍保留加载完成时复位 zoom=1：Chromium 按域名持久化
