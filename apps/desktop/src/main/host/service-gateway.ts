@@ -1,11 +1,20 @@
 /**
- * 统一服务网关（自建 nginx 网关：ASR/TTS/嵌入/生图/文本）客户端。
- * 文档见 2026-09-24 API_DOC：ASR/TTS/嵌入当前免鉴权；地址用户可配（设置）。
+ * 统一服务网关（自建 nginx 网关：ASR/嵌入/生图/文本）客户端。
+ * ASR 2026-10-08 起 Qwen3-ASR-1.7B（换掉 SenseVoice，中文字级准确率更优）：
+ * 需 model 字段 + Bearer 鉴权，支持 hotwords 热词偏置；地址用户可配（设置）。
  */
 import { getSetting } from '../db/settings.js';
 
 export const SERVICE_GATEWAY_SETTING = 'service.gatewayUrl';
 export const DEFAULT_GATEWAY_URL = 'http://111.34.136.32:16668';
+export const ASR_MODEL_SETTING = 'service.asrModel';
+const DEFAULT_ASR_MODEL = 'Qwen3-ASR-1.7B';
+export const ASR_API_KEY_SETTING = 'service.asrApiKey';
+/** 网关级共享 key（挡外网滥用，非 per-user 秘密；与网关地址同等敏感度，可设置覆盖） */
+const DEFAULT_ASR_API_KEY = 'fundet-7cb3536c1f891e5ea59d8a599c0e1c03';
+/** 热词偏置：用户对话高频技术词（SenseVoice 时代「DeepSeek→deeps」模型上限的
+ *  客户端侧补法；Qwen3-ASR hotwords 官方用法，逗号分隔） */
+const DEFAULT_ASR_HOTWORDS = 'Fundet,DeepSeek,GLM,Qwen,Claude,GPT,Agent,MCP';
 
 export function gatewayUrl(): string {
   const v = getSetting(SERVICE_GATEWAY_SETTING)?.trim();
@@ -20,7 +29,7 @@ export interface AsrResult {
   text: string;
 }
 
-/** 音频（wav 等）→ 中文文本。multipart POST /v1/audio/transcriptions。 */
+/** 音频（wav 等）→ 中文文本。multipart POST /v1/audio/transcriptions（Qwen3-ASR-1.7B）。 */
 export async function transcribeAudio(
   bytes: Buffer,
   fileName: string,
@@ -29,11 +38,15 @@ export async function transcribeAudio(
 ): Promise<AsrResult> {
   const fd = new FormData();
   fd.append('file', new Blob([new Uint8Array(bytes)], { type: mimeType }), fileName);
+  fd.append('model', getSetting(ASR_MODEL_SETTING)?.trim() || DEFAULT_ASR_MODEL);
+  fd.append('hotwords', DEFAULT_ASR_HOTWORDS);
+  const apiKey = getSetting(ASR_API_KEY_SETTING)?.trim() || DEFAULT_ASR_API_KEY;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(joinUrl(gatewayUrl(), '/v1/audio/transcriptions'), {
       method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: fd,
       signal: controller.signal,
     });
@@ -84,14 +97,17 @@ export async function embedTexts(
   }
 }
 
-/** 网关健康探测（ASR 通即可，返回人话状态 + 结构化地址；TTS 已随 0.3.29 朗读功能移除） */
+/** 网关健康探测（ASR 通即可，返回人话状态 + 结构化地址） */
 export async function probeGateway(): Promise<{ ok: boolean; detail: string; url: string }> {
   const base = gatewayUrl();
-  try {
-    const res = await fetch(joinUrl(base, '/asr/health'), { signal: AbortSignal.timeout(5000) });
-    if (res.ok) return { ok: true, detail: `ASR 服务正常`, url: base };
-  } catch {
-    /* fallthrough */
+  // 新网关（Qwen3-ASR）探 /health；旧路径 /asr/health 保留回落（自建网关历史路径）
+  for (const p of ['/health', '/asr/health']) {
+    try {
+      const res = await fetch(joinUrl(base, p), { signal: AbortSignal.timeout(5000) });
+      if (res.ok) return { ok: true, detail: `ASR 服务正常`, url: base };
+    } catch {
+      /* try next */
+    }
   }
   return { ok: false, detail: `网关不可达`, url: base };
 }
