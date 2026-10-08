@@ -5,6 +5,13 @@ import { cn } from '../lib/cn';
 import { Collapse } from './ui/Collapse';
 import { ThinkingCard, formatDuration } from './ThinkingCard';
 import { ToolCallCard } from './ToolCallCard';
+import { TodoListCard } from './TodoListCard';
+import { parseTodoList } from '../lib/todoList';
+
+/** MCP 双下划线前缀的工具取短名（mcp__srv__todo → todo） */
+function shortToolName(name: string): string {
+  return name.includes('__') ? (name.split('__').pop() ?? name) : name;
+}
 
 export type WorkChild = Extract<DisplayItem, { kind: 'thinking' } | { kind: 'tool' }>;
 
@@ -113,6 +120,9 @@ function WorkGroupBlockImpl({
                 running={item.running}
                 durationMs={item.durationMs}
               />
+            ) : item.kind === 'tool' && item.done && shortToolName(item.toolName) === 'todo' && parseTodoList(item.resultText) ? (
+              // todo 工具的清单输出升级为待办卡；非清单结果（add/toggle 确认）回落普通工具卡
+              <TodoListCard key={item.id} resultText={item.resultText} />
             ) : (
               <ToolCallCard
                 key={item.id}

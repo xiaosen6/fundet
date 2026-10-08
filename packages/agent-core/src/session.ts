@@ -851,6 +851,19 @@ export class Session {
     await this.handle.setModel(model, opts);
   }
 
+  /** 热刷新模型目录（best-effort）：不支持的 agent 返回 false；底层异常仅 warn 不上抛。 */
+  async refreshModelCatalog(): Promise<boolean> {
+    if (!this.handle.refreshModelCatalog) return false;
+    try {
+      return await this.handle.refreshModelCatalog();
+    } catch (err) {
+      this.logger.warn('refreshModelCatalog failed (best-effort)', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  }
+
   async setEffort(effort: Effort): Promise<void> {
     if (!this.capabilities.effort.supported) {
       throw new NotSupportedError('effort', this.capabilities.effort);

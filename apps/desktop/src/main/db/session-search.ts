@@ -8,36 +8,13 @@
 import { getSqlite } from './client.js';
 import { matchExpression, queryTerms } from '../knowledge/tokenize.ts';
 import { ensureMessagesFts } from './messages-fts.js';
+import { snippetAround, textOfContent } from './session-content-search.js';
 
 export interface SessionSearchHit {
   sessionId: string;
   title: string;
   updatedAt: number;
   snippet: string;
-}
-
-function textOfContent(contentJson: string): string {
-  try {
-    const c = JSON.parse(contentJson) as { text?: unknown };
-    return typeof c.text === 'string' ? c.text : '';
-  } catch {
-    return '';
-  }
-}
-
-function snippetAround(text: string, terms: string[]): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  if (!flat) return '';
-  let idx = -1;
-  const lower = flat.toLowerCase();
-  for (const t of terms) {
-    idx = lower.indexOf(t.toLowerCase());
-    if (idx >= 0) break;
-  }
-  if (idx < 0) return flat.slice(0, 80);
-  const start = Math.max(0, idx - 24);
-  const end = Math.min(flat.length, idx + 56);
-  return (start > 0 ? '…' : '') + flat.slice(start, end) + (end < flat.length ? '…' : '');
 }
 
 /** 搜索：标题命中优先，正文 bm25 兜底；各自按更新时间排 */

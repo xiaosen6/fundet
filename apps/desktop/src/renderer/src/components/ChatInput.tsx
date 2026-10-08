@@ -10,13 +10,15 @@
  * @ 引用：输入 @ 唤出工作目录文件候选（FileMentionPanel），选中 stage 成附件。
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Loader2, Mic, Paperclip, X } from 'lucide-react';
+import { FileText, Lightbulb, Loader2, Mic, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { brand } from '../../../shared/brand.js';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { toast } from './ui/toast';
 import { SendButton } from './SendButton';
 import { SlashPalette, type SlashItem } from './SlashPalette';
+import { PromptTemplatePalette } from './PromptTemplatePalette';
+import { onPromptInsert, dispatchPromptInsert } from '../../../shared/prompt-templates.ts';
 import { FileMentionPanel, useDirEntries } from './FileMentionPanel';
 import { AttachmentThumb } from './AttachmentThumb';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
@@ -94,6 +96,8 @@ export function ChatInput({
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
+  /** 提示词模板浮层开合（工具行灯泡入口） */
+  const [templatePaletteOpen, setTemplatePaletteOpen] = useState(false);
 
   // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
   const insertAtCursor = useCallback(
@@ -113,6 +117,15 @@ export function ChatInput({
     [onChange, value],
   );
   const voice = useVoiceInput(insertAtCursor);
+
+  // 模板插入事件协议（PromptTemplatePalette 点选 → 光标处插入）
+  useEffect(() => {
+    const off = onPromptInsert(({ text }) => {
+      insertAtCursor(text);
+      setTemplatePaletteOpen(false);
+    });
+    return off;
+  }, [insertAtCursor]);
   useEffect(() => {
     if (voice.error) toast.error(voice.error);
   }, [voice.error]);
@@ -249,6 +262,12 @@ export function ChatInput({
           activeIndex={Math.min(activeIndex, Math.max(filtered.length - 1, 0))}
           onHover={setActiveIndex}
           onPick={pick}
+        />
+      )}
+      {templatePaletteOpen && (
+        <PromptTemplatePalette
+          onClose={() => setTemplatePaletteOpen(false)}
+          onPick={(t) => dispatchPromptInsert(t.content, t.id)}
         />
       )}
       {mention && mentionCtx && (
@@ -474,6 +493,17 @@ export function ChatInput({
                 </button>
               </Tooltip>
             )}
+            <Tooltip label="提示词模板" side="top">
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label="提示词模板"
+                onClick={() => setTemplatePaletteOpen((v) => !v)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary disabled:opacity-40"
+              >
+                <Lightbulb size={14} />
+              </button>
+            </Tooltip>
             {leadingControls}
           </div>
           <div className="flex min-w-0 shrink items-center justify-end gap-2">

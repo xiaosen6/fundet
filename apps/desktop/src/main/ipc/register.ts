@@ -22,10 +22,13 @@ import type {
   UserMessage,
 } from '@fundet/agent-core';
 import { desc, eq } from 'drizzle-orm';
-import { getDb } from '../db/client.js';
+import { getDb, getSqlite } from '../db/client.js';
+import { deletePromptTemplate, listPromptTemplates, savePromptTemplate } from '../db/prompt-templates.ts';
+import type { PromptTemplateInput } from '../../shared/prompt-templates.ts';
 import { sessions } from '../db/schema.js';
 import { copyMessagesUntil, deleteMessagesInRange, insertMessage, listMessages } from '../db/messages.js';
 import { searchSessions } from '../db/session-search.js';
+import { searchSessionContent } from '../db/session-content-search.js';
 import {
   enqueueSnapshot,
   deleteCheckpoints,
@@ -51,7 +54,13 @@ import {
   updateMcpServer,
   type McpServerInput,
 } from '../db/mcp-servers.js';
-import { deleteProviderKey, hasProviderKey, writeProviderKey } from '../host/secrets.js';
+import { deleteProviderKey, hasProviderKey, readProviderKey, writeProviderKey } from '../host/secrets.js';
+import { isLoopbackBaseUrl, piNativeKeyEnvVar } from '../host/auth-adapter.js';
+import {
+  providerCatalogChanged,
+  type ProviderCatalogEntry,
+} from '../host/model-catalog-sync-logic.ts';
+import { syncAliveSessionsModelCatalog } from '../host/model-catalog-sync.ts';
 import { addUsageDelta, getUsageHistory } from '../db/usage.js';
 import {
   SEARCH_ENGINES,
@@ -150,6 +159,7 @@ import { fetchPageText } from '../knowledge/url.js';
 import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
+import { makeSharePngWriter } from './sharePng.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
@@ -549,6 +559,35 @@ async function buildUserMessage(
   return { type: 'user', content: blocks };
 }
 
+/** 供应商表 → 热同步指纹输入（keyEnvVar 判定与 buildPiNativeProviders 同口径）。 */
+function providerCatalogSnapshot(): ProviderCatalogEntry[] {
+  return listProviders().map((p) => ({
+    id: p.id,
+    name: p.name,
+    api: p.api,
+    baseUrl: p.baseUrl,
+    ...(!isLoopbackBaseUrl(p.baseUrl) && readProviderKey(p.id)
+      ? { keyEnvVar: piNativeKeyEnvVar(p.id) }
+      : {}),
+    models: p.models,
+  }));
+}
+
+/**
+ * 供应商模型目录变化 → 所有活会话热同步 models.json（best-effort，不阻断保存响应）
+ * + 广播 SESSION_LIST_CHANGED 刷新侧栏/输入框模型 chip 数据源。
+ */
+function hotSyncProviderCatalog(): void {
+  void syncAliveSessionsModelCatalog(() => broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null)).catch(
+    (err: unknown) => {
+      console.warn(
+        '[fundet:providers] 模型目录热同步失败（已跳过，下次切模型走懒同步）',
+        err instanceof Error ? err.message : String(err),
+      );
+    },
+  );
+}
+
 export function registerIpcHandlers(): void {
   // 草稿预热依赖注入（wireSession 在本文件；closeSession 走 Maker 单例）
   setPrewarmDeps({
@@ -861,6 +900,20 @@ ${input.text}`;
     searchSessions(String(query ?? '')),
   );
 
+  // 会话正文搜索（FTS5；同会话聚合取最优匹配段，按会话 updatedAt 排序）
+  ipcMain.handle(
+    FUNDET_INVOKE.SESSION_SEARCH_CONTENT,
+    async (_e, input: { query?: unknown; limit?: number }) => ({
+      sessions: searchSessionContent(
+        getSqlite(),
+        typeof input?.query === 'string' ? input.query : '',
+        typeof input?.limit === 'number' && Number.isFinite(input.limit)
+          ? Math.floor(input.limit)
+          : undefined,
+      ),
+    }),
+  );
+
   // ---------- 会话快照/回滚 ----------
   ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_LIST, async (_e, sessionId: string) =>
     listCheckpoints(String(sessionId ?? '')).catch(() => []),
@@ -944,6 +997,16 @@ ${input.text}`;
     return { ok: true };
   });
 
+  // ---------- 提示词模板（常用提示词管理；composer 经 window.fundet 读取） ----------
+  ipcMain.handle(FUNDET_INVOKE.PROMPT_TEMPLATE_LIST, () => listPromptTemplates(getSqlite()));
+  ipcMain.handle(FUNDET_INVOKE.PROMPT_TEMPLATE_SAVE, (_e, input: PromptTemplateInput) =>
+    savePromptTemplate(getSqlite(), input),
+  );
+  ipcMain.handle(FUNDET_INVOKE.PROMPT_TEMPLATE_DELETE, (_e, id: string) => {
+    deletePromptTemplate(getSqlite(), id);
+    return { ok: true };
+  });
+
   // ---------- checkpoint（快照磁盘治理） ----------
   ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_DISK_USAGE, () => checkpointDiskUsageAsync().then((bytes) => ({ bytes })));
   ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_PURGE, () => {
@@ -951,17 +1014,25 @@ ${input.text}`;
     return checkpointDiskUsageAsync().then((bytes) => ({ ok: true, bytes }));
   });
 
-  ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) =>
-    createProvider(input),
-  );
+  ipcMain.handle(FUNDET_INVOKE.PROVIDERS_CREATE, async (_e, input: ProviderInput) => {
+    const created = createProvider(input);
+    hotSyncProviderCatalog();
+    return created;
+  });
 
-  ipcMain.handle(FUNDET_INVOKE.PROVIDERS_UPDATE, async (_e, id: string, patch: Partial<ProviderInput>) =>
-    updateProvider(id, patch),
-  );
+  ipcMain.handle(FUNDET_INVOKE.PROVIDERS_UPDATE, async (_e, id: string, patch: Partial<ProviderInput>) => {
+    // 指纹对比只取影响 pi 目录/路由的字段：纯重排序等无变化保存不触发无谓的热同步
+    const before = providerCatalogSnapshot();
+    const updated = updateProvider(id, patch);
+    if (providerCatalogChanged(before, providerCatalogSnapshot())) hotSyncProviderCatalog();
+    return updated;
+  });
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_DELETE, async (_e, id: string) => {
+    const before = providerCatalogSnapshot();
     deleteProvider(id);
     deleteProviderKey(id);
+    if (providerCatalogChanged(before, providerCatalogSnapshot())) hotSyncProviderCatalog();
   });
 
   ipcMain.handle(FUNDET_INVOKE.PROVIDERS_SET_KEY, async (_e, providerId: string, key: string) => {
@@ -1600,34 +1671,10 @@ ${input.text}`;
     },
   );
 
-  // 分享卡片 PNG → 原生剪贴板（不依赖窗口焦点；校验 PNG 魔数/IHDR 与尺寸预算）
-  ipcMain.handle(
-    FUNDET_INVOKE.CLIPBOARD_WRITE_PNG,
-    async (_e, png: ArrayBuffer, plainText?: string) => {
-      const bytes = Buffer.from(png ?? new ArrayBuffer(0));
-      if (
-        bytes.length < 24
-        || bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a'
-        || bytes.readUInt32BE(8) !== 13
-        || bytes.toString('ascii', 12, 16) !== 'IHDR'
-      ) {
-        throw new Error('剪贴板内容不是有效的 PNG');
-      }
-      const width = bytes.readUInt32BE(16);
-      const height = bytes.readUInt32BE(20);
-      if (
-        !width
-        || !height
-        || width > 16384
-        || height > 16384
-        || width * height > 4096 ** 2 + 16384
-      ) {
-        throw new Error('分享图片尺寸超出上限');
-      }
-      const image = nativeImage.createFromBuffer(bytes);
-      if (image.isEmpty()) throw new Error('PNG 解码失败');
-      clipboard.write({ image, ...(typeof plainText === 'string' && plainText ? { text: plainText } : {}) });
-    },
+  // 分享卡片 PNG → 原生剪贴板（不依赖窗口焦点；校验/写入纯逻辑在 sharePng.ts，可测）
+  const writeSharePng = makeSharePngWriter({ clipboard, nativeImage });
+  ipcMain.handle(FUNDET_INVOKE.CLIPBOARD_WRITE_PNG, (_e, png: ArrayBuffer, plainText?: string) =>
+    writeSharePng(png, plainText),
   );
 
   // ---------- 页内搜索（Electron 原生 findInPage，全文高亮） ----------

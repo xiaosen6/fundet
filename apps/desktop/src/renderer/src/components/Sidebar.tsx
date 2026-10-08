@@ -341,24 +341,53 @@ export function Sidebar({
   const attentionMap = useSessionAttentionMap();
   const reducedMotion = useReducedMotion();
 
-  // ---- 会话搜索（标题 + 正文 FTS5；200ms 防抖） ----
+  // ---- 会话搜索：标题本地过滤 + 正文 FTS IPC（250ms 防抖 + 序号防串），合并去重 ----
   const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SessionSearchHit[] | null>(null);
+  const [contentHits, setContentHits] = useState<SessionSearchHit[] | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchSeqRef = useRef(0);
+  const trimmedQuery = query.trim();
+  const titleHits = useMemo(() => {
+    if (!trimmedQuery) return [];
+    const needle = trimmedQuery.toLowerCase();
+    return sessions.filter((s) => (s.title || '').toLowerCase().includes(needle));
+  }, [sessions, trimmedQuery]);
   useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setSearchResults(null);
+    // <2 字符不调 IPC（短查询走标题本地匹配即可）
+    if (trimmedQuery.length < 2) {
+      searchSeqRef.current += 1; // 作废在途响应
+      setContentHits(null);
       return undefined;
     }
+    const seq = ++searchSeqRef.current;
     const t = setTimeout(() => {
       window.fundet
-        .searchSessions(q)
-        .then((hits) => setSearchResults(hits))
-        .catch(() => setSearchResults([]));
-    }, 200);
+        .searchSessionContent({ query: trimmedQuery })
+        .then((r) => {
+          if (searchSeqRef.current === seq) setContentHits(r.sessions);
+        })
+        .catch(() => {
+          if (searchSeqRef.current === seq) setContentHits([]);
+        });
+    }, 250);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [trimmedQuery]);
+  // 合并去重：标题命中在前（本地列表序），正文命中补充并附 snippet
+  const searchResults = useMemo(() => {
+    const merged: SessionSearchHit[] = titleHits.map((s) => ({
+      sessionId: s.id,
+      title: s.title,
+      updatedAt: s.updatedAt,
+      snippet: '',
+    }));
+    const seen = new Set(titleHits.map((s) => s.id));
+    for (const hit of contentHits ?? []) {
+      if (seen.has(hit.sessionId)) continue;
+      seen.add(hit.sessionId);
+      merged.push(hit);
+    }
+    return merged;
+  }, [titleHits, contentHits]);
 
   // 置顶段拖拽：本地顺序覆盖（服务端权威序到达后清空）
   const [dragId, setDragId] = useState<string | null>(null);
@@ -567,7 +596,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* 会话搜索：标题 + 正文 FTS5；输入即搜（200ms 防抖），Esc/清空恢复列表 */}
+      {/* 会话搜索：标题本地过滤 + 正文 FTS5 IPC（250ms 防抖）；Esc/清空恢复列表 */}
       <div className="px-3 pb-1.5">
         <div className="flex h-8 items-center gap-2 rounded-full border border-board bg-card px-3">
           <Search size={13} className="shrink-0 text-muted" strokeWidth={1.8} />
@@ -599,12 +628,14 @@ export function Sidebar({
 
       {/* 会话区（对齐 Cindy 的「Chat」段标；有置顶段时拆成 置顶/会话 两段标） */}
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
-        {query.trim() ? (
+        {trimmedQuery ? (
           <>
             <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">
-              {searchResults === null ? '搜索中…' : `命中 ${searchResults.length} 个会话`}
+              {trimmedQuery.length >= 2 && contentHits === null
+                ? '搜索中…'
+                : `命中 ${searchResults.length} 个会话`}
             </div>
-            {searchResults?.map((hit) => (
+            {searchResults.map((hit) => (
               <button
                 key={hit.sessionId}
                 type="button"
@@ -621,9 +652,7 @@ export function Sidebar({
                   {hit.title || hit.sessionId.slice(0, 8)}
                 </span>
                 {hit.snippet && (
-                  <span className="line-clamp-2 min-w-0 text-11 leading-snug text-muted">
-                    {hit.snippet}
-                  </span>
+                  <span className="min-w-0 truncate text-11 text-muted">{hit.snippet}</span>
                 )}
               </button>
             ))}

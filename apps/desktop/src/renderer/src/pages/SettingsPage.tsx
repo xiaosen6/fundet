@@ -34,6 +34,7 @@ import { BrowserSection } from '../components/settings/BrowserSection';
 import { UsageHistoryPanel } from './settings/UsageHistoryPanel';
 import { ComputerSection } from '../components/settings/ComputerSection';
 import { McpPanel } from './settings/McpPanel';
+import { PromptTemplatesPanel } from './settings/PromptTemplatesPanel';
 import { brand } from '../../../shared/brand.ts';
 
 const THEME_OPTIONS: Array<{
@@ -53,7 +54,8 @@ type SettingsTab =
   | 'automation'
   | 'usage'
   | 'search'
-  | 'pet';
+  | 'pet'
+  | 'templates';
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: '通用',
@@ -63,6 +65,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   usage: '用量历史',
   search: '搜索',
   pet: '桌宠',
+  templates: '提示词模板',
 };
 
 /** 表单字段样式（对齐 Cindy 设置字段：h-10 + 12px 圆角 + Card 底 + 1px Board；
@@ -290,6 +293,7 @@ export function SettingsPage(): React.JSX.Element {
 
             {tab === 'search' && <SearchPanel />}
             {tab === 'pet' && <PetPanel />}
+            {tab === 'templates' && <PromptTemplatesPanel />}
           </div>
         </div>
       </div>

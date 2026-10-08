@@ -24,6 +24,7 @@ export const FUNDET_INVOKE = {
   SESSION_SET_PINNED: 'session:set-pinned',
   SESSION_REORDER: 'session:reorder',
   SESSION_SEARCH: 'session:search',
+  SESSION_SEARCH_CONTENT: 'session:search-content',
   CHECKPOINT_LIST: 'checkpoint:list',
   CHECKPOINT_PREVIEW: 'checkpoint:preview',
   CHECKPOINT_REWIND: 'checkpoint:rewind',
@@ -142,6 +143,10 @@ export const FUNDET_INVOKE = {
   MEMORY_ENABLED_GET: 'memory:enabled-get',
   MEMORY_ENABLED_SET: 'memory:enabled-set',
   MEMORY_OPEN_FOLDER: 'memory:open-folder',
+  /** 提示词模板（常用提示词） */
+  PROMPT_TEMPLATE_LIST: 'prompt-template:list',
+  PROMPT_TEMPLATE_SAVE: 'prompt-template:save',
+  PROMPT_TEMPLATE_DELETE: 'prompt-template:delete',
   CHECKPOINT_DISK_USAGE: 'checkpoint:disk-usage',
   CHECKPOINT_PURGE: 'checkpoint:purge',
   FIND_START: 'find:start',

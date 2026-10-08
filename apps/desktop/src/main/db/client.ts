@@ -13,6 +13,7 @@ import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './schema.js';
+import { ensurePromptTemplatesTable } from './prompt-templates.ts';
 
 export type FundetDb = BetterSQLite3Database<typeof schema>;
 
@@ -100,6 +101,8 @@ export function initDatabase(): FundetDb {
   if (!autoCols.has('last_run_at')) {
     native.prepare('ALTER TABLE automations ADD COLUMN last_run_at INTEGER').run();
   }
+  // 幂等建表（提示词模板：常用提示词）
+  ensurePromptTemplatesTable(native);
   console.log('[fundet:db] migrations applied');
   return db;
 }
