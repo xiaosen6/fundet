@@ -1,6 +1,6 @@
 {
   "name": "fundet-desktop",
-  "version": "0.3.36",
+  "version": "0.3.37",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.14.4",
