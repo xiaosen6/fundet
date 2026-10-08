@@ -161,6 +161,8 @@ export interface DwsStatusView {
   profiles: DwsProfileView[];
   /** 已装配的 dingtalk-* 技能目录名（用户技能根下） */
   skills: string[];
+  /** 钉钉总开关（dws.enabled，默认 true）：关=隐藏工作台+对话不注入 dws 速查表 */
+  enabled: boolean;
 }
 
 /** 钉钉工作台动作结果（安装 / 登录引导 / 技能装配） */
@@ -533,6 +535,7 @@ export interface FundetApi {
 
   /** 钉钉工作台（dws）：探测安装/登录/技能装配状态 */
   dwsStatus(): Promise<DwsStatusView>;
+  dwsSetEnabled(enabled: boolean): Promise<{ ok: boolean; enabled: boolean }>;
   /** 安装官方 dws CLI（默认 Gitee 镜像；github 走官方仓 raw） */
   dwsInstall(source: 'gitee' | 'github'): Promise<DwsActionResult>;
   /** 拉起可见终端窗口跑 dws auth login（浏览器自动开） */
@@ -545,6 +548,7 @@ export interface FundetApi {
   /** 钉钉组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
   dwsWidgets(force?: boolean): Promise<DwsWidgetsSnapshot>;
   onDwsWidgetsChanged(cb: (snapshot: DwsWidgetsSnapshot) => void): () => void;
+  onDwsEnabledChanged(cb: (enabled: boolean) => void): () => void;
   /** dws 安装增量输出（重装/安装时的实时进度） */
   onDwsInstallProgress(cb: (chunk: string) => void): () => void;
   /** 组件卡条目点开查看（v1 仅 unread：最近消息） */
@@ -577,7 +581,7 @@ export interface FundetApi {
   readFileDataUrl(filePath: string, workDir: string): Promise<string>;
   /** 列目录（deny-list 策略同预览；跳隐藏/node_modules；上限 500 条） */
   listDir(dir: string): Promise<DirEntry[]>;
-  openPath(filePath: string): Promise<void>;
+  openPath(filePath: string, workDir?: string): Promise<void>;
   platform: NodeJS.Platform;
   windowMinimize(): void;
   windowMaximize(): void;

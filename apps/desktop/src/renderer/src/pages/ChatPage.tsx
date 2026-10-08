@@ -90,7 +90,15 @@ export function ChatPage(): React.JSX.Element {
   const [input, setInput] = useState('');
   const [notice, setNotice] = useState('');
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
+  const [dwsEnabled, setDwsEnabled] = useState(true);
   const [turnChanges, setTurnChanges] = useState<TurnChangeEntry[] | null>(null);
+
+  // 钉钉总开关（设置→钉钉）：关=隐藏工作台/灵动岛（新对话不注入 dws 速查表在主进程门控）
+  useEffect(() => {
+    void window.fundet.dwsStatus().then((s) => setDwsEnabled(s.enabled)).catch(() => undefined);
+    const off = window.fundet.onDwsEnabledChanged(setDwsEnabled);
+    return off;
+  }, []);
 
   // 轮末改动（对齐 Cindy v1）：只显示当前会话最新一轮；切会话清空
   useEffect(() => {
@@ -822,7 +830,9 @@ export function ChatPage(): React.JSX.Element {
                 </div>
               )}
               <div className="flex w-full min-h-0 flex-1 flex-col">
-                <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} expandMode="popover" />
+                {dwsEnabled && (
+                  <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} expandMode="popover" />
+                )}
               </div>
             </div>
           </div>
@@ -963,8 +973,10 @@ export function ChatPage(): React.JSX.Element {
                 )}
               </div>
               )}
-              {/* 灵动岛：驻进会话头部尾部（与标题同层，不再是悬浮异物） */}
-              <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
+              {/* 灵动岛：驻进会话头部尾部（与标题同层，不再是悬浮异物）；钉钉总开关关=隐藏 */}
+              {dwsEnabled && (
+                <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
+              )}
             </header>
 
             {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留）。

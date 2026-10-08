@@ -26,6 +26,7 @@ import { createByokAuthAdapter, isLoopbackBaseUrl, piNativeKeyEnvVar } from './a
 import { readProviderKey } from './secrets.js';
 import { resolvePiBinaryPath, resolveRipgrepPath } from './pi-binary.js';
 import { createFundetMemoryManager } from './memory.js';
+import { getBoolSetting } from '../db/settings.js';
 import { lookupKnownModel } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
@@ -146,10 +147,13 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
 function buildRuntimeConfig(memoryManager: MakerMemoryManager): AgentRuntimeConfig {
   return {
     // 无网关：endpoint 留空，所有会话走显式 BYOM providerId（pi 侧 fail-closed 保证不回落）
-    // getter 每会话求值（agent-core startSession 现读）：dws CLI 已安装才追加钉钉速查段，
+    // getter 每会话求值（agent-core startSession 现读）：dws CLI 已装且钉钉总开关
+    // 开（dws.enabled，设置→钉钉可关）才追加钉钉速查段；关=对话不集成 dws，
     // 没装钉钉的用户零 token 开局；探测结果进程内缓存，应用内新装 dws 需重启生效
     get systemPrompt() {
-      return isDwsCliInstalled() ? `${systemPrompt}\n\n${dwsCheatSheetRaw}`.trim() : systemPrompt.trim();
+      return isDwsCliInstalled() && getBoolSetting('dws.enabled', true)
+        ? `${systemPrompt}\n\n${dwsCheatSheetRaw}`.trim()
+        : systemPrompt.trim();
     },
     managedExecutablePaths: { ripgrep: resolveRipgrepPath() },
     // pi 原生 auto-memory 不用（记忆走 Maker Memory：.md 分片 + FTS + 压缩 digest 沉淀）

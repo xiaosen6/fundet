@@ -104,11 +104,12 @@ import {
   snapshotRealProfile,
   RealProfileError,
 } from '../browser/real-profile.ts';
-import { setSetting, getSetting } from '../db/settings.js';
+import { setSetting, getSetting, getBoolSetting, setBoolSetting } from '../db/settings.js';
+import { getDwsStatus } from '../host/dws.ts';
+import { startDwsWidgets, stopDwsWidgets } from '../host/dws-widgets.ts';
 import { BROWSER_ENABLED_SETTING } from '../../shared/browser-settings.ts';
 import { COMPUTER_ENABLED_SETTING } from '../../shared/computer-settings.ts';
 import { disableCuaDriverTelemetry, resolveCuaDriverCommand } from '../computer/driver.ts';
-import { getBoolSetting, setBoolSetting } from '../db/settings.js';
 import { importSkillFile, listSkills, setSkillEnabled, uninstallSkill } from '../host/skills.js';
 import {
   checkSkillhubUpdates,
@@ -610,6 +611,27 @@ export function registerIpcHandlers(): void {
         createdAt: m.createdAt,
       })),
     };
+  });
+
+  // 钉钉总开关（dws.enabled，默认 true）：关=隐藏工作台/灵动岛 + 新对话不注入
+  // dws 速查表 + 停组件轮询。放在 register 层（settings 依赖 sqlite 原生模块，
+  // 不能进 dws.ts——那会连带炸掉 dws.test.ts 的纯函数测试环境）
+  ipcMain.handle(FUNDET_INVOKE.DWS_STATUS, async () => {
+    const s = await getDwsStatus();
+    return { ...s, enabled: getBoolSetting('dws.enabled', true) };
+  });
+  ipcMain.handle(FUNDET_INVOKE.DWS_SET_ENABLED, async (_e, enabled: unknown) => {
+    const next = enabled === true;
+    setBoolSetting('dws.enabled', next);
+    if (next) {
+      startDwsWidgets();
+    } else {
+      stopDwsWidgets();
+    }
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(FUNDET_PUSH.DWS_ENABLED_CHANGED, next);
+    }
+    return { ok: true, enabled: next };
   });
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_DELETE, async (_e, id: string) => {
@@ -1161,8 +1183,11 @@ ${input.text}`;
 
   ipcMain.handle(FUNDET_INVOKE.FS_READ_TEXT, async (_e, filePath: string, workDir: string) => {
     // 预览走 deny-list 策略（对齐 Cindy：系统/敏感目录外全放行，agent 可引用
-    // 工作目录外文件）；大小上限不变
-    const resolved = assertPreviewablePath(String(filePath ?? ''));
+    // 工作目录外文件）；相对路径以会话 workDir 为基准（2026-10-08 修复：此前
+    // 忽略 workDir 落到主进程 cwd，A 目录生成点开却找安装目录）
+    const resolved = assertPreviewablePath(String(filePath ?? ''), {
+      baseDir: typeof workDir === 'string' ? workDir : undefined,
+    });
     const stat = fs.statSync(resolved);
     if (!stat.isFile()) throw new Error('不是文件');
     if (stat.size > 2 * 1024 * 1024) throw new Error('文件超过 2MB，请用系统打开');
@@ -1170,7 +1195,9 @@ ${input.text}`;
   });
 
   ipcMain.handle(FUNDET_INVOKE.FS_READ_DATA_URL, async (_e, filePath: string, workDir: string) => {
-    const resolved = assertPreviewablePath(String(filePath ?? ''));
+    const resolved = assertPreviewablePath(String(filePath ?? ''), {
+      baseDir: typeof workDir === 'string' ? workDir : undefined,
+    });
     const stat = fs.statSync(resolved);
     if (!stat.isFile()) throw new Error('不是文件');
     if (stat.size > 8 * 1024 * 1024) throw new Error('图片超过 8MB');
@@ -1203,8 +1230,11 @@ ${input.text}`;
     return out;
   });
 
-  ipcMain.handle(FUNDET_INVOKE.FS_OPEN_PATH, async (_e, filePath: string) => {
-    const resolved = path.resolve(filePath);
+  ipcMain.handle(FUNDET_INVOKE.FS_OPEN_PATH, async (_e, filePath: string, workDir?: string) => {
+    // 相对路径以会话 workDir 为基准（同 FS_READ_TEXT 修复；绝对路径行为不变）
+    const resolved = path.isAbsolute(filePath)
+      ? path.resolve(filePath)
+      : path.resolve(typeof workDir === 'string' && workDir.trim() ? workDir : process.cwd(), filePath);
     // 类型闸：shell 会直接执行 exe/bat 等载荷（agent 产物被点开即运行的口子）
     if (isShellExecutablePath(resolved)) {
       throw new Error('这个文件是可执行/脚本类型，为安全不直接打开。可让助手说明文件内容，或手动到资源管理器中查看。');

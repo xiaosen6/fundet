@@ -94,6 +94,19 @@ export function DwsPanel(): React.JSX.Element {
     }
   };
 
+  const toggleEnabled = useCallback(async (): Promise<void> => {
+    if (!status || busy !== null) return;
+    setBusy('toggle');
+    try {
+      await window.fundet.dwsSetEnabled(!status.enabled);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [status, busy, refresh]);
+
   if (!status) return <p className="text-13 text-muted">加载钉钉工作台状态…</p>;
 
   const chip = statusChip(status);
@@ -104,13 +117,39 @@ export function DwsPanel(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <div>
-        <h2 className="text-16 leading-[1.2] font-medium text-primary">钉钉工作台</h2>
-        <p className="mt-1 text-13 text-secondary">
-          装上钉钉官方 CLI（dws）后，{brand.name} 能用<strong>你本人的钉钉身份</strong>替你干活：订会议室、请假/外出、查通讯录、发消息、写文档、待办、审批……
-          都在这台电脑上跑，凭证不出本机。和「IM 机器人」互补：那边是钉钉里指挥 {brand.name}，这边是 {brand.name} 替你操作钉钉。
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-16 leading-[1.2] font-medium text-primary">钉钉工作台</h2>
+          <p className="mt-1 text-13 text-secondary">
+            装上钉钉官方 CLI（dws）后，{brand.name} 能用<strong>你本人的钉钉身份</strong>替你干活：订会议室、请假/外出、查通讯录、发消息、写文档、待办、审批……
+            都在这台电脑上跑，凭证不出本机。和「IM 机器人」互补：那边是钉钉里指挥 {brand.name}，这边是 {brand.name} 替你操作钉钉。
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={status.enabled}
+          aria-label="钉钉总开关"
+          disabled={busy !== null}
+          onClick={() => void toggleEnabled()}
+          className={cn(
+            'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40',
+            status.enabled ? 'bg-accent' : 'bg-[var(--input-focus-border)]',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+              status.enabled ? 'left-[22px]' : 'left-0.5',
+            )}
+          />
+        </button>
       </div>
+      {!status.enabled && (
+        <p className="rounded-xl border border-board bg-card-ivory px-4 py-3 text-12 text-secondary">
+          钉钉集成已关闭：工作台与灵动岛已隐藏，新对话不再注入钉钉命令速查（已登录的凭证与技能不受影响，重新打开即恢复）。
+        </p>
+      )}
 
       <div className="rounded-xl border border-board bg-card-ivory p-5">
         <div className="flex items-center gap-2">

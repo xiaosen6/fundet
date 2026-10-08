@@ -424,7 +424,6 @@ export function registerDwsIpc(): void {
   const broadcastProgress = (chunk: string): void => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(FUNDET_PUSH.DWS_INSTALL_PROGRESS, chunk);
   };
-  ipcMain.handle(FUNDET_INVOKE.DWS_STATUS, async () => getDwsStatus());
   ipcMain.handle(FUNDET_INVOKE.DWS_INSTALL, async (_e: unknown, source: unknown) =>
     installDws(source === 'github' ? 'github' : 'gitee', broadcastProgress),
   );

@@ -271,7 +271,7 @@ function Preview({
             type="button"
             title="用系统打开"
             className="text-muted hover:text-primary"
-            onClick={() => void window.fundet.openPath(artifact.path)}
+            onClick={() => void window.fundet.openPath(artifact.path, workDir || undefined)}
           >
             <ExternalLink size={14} />
           </button>

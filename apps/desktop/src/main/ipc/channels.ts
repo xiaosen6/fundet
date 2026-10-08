@@ -118,6 +118,7 @@ export const FUNDET_INVOKE = {
   IM_WECHAT_QR_CANCEL: 'im:wechat-qr-cancel',
   IM_SET_DEFAULTS: 'im:set-defaults',
   DWS_STATUS: 'dws:status',
+  DWS_SET_ENABLED: 'dws:set-enabled',
   DWS_INSTALL: 'dws:install',
   DWS_LOGIN: 'dws:login',
   DWS_LOGOUT: 'dws:logout',
@@ -163,6 +164,8 @@ export const FUNDET_PUSH = {
   IM_STATUS_CHANGED: 'im:status-changed',
   /** 钉钉组件板快照变化：payload = DwsWidgetsSnapshot */
   DWS_WIDGETS_CHANGED: 'dws:widgets-changed',
+  /** 钉钉总开关变化（payload = boolean）：关=隐藏工作台+对话不注入 dws 速查表 */
+  DWS_ENABLED_CHANGED: 'dws:enabled-changed',
   /** dws 安装进度（payload = 增量输出文本行） */
   DWS_INSTALL_PROGRESS: 'dws:install-progress',
   /** 知识库导入进度：payload { kbId, completed, total, current } */
