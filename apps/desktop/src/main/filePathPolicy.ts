@@ -68,6 +68,8 @@ export interface PreviewPathPolicyDeps {
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
   realpathSync?: (p: string) => string;
+  /** 相对路径的解析基准（会话工作目录）；缺省回落主进程 cwd（历史行为） */
+  baseDir?: string;
 }
 
 /** 解析符号链接后的真实路径（失败回落原路径：不存在/无权限等交由后续 exists 检查） */
@@ -98,7 +100,9 @@ export function assertPreviewablePath(
   const realpathSync = deps.realpathSync ?? ((p: string) => fsSync.realpathSync(p));
   const p = pathFor(platform);
 
-  const abs = path.isAbsolute(rawPath) ? p.resolve(rawPath) : p.resolve(process.cwd(), rawPath);
+  const abs = path.isAbsolute(rawPath)
+    ? p.resolve(rawPath)
+    : p.resolve(deps.baseDir?.trim() || process.cwd(), rawPath);
   const resolved = realPath(abs, realpathSync);
 
   // 1) Windows 系统目录

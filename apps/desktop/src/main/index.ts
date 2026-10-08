@@ -282,7 +282,8 @@ function bootstrap(): void {
   registerImIpc();
   registerDwsIpc();
   registerDwsWidgetsIpc();
-  startDwsWidgets();
+  // 钉钉总开关关=不起组件轮询（settings 依赖 db，index 层 import 安全）
+  if (getBoolSetting('dws.enabled', true)) startDwsWidgets();
   startAutomationScheduler();
   registerFileProtocolHandler();
   void startSavedImBots();

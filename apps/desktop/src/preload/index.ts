@@ -184,6 +184,7 @@ const api: FundetApi = {
   imSetDefaults: (patch) => invoke(FUNDET_INVOKE.IM_SET_DEFAULTS, patch),
 
   dwsStatus: () => invoke(FUNDET_INVOKE.DWS_STATUS),
+  dwsSetEnabled: (enabled) => invoke(FUNDET_INVOKE.DWS_SET_ENABLED, enabled),
   dwsInstall: (source) => invoke(FUNDET_INVOKE.DWS_INSTALL, source),
   dwsLogin: () => invoke(FUNDET_INVOKE.DWS_LOGIN),
   dwsLogout: () => invoke(FUNDET_INVOKE.DWS_LOGOUT),
@@ -232,7 +233,7 @@ const api: FundetApi = {
   readFileDataUrl: (filePath, workDir) =>
     invoke(FUNDET_INVOKE.FS_READ_DATA_URL, filePath, workDir),
   listDir: (dir) => invoke(FUNDET_INVOKE.FS_LIST_DIR, dir),
-  openPath: (filePath) => invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath),
+  openPath: (filePath, workDir) => invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath, workDir),
   platform: process.platform,
   windowMinimize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MINIMIZE),
   windowMaximize: () => ipcRenderer.send(FUNDET_INVOKE.WINDOW_MAXIMIZE),
@@ -254,6 +255,7 @@ const api: FundetApi = {
   onTurnChanges: (cb) => subscribe(FUNDET_PUSH.TURN_CHANGES, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
+  onDwsEnabledChanged: (cb) => subscribe(FUNDET_PUSH.DWS_ENABLED_CHANGED, cb),
   onDwsInstallProgress: (cb) => subscribe(FUNDET_PUSH.DWS_INSTALL_PROGRESS, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),
