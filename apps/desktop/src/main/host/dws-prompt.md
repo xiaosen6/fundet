@@ -11,5 +11,12 @@
 - 待办：`dws todo +get-my-tasks`；今天到期 `+due-today`；与我相关全部 `+get-related-tasks`
 - 消息/未读：`dws chat +unread-chats`；最近会话 `dws chat +conversation-list --page-all`
 - 待审批：`dws oa approval list-pending --format json`
+- 邮件：未读 `dws mail +unread-mail`；近期会话 `+recent-mail`；读某封正文 `+message`
+- 文档：读正文 `dws doc read`（Markdown）；元信息 `dws doc info`
+- 钉盘/文件：搜文件 `dws drive +search` / `+find-file`；搜在线文档 `+search-docs`；下载到本地 `+download`
+- 知识库：搜节点 `dws wiki +node-search`；列空间内节点 `+node-list`
+- 听记（AI 纪要）：最新一条 `dws minutes +latest`；全文/摘要/行动项 `+detail`；仅行动项 `+action-items`
+- DING：发送 `dws ding +send-personal`；列表 `+list`
+- 日报/周报（日志）：收到的 `dws report +inbox-list`；我最近一篇 `+report-latest`
 
 上述之外的钉钉操作：先试 `dws <域> --help`，再查对应 dingtalk-* 技能文件；都不支持就如实说，不要编造命令。
