@@ -41,6 +41,17 @@ function savePetPos(x: number, y: number): void {
   } catch { /* 写失败不致命 */ }
 }
 
+/** 所有显示器的联合包围盒（多屏：桌宠可拖/可驻留整个虚拟桌面；单屏时即主屏 bounds） */
+function virtualDesktopBounds(): { minX: number; minY: number; maxX: number; maxY: number } {
+  const displays = screen.getAllDisplays();
+  return {
+    minX: Math.min(...displays.map((d) => d.bounds.x)),
+    minY: Math.min(...displays.map((d) => d.bounds.y)),
+    maxX: Math.max(...displays.map((d) => d.bounds.x + d.bounds.width)),
+    maxY: Math.max(...displays.map((d) => d.bounds.y + d.bounds.height)),
+  };
+}
+
 export function isPetVisible(): boolean {
   return petWindow !== null && !petWindow.isDestroyed();
 }
@@ -65,8 +76,10 @@ export function createPetWindow(): void {
   let x = screenW - PET_W - 22;
   let y = screenH - PET_H - 12;
   if (saved) {
-    x = Math.max(0, Math.min(screenW - PET_W, saved.x));
-    y = Math.max(0, Math.min(screenH - PET_H, saved.y));
+    // 恢复位置允许整个虚拟桌面（多屏时保住副屏驻留；仅防御拔掉屏幕后的悬空坐标）
+    const { minX, minY, maxX, maxY } = virtualDesktopBounds();
+    x = Math.max(minX, Math.min(maxX - PET_W, saved.x));
+    y = Math.max(minY, Math.min(maxY - PET_H, saved.y));
   }
 
   petWindow = new BrowserWindow({
@@ -194,12 +207,14 @@ export function registerPetIpc(getPetEnabled: () => boolean): void {
     dragGrabX = p.x - wx;
     dragGrabY = p.y - wy;
     stopDrag();
+    // 边界取所有显示器的联合包围盒（拖动开始时算一次）：只钳主屏会让桌宠
+    // 无法跨屏拖动（2026-10-08 用户实报）；留半宽可见
+    const { minX, minY, maxX, maxY } = virtualDesktopBounds();
     dragTimer = setInterval(() => {
       if (!petWindow || petWindow.isDestroyed()) { stopDrag(); return; }
-      const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
       const c = screen.getCursorScreenPoint();
-      const nx = Math.max(-PET_W / 2, Math.min(sw - PET_W / 2, c.x - dragGrabX));
-      const ny = Math.max(0, Math.min(sh - PET_H / 2, c.y - dragGrabY));
+      const nx = Math.max(minX - PET_W / 2, Math.min(maxX - PET_W / 2, c.x - dragGrabX));
+      const ny = Math.max(minY - PET_H / 2, Math.min(maxY - PET_H / 2, c.y - dragGrabY));
       petWindow.setPosition(Math.round(nx), Math.round(ny));
     }, 16);
   });
