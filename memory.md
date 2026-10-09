@@ -227,6 +227,7 @@ Fundet/
 - PDF/Word 拖入自动提取正文随消息发模型（unpdf/mammoth，200k 字/30MB 上限，失败不阻断）。
 - 粘贴长文本 chip（2026-09-14 对齐 Cindy）：粘贴 ≥10 行或 >600 字符文本自动收成「粘贴的文本（N 行）」chip（点击 Lightbox 预览全文、× 移除），发送时按粘贴顺序展开为原文追加；DB 存完整拼接文本。
 - **预览安全模型（2026-09-16 对齐 Cindy filePathPolicy）**：读取侧（readFileDataUrl/readTextFile/fundet-file:// 协议）从「workDir 白名单」改为 **deny-list**——工作目录外普通文件可预览（agent 引用任意盘路径、原始位置附件），只拦系统目录（Win 系统盘族 + POSIX /etc 等）、凭据（.ssh/.aws/.gnupg…）、浏览器 profile；符号链接 realpath 后判定。策略模块 `main/filePathPolicy.ts`（11 用例）。**附件发送侧 workDir 硬约束不变**（界外必须 stage 进 .fundet-uploads）。
+- **图片标注（2026-10-09，未发版）**：发送前在图片附件上画标注（矩形/箭头/画笔/文字；红黄蓝三色、粗细 2/4、撤销/重做/清除），「保存并替换」烧录成 `原名-标注.png` 替换原附件 chip——删旧 + `onAddFiles([新File])` 复用 ChatInput 既有 props 走 stageBytes 管线（**ChatPage 零改动**），标注随图发给模型（对齐 Cindy 语义）。组件 `AnnotationEditor.tsx`（全屏遮罩 z-[82]，ChatInput 内条件渲染）；纯逻辑 `lib/annotation.ts`（操作存归一化坐标、烧录按自然分辨率重放、线宽随原图最长边等比放大、+15 node --test）；入口=AttachmentThumb 悬停 PenLine 小按钮（仅传 onAnnotate 的 composer 未发送 chip，已发送气泡不受影响）；零新依赖（canvas 2D 原生）。
 
 ### 4.4 浏览器自动化
 - 设置→自动操作开关（默认关）。新会话注入 MCP `browser`（单工具 23 action + list_tools），审批跟会话档。

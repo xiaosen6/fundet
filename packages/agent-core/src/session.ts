@@ -1019,6 +1019,13 @@ export class Session {
     return this.handle.exportSessionHtml(outputPath);
   }
 
+  /** 最新计划文本（plan 档会话轮末由 UI 拉取渲染计划卡；无计划返回 null） */
+  async getLatestPlan(): Promise<string | null> {
+    this.ensureActive();
+    if (!this.handle.getLatestPlan) return null;
+    return this.handle.getLatestPlan();
+  }
+
   /** 手动压缩会话上下文(capability 见 Capabilities.manualCompact)。 */
   async compactSession(instructions?: string): Promise<ManualCompactResult> {
     this.ensureActive();

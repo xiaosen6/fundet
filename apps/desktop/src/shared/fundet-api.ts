@@ -450,6 +450,9 @@ export interface FundetApi {
   searchSessions(query: string): Promise<SessionSearchHit[]>;
   /** 搜索会话消息正文（FTS5，同会话聚合）；<2 字符返回空 */
   searchSessionContent(input: SessionContentSearchInput): Promise<SessionContentSearchResult>;
+  /** 导出会话为独立 HTML（保存对话框 → pi 原生 export_html 落盘 → 打开所在文件夹）；null = 用户取消 */
+  exportSessionHtml(sessionId: string): Promise<{ path: string } | null>;
+  getSessionPlan(sessionId: string): Promise<string | null>;
   listCheckpoints(sessionId: string): Promise<CheckpointInfo[]>;
   previewRewind(sessionId: string, sha: string): Promise<RewindPreview>;
   rewindTo(sessionId: string, sha: string): Promise<RewindResult>;

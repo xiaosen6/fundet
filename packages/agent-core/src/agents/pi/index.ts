@@ -80,7 +80,7 @@ import type {
   UsageSnapshot,
 } from '../../types/events.js';
 import type { MemoryResetResult, MemorySetResult, MemoryStatus } from '../../types/memory.js';
-import type { AgentKind, Effort, UserMessage, UserContentBlock } from '../../types/common.js';
+import type { AgentKind, Effort, PermissionMode, UserMessage, UserContentBlock } from '../../types/common.js';
 import type { ListAgentSkillsOptions, ListAgentSkillsResult } from '../../types/palette.js';
 import type { ListCustomizationsOptions, ListCustomizationsResult } from '../../types/customizations.js';
 import { scanPiCustomizations } from './customization-scanner.js';
@@ -93,6 +93,7 @@ import {
 import { resolveAgentCredentialMode } from '../credential-mode.js';
 import { PiRpcProcess, type PiRpcEvent } from './rpc-client.js';
 import { capturePiRuntimeCapabilityManifest } from './runtime-capabilities.js';
+import { createToolLoopGuard, toolInputKey } from './tool-loop-guard.js';
 import {
   createPiTranslateContext,
   disposePiTranslateContext,
@@ -1106,6 +1107,9 @@ export class PiAgent extends BaseAgent {
     ];
 
     const queue: AsyncQueue<AgentEvent> = createAsyncQueue<AgentEvent>();
+    // 熔断触发后调用 handle.abort（later-bound：abort 在下方 handle 对象定义）
+    let requestAbortRef: (() => Promise<void>) | null = null;
+    const toolLoopGuard = createToolLoopGuard();
     const ctx: PiTranslateContext = createPiTranslateContext(this.deps.logger);
     let interactionResolver: InteractionResolver | null = null;
     // Host 每轮权限策略(个人微信 / Telegram 群)。刻意保留在 send 之外的闭包里:
@@ -1366,6 +1370,24 @@ export class PiAgent extends BaseAgent {
             || (event.type === 'auto_retry_end' && event.success !== true)
           ) {
             clearActiveTurnPermissionPolicy('turn_terminal', { dismissPending: true });
+            toolLoopGuard.reset();
+          }
+          // 工具循环熔断：同一工具同一入参连续打满阈值（无外部进展的死循环）
+          // → terminal error + abort 该 turn，替用户止损烧 token。
+          if (event.type === 'tool_execution_start') {
+            const te = event as { toolName?: string; input?: unknown };
+            if (te.toolName && toolLoopGuard.feed(te.toolName, toolInputKey(te.input)) === 'trip') {
+              deps.logger.warn('pi tool loop guard tripped', { toolName: te.toolName });
+              queue.push({
+                type: 'error',
+                data: {
+                  message: `工具循环熔断：${te.toolName} 连续相同调用已达上限，已自动停止。可能是任务不明确或工具反复失败，请换个说法或检查目标后重试。`,
+                  isTerminal: true,
+                },
+                source: 'pi',
+              });
+              void requestAbortRef?.();
+            }
           }
           translatePiEvent(event, queue, ctx);
         },
@@ -2201,6 +2223,11 @@ export class PiAgent extends BaseAgent {
         return path;
       },
 
+      async getLatestPlan(): Promise<string | null> {
+        if (!planModeExtAvailable) return null;
+        return readLatestPlan();
+      },
+
       async compactSession(instructions?: string): Promise<ManualCompactResult> {
         // pi 原生 compact:调 LLM 生成摘要(耗时数秒起),压缩边界经
         // compaction_start/end 事件流上报,translator 映射成 compact_boundary。
@@ -2368,6 +2395,54 @@ export class PiAgent extends BaseAgent {
       },
     };
 
+    requestAbortRef = () => handle.abort();
+    // 最新计划文本（plan-mode 扩展在 agent_end 后写入的 plan-todo-list custom
+    // entry，content 为 "**Plan Steps (N):**\n\n1. ☐ ..."）。桌面端在计划档
+    // 会话的轮次结束后拉取渲染计划卡。
+    const readLatestPlan = async (): Promise<string | null> => {
+      try {
+        const entriesResp = await proc.request({ type: 'get_entries' });
+        if (!entriesResp.success || proc.isClosed) return null;
+        const entries =
+          (entriesResp.data as { entries?: Array<{ customType?: string; content?: unknown }> } | undefined)
+            ?.entries ?? [];
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const e = entries[i];
+          if (e?.customType !== 'plan-todo-list') continue;
+          const c = e.content;
+          if (typeof c === 'string' && c.trim()) return c;
+          if (Array.isArray(c)) {
+            const text = c
+              .map((b) => (b && typeof b === 'object' && 'text' in b ? String((b as { text?: unknown }).text ?? '') : ''))
+              .join('');
+            if (text.trim()) return text;
+          }
+          return null;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    };
+    // 计划先行档接线：权限档与 plan-mode 扩展同步开关（扩展产出 Plan Steps +
+    // 禁写门禁；权限本体仍走 ask 最严归一）。开关失败只 warn 不阻断切档。
+    if (planModeExtAvailable) {
+      const rawSetPermissionMode = handle.setPermissionMode!.bind(handle);
+      handle.setPermissionMode = async (mode: PermissionMode): Promise<void> => {
+        await rawSetPermissionMode(mode);
+        try {
+          await handle.setPlanMode!(mode === 'plan');
+        } catch (err) {
+          deps.logger.warn('pi plan-mode sync on permission switch failed', {
+            mode,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      };
+      if (opts.permissionMode === 'plan') {
+        void handle.setPlanMode!(true).catch(() => undefined);
+      }
+    }
     return handle;
   }
 

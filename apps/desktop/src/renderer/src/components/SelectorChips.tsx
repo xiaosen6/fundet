@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import {
   Check,
   ChevronDown,
+  ClipboardList,
   Cpu,
   Gauge,
   Hand,
@@ -267,7 +268,8 @@ export function ModelSelector({
 }
 
 // ---------------------------------------------------------------------------
-// PermissionSelector：pi 支持的三档（ask / auto / bypassPermissions）
+// PermissionSelector：四档（ask / plan / auto / bypassPermissions）
+// plan=计划先行：权限按最严 ask 执行 + plan-mode 扩展禁写并产出计划卡
 // ---------------------------------------------------------------------------
 
 const PERMISSION_OPTIONS: Array<{
@@ -276,6 +278,7 @@ const PERMISSION_OPTIONS: Array<{
   icon: typeof Hand;
 }> = [
   { mode: 'ask', label: '每次询问', icon: Hand },
+  { mode: 'plan', label: '计划先行', icon: ClipboardList },
   { mode: 'auto', label: '自动审批', icon: Sparkles },
   { mode: 'bypassPermissions', label: '完全放行', icon: TriangleAlert },
 ];

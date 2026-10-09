@@ -9,7 +9,7 @@
  * model 在 providers 里反查 providerId，带 create 参数重发让 main lazy-create。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight as ChevronRightIcon, Clock, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
+import { ChevronRight as ChevronRightIcon, Clock, FileDown, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Effort, PermissionMode } from '@fundet/agent-core';
 import type { ProviderView, SessionAttachment, SkillView } from '../../../shared/fundet-api.ts';
@@ -55,6 +55,7 @@ import { MessageStream } from '../components/MessageStream';
 import { PermissionPrompt } from '../components/PermissionPrompt';
 import { RunningStatus } from '../components/RunningStatus';
 import { TurnChangesBar, type TurnChangeEntry } from '../components/TurnChangesBar';
+import { PlanCard } from '../components/PlanCard';
 import { ModelSelector, PermissionSelector, EffortSelector } from '../components/SelectorChips';
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { DwsWidgets } from '../components/dws/DwsWidgets';
@@ -92,6 +93,8 @@ export function ChatPage(): React.JSX.Element {
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const [dwsEnabled, setDwsEnabled] = useState(true);
   const [turnChanges, setTurnChanges] = useState<TurnChangeEntry[] | null>(null);
+  // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
+  const [planContent, setPlanContent] = useState<string | undefined>(undefined);
 
   // 钉钉总开关（设置→钉钉）：关=隐藏工作台/灵动岛（新对话不注入 dws 速查表在主进程门控）
   useEffect(() => {
@@ -99,6 +102,11 @@ export function ChatPage(): React.JSX.Element {
     const off = window.fundet.onDwsEnabledChanged(setDwsEnabled);
     return off;
   }, []);
+
+  // 计划卡数据：切换会话清空；plan 档会话轮次结束（isRunning 落 false）时拉取
+  useEffect(() => {
+    setPlanContent(undefined);
+  }, [activeId]);
 
   // 轮末改动（对齐 Cindy v1）：只显示当前会话最新一轮；切会话清空
   useEffect(() => {
@@ -220,6 +228,22 @@ export function ChatPage(): React.JSX.Element {
     }
     return undefined;
   }, [providers, activeMeta?.model]);
+
+  // 计划卡拉取：plan 档会话轮次结束（isRunning 落 false）时取最新 Plan Steps
+  useEffect(() => {
+    if (slice.isRunning || !activeId) return;
+    if ((activeMeta?.permissionMode ?? 'ask') !== 'plan') return;
+    let alive = true;
+    void window.fundet
+      .getSessionPlan(activeId)
+      .then((p) => {
+        if (alive) setPlanContent(p ?? undefined);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [slice.isRunning, activeId, activeMeta?.permissionMode]);
 
   useEffect(() => {
     setCanvasOpen(false);
@@ -700,6 +724,18 @@ export function ChatPage(): React.JSX.Element {
     [activeId],
   );
 
+  // 导出会话为网页（null = 用户在保存对话框取消，静默）
+  const exportHtml = useCallback(async (): Promise<void> => {
+    if (!activeId) return;
+    try {
+      const result = await window.fundet.exportSessionHtml(activeId);
+      if (!result) return;
+      toast.success('已导出并打开所在文件夹');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '导出失败');
+    }
+  }, [activeId]);
+
 
   // ---------- 渲染 ----------
 
@@ -964,6 +1000,15 @@ export function ChatPage(): React.JSX.Element {
                         <Pencil size={13} />
                       </button>
                     </Tooltip>
+                    <Tooltip label="导出会话为网页">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 hover:bg-hover hover:text-primary group-hover/title:opacity-100 focus-visible:opacity-100"
+                        onClick={() => void exportHtml()}
+                      >
+                        <FileDown size={13} />
+                      </button>
+                    </Tooltip>
                     {activeMeta?.workDir ? (
                       <span className="ml-1 min-w-0 truncate font-normal text-12 text-muted" title={activeMeta.workDir}>
                         {activeMeta.workDir.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/')}
@@ -1101,6 +1146,11 @@ export function ChatPage(): React.JSX.Element {
                       status={slice.statusText}
                       tokenUsage={slice.usage.tokenUsage}
                     />
+                    {!slice.isRunning && permissionMode === 'plan' && planContent !== undefined && (
+                      <div className="mb-1.5">
+                        <PlanCard content={planContent} />
+                      </div>
+                    )}
                     {!slice.isRunning && slice.items.length > 0 && turnChanges && turnChanges.length > 0 && (
                       <div className="mb-1.5">
                         <TurnChangesBar files={turnChanges} onOpenFile={openCanvas} />

@@ -889,6 +889,7 @@ export interface AgentSessionHandle {
    * 支持的 agent(pi)实现;不支持的 agent 不实现。
    */
   exportSessionHtml?(outputPath?: string): Promise<string>;
+  getLatestPlan?(): Promise<string | null>;
 
   /**
    * 手动压缩会话上下文(可带聚焦指令,由 agent 调 LLM 生成摘要,压缩边界经事件流

@@ -21,6 +21,7 @@ import { PromptTemplatePalette } from './PromptTemplatePalette';
 import { onPromptInsert, dispatchPromptInsert } from '../../../shared/prompt-templates.ts';
 import { FileMentionPanel, useDirEntries } from './FileMentionPanel';
 import { AttachmentThumb } from './AttachmentThumb';
+import { AnnotationEditor } from './AnnotationEditor';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { Tooltip } from './ui/Tooltip';
@@ -98,6 +99,8 @@ export function ChatInput({
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
   /** 提示词模板浮层开合（工具行灯泡入口） */
   const [templatePaletteOpen, setTemplatePaletteOpen] = useState(false);
+  /** 图片标注：正在编辑的附件（AnnotationEditor 全屏遮罩） */
+  const [annotating, setAnnotating] = useState<SessionAttachment | null>(null);
 
   // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
   const insertAtCursor = useCallback(
@@ -247,6 +250,15 @@ export function ChatInput({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  // 图片标注保存：删旧附件 chip + 新 File 走 onAddFiles 现有 stage 管线（替换语义）
+  const handleAnnotatedFile = (file: File): void => {
+    const old = annotating;
+    setAnnotating(null);
+    if (!old) return;
+    onRemoveAttachment?.(old.path);
+    onAddFiles?.([file]);
+  };
+
   return (
     <div
       className={cn(
@@ -343,7 +355,10 @@ export function ChatInput({
                 className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-board bg-chip py-0.5 pl-1 pr-1 text-11 text-secondary"
                 title={a.path}
               >
-                <AttachmentThumb path={a.path} />
+                <AttachmentThumb
+                  path={a.path}
+                  onAnnotate={a.kind === 'image' && onAddFiles ? () => setAnnotating(a) : undefined}
+                />
                 <span className="min-w-0 truncate">{a.name}</span>
                 <span className="text-10 text-muted">{fileKind(a.path)}</span>
                 {onRemoveAttachment && (
@@ -557,6 +572,15 @@ export function ChatInput({
           </div>
         </div>
       </div>
+
+      {annotating && (
+        <AnnotationEditor
+          path={annotating.path}
+          name={annotating.name}
+          onCancel={() => setAnnotating(null)}
+          onSave={handleAnnotatedFile}
+        />
+      )}
     </div>
   );
 }
