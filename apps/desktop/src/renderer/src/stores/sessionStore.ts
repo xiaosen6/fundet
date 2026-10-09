@@ -533,6 +533,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         // 注视中的会话完成不打未读；先前 error 被成功的下一轮覆盖
         attention: sessionId === focusedSessionId ? null : 'done',
       });
+      userAborts.delete(sessionId);
       retryAttempts.delete(sessionId);
       cancelAutoRetry(sessionId);
       void refreshSessionList();
@@ -543,6 +544,14 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
       const data = event.data as { message?: string; isTerminal?: boolean; willRetry?: boolean };
       const terminal = data.isTerminal ?? data.willRetry !== true;
       const message = friendlyProviderError(data.message || '未知错误');
+      // 用户主动停止后的 abort 类「错误」是正常中断：中性提示、不打错误卡、
+      // 不自动重试、不标未读 error（2026-10-09 用户实报对齐 Cindy）
+      if (terminal && userAborts.delete(sessionId) && isAbortLike(message)) {
+        appendItem(sessionId, { kind: 'notice', id: nextId('n'), text: '已停止' });
+        patchSlice(sessionId, { isRunning: false, streamingText: '', attention: null });
+        return 'immediate';
+      }
+      userAborts.delete(sessionId);
       const s0 = getSlice(sessionId);
       if (terminal) {
         // 终态错误卡每轮只保留一张：重复错误替换末尾卡片文案（对齐 Cindy「终态错误横幅只弹一次」）
@@ -952,11 +961,16 @@ export async function resendTurn(
   }
 }
 
+/** 用户主动停止标记（abort 类错误渲染为中性「已停止」而非错误卡，对齐 Cindy） */
+const userAborts = new Set<string>();
+const isAbortLike = (message: string): boolean => /abort/i.test(message);
+
 export async function abortSession(sessionId: string): Promise<void> {
   // 即时反馈：pi 侧若卡死，abort RPC 要等主进程复核兜底（约 15s）才真正收口，
   // 期间不能让「正在中断」看起来像没点到。
   cancelAutoRetry(sessionId);
   retryAttempts.delete(sessionId);
+  userAborts.add(sessionId);
   patchSlice(sessionId, { statusText: '正在中断…' });
   notifySlice(sessionId);
   await window.fundet.abortSession(sessionId);
