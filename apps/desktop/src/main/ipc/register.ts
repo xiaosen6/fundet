@@ -160,6 +160,7 @@ import { extractKnowledgeDocumentText } from '../doc-text.js';
 import { formatKnowledgeContextBlock } from '../knowledge/tool.js';
 import { FUNDET_INVOKE, FUNDET_PUSH } from './channels.js';
 import { makeSharePngWriter } from './sharePng.js';
+import { makeSessionHtmlExporter } from './exportHtml.js';
 import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from '../fs-local.js';
 import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
@@ -913,6 +914,32 @@ ${input.text}`;
       ),
     }),
   );
+
+  // 导出会话为 HTML（pi 原生 export_html，纯本地渲染）。纯逻辑在 exportHtml.ts，
+  // 可测；会话必须在内存（不在 → 友好文案，不落 lazy-create 重建）
+  const exportSessionHtml = makeSessionHtmlExporter({
+    showSaveDialog: async (win, options) => {
+      const picked = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+      return { canceled: picked.canceled, filePath: picked.filePath };
+    },
+    showItemInFolder: (fullPath) => shell.showItemInFolder(fullPath),
+    getLiveSession: (id) => {
+      const { maker } = getHost();
+      return maker.isSessionAlive(id) ? maker.getSession(id) : undefined;
+    },
+  });
+  ipcMain.handle(FUNDET_INVOKE.SESSION_EXPORT_HTML, async (e, sessionId: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    return exportSessionHtml(sessionId, win);
+  });
+
+  // 计划卡：plan 档会话轮末拉取最新 Plan Steps（pi plan-mode 扩展产出）
+  ipcMain.handle(FUNDET_INVOKE.SESSION_GET_PLAN, async (_e, sessionId: string) => {
+    const { maker } = getHost();
+    const session = maker.getSession(String(sessionId ?? ''));
+    if (!session) return null;
+    return session.getLatestPlan().catch(() => null);
+  });
 
   // ---------- 会话快照/回滚 ----------
   ipcMain.handle(FUNDET_INVOKE.CHECKPOINT_LIST, async (_e, sessionId: string) =>
