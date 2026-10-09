@@ -21,7 +21,6 @@ import { PromptTemplatePalette } from './PromptTemplatePalette';
 import { onPromptInsert, dispatchPromptInsert } from '../../../shared/prompt-templates.ts';
 import { FileMentionPanel, useDirEntries } from './FileMentionPanel';
 import { AttachmentThumb } from './AttachmentThumb';
-import { AnnotationEditor } from './AnnotationEditor';
 import type { SessionAttachment } from '../../../shared/fundet-api.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { Tooltip } from './ui/Tooltip';
@@ -99,8 +98,6 @@ export function ChatInput({
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
   /** 提示词模板浮层开合（工具行灯泡入口） */
   const [templatePaletteOpen, setTemplatePaletteOpen] = useState(false);
-  /** 图片标注：正在编辑的附件（AnnotationEditor 全屏遮罩） */
-  const [annotating, setAnnotating] = useState<SessionAttachment | null>(null);
 
   // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
   const insertAtCursor = useCallback(
@@ -250,13 +247,27 @@ export function ChatInput({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  // 图片标注保存：删旧附件 chip + 新 File 走 onAddFiles 现有 stage 管线（替换语义）
-  const handleAnnotatedFile = (file: File): void => {
-    const old = annotating;
-    setAnnotating(null);
-    if (!old) return;
-    onRemoveAttachment?.(old.path);
-    onAddFiles?.([file]);
+  // 图片标注入口（Cindy 形态）：点击缩略图开 lightbox 预览，画笔在工具条里；
+  // 保存 = 烧录 PNG/JPEG 新 File → 删旧附件 chip + onAddFiles 走现有 stage 管线（替换语义）
+  const openAttachmentLightbox = (a: SessionAttachment): void => {
+    window.fundet
+      .readFileDataUrl(a.path, '')
+      .then((src) => {
+        showLightbox({
+          kind: 'image',
+          src,
+          alt: a.name,
+          annotationEdit: {
+            onSave: (file) => {
+              onRemoveAttachment?.(a.path);
+              onAddFiles?.([file]);
+            },
+          },
+        });
+      })
+      .catch((err: unknown) => {
+        toast.error(`读取图片失败：${err instanceof Error ? err.message : String(err)}`);
+      });
   };
 
   return (
@@ -357,7 +368,7 @@ export function ChatInput({
               >
                 <AttachmentThumb
                   path={a.path}
-                  onAnnotate={a.kind === 'image' && onAddFiles ? () => setAnnotating(a) : undefined}
+                  onOpen={a.kind === 'image' && onAddFiles ? () => openAttachmentLightbox(a) : undefined}
                 />
                 <span className="min-w-0 truncate">{a.name}</span>
                 <span className="text-10 text-muted">{fileKind(a.path)}</span>
@@ -573,14 +584,6 @@ export function ChatInput({
         </div>
       </div>
 
-      {annotating && (
-        <AnnotationEditor
-          path={annotating.path}
-          name={annotating.name}
-          onCancel={() => setAnnotating(null)}
-          onSave={handleAnnotatedFile}
-        />
-      )}
     </div>
   );
 }

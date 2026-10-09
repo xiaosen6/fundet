@@ -135,6 +135,12 @@
   /* 浮层（token 收口的阴影/遮罩例外） */
   --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.15);
   --overlay-modal: rgba(0, 0, 0, 0.5);
+  /* lightbox 胶囊工具栏（Cindy 语义豁免 token 原值：浮在恒黑 backdrop 上跨主题恒定） */
+  --lightbox-toolbar-bg: rgba(0, 0, 0, 0.6);
+  --lightbox-toolbar-border: rgba(255, 255, 255, 0.2);
+  --lightbox-toolbar-fg: rgba(255, 255, 255, 0.8);
+  --lightbox-toolbar-fg-hover: #ffffff;
+  --lightbox-toolbar-hover-bg: rgba(255, 255, 255, 0.1);
   /* 卡片材质（Cindy 冷灰白：中性黑环境影，弃暖黑） */
   --card-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
@@ -192,6 +198,11 @@
   --input-focus-border: rgba(191, 193, 196, 0.3);
   --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.5);
   --overlay-modal: rgba(0, 0, 0, 0.7);
+  --lightbox-toolbar-bg: rgba(0, 0, 0, 0.6);
+  --lightbox-toolbar-border: rgba(255, 255, 255, 0.2);
+  --lightbox-toolbar-fg: rgba(255, 255, 255, 0.8);
+  --lightbox-toolbar-fg-hover: #ffffff;
+  --lightbox-toolbar-hover-bg: rgba(255, 255, 255, 0.1);
   /* 卡片材质·暗色：深底无高光内描边（白线会脏），只留二层环境影 */
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
   --card-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.38);
