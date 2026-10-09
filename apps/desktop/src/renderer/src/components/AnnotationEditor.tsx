@@ -296,9 +296,10 @@ export function AnnotationEditor({ path, name, onCancel, onSave }: AnnotationEdi
         )}
       </div>
 
-      {/* 工具栏：工具 / 颜色 / 粗细 / 撤销重做清除 / 保存替换 */}
-      <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2">
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-board bg-card px-3 py-2 shadow-[var(--shadow-menu)]">
+      {/* 工具栏：工具 / 颜色 / 粗细 / 撤销重做清除 / 保存替换（窄窗口限宽，
+          文字按钮防压缩——此前 flex 收缩把「取消/保存并替换」文字挤出按钮框） */}
+      <div className="pointer-events-none absolute bottom-6 left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2">
+        <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto rounded-full border border-board bg-card px-3 py-2 shadow-[var(--shadow-menu)]">
           {TOOL_ITEMS.map(({ tool: t, label, Icon }) => (
             <button
               key={t}
@@ -382,7 +383,7 @@ export function AnnotationEditor({ path, name, onCancel, onSave }: AnnotationEdi
           <button
             type="button"
             onClick={onCancel}
-            className="h-8 rounded-lg border border-board px-3 text-13 text-secondary transition-colors hover:bg-hover"
+            className="h-8 shrink-0 whitespace-nowrap rounded-lg border border-board px-3 text-13 text-secondary transition-colors hover:bg-hover"
           >
             取消
           </button>
@@ -390,7 +391,7 @@ export function AnnotationEditor({ path, name, onCancel, onSave }: AnnotationEdi
             type="button"
             disabled={history.ops.length === 0 || saving}
             onClick={save}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-13 font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3 text-13 font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
             保存并替换
