@@ -68,6 +68,9 @@ export function parseCalendarEvents(stdout: string, nowMs: number = Date.now()):
   if (!Array.isArray(events)) return [];
   return events
     .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
+    // 已取消的会议钉钉仍会返回（带 status:"cancelled"）——不过滤会按时间段
+    // 被推断成「进行中/未开始」持续展示（2026-10-09 用户实报）
+    .filter((e) => e.status !== 'cancelled' && e.status !== 'canceled')
     .map((e) => ({
       id: firstString(e.id) ?? '',
       title: firstString(e.summary, e.title) ?? '（无标题）',

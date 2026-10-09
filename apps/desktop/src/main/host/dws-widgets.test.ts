@@ -47,6 +47,16 @@ describe('parseCalendarEvents（真机 fixture：今日两会）', () => {
     assert.ok(Array.isArray(events[1].attendees));
   });
 
+  it('已取消的会议被过滤（钉钉仍返回 status:cancelled，不过滤会持续显示为进行中）', () => {
+    const raw = load('dws-calendar-full.json').replace(
+      '"summary": "AI小组工作同步"',
+      '"status": "cancelled", "summary": "AI小组工作同步"',
+    );
+    const events = parseCalendarEvents(raw, FIXTURE_NOW);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].title, 'AI交流');
+  });
+
   it('已结束超 1 小时的事件被过滤（时钟后移到晚上）', () => {
     const evening = Date.parse('2026-09-18T18:00:00+08:00');
     assert.equal(parseCalendarEvents(load('dws-calendar-full.json'), evening).length, 0);
