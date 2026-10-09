@@ -620,9 +620,9 @@ pnpm -r --if-present run test
 7. UI 文案一律 `brand.name`；内部路径常量不许动。
 8. 改完产品事实立刻更新本文件。发版收尾三查：§3.5 版本行标「已发」、在途块头同步状态、头部「最后更新」——「未发版」标签已多次漏清（动效批/PDF 批拖了一个多月、0.3.22/0.3.23 收尾各漏一次），收尾后应 grep「未发版」清零。
 
-> **在途事项（2026-10-09 下午三批，手动停止报错修复，已修待发）**：用户实报「发送后点停止显示 Request was aborted + 重新发送，手动停止不应报错」。根因：pi 内置 provider 的中止文案经 translator error 路径弹终态错误卡（含重试按钮）。修（df43017，渲染层）：`abortSession` 打用户停止标记（userAborts Set）→ error 分支 terminal 且 abort 类消息（/abort/i）时渲染为**中性 notice「已停止」**（无重试按钮/不自动重试/不标未读 error）；done/非 abort 错误路径清标记防误伤下一轮。验证：typecheck ✓/352/352。**待发**：与已取消会议过滤（5933cf5）攒批。
+> **在途事项（2026-10-09 下午三批，手动停止报错修复，已随 0.3.42 发，历史留档）**：用户实报「发送后点停止显示 Request was aborted + 重新发送，手动停止不应报错」。根因：pi 内置 provider 的中止文案经 translator error 路径弹终态错误卡（含重试按钮）。修（df43017，渲染层）：`abortSession` 打用户停止标记（userAborts Set）→ error 分支 terminal 且 abort 类消息（/abort/i）时渲染为**中性 notice「已停止」**（无重试按钮/不自动重试/不标未读 error）；done/非 abort 错误路径清标记防误伤下一轮。验证：typecheck ✓/352/352。**待发**：与已取消会议过滤（5933cf5）攒批。
 
-> **在途事项（2026-10-09 下午二批，钉钉工作台已取消会议仍显示「进行中」，已修待发）**：用户实报「上午取消的会议在今日日程还显示进行中」。根因：聚合器跑的 `calendar event list`（非 +today，后者会滤掉取消）**仍返回已取消会议**（带 `"status": "cancelled"` 字段），而 `parseCalendarEvents` 没读 status——取消的会按 14:00-14:30 时段被前端推断成「进行中」（本机实测 JSON 实锤：那场「Fundet buddy试用」status=cancelled 但照常解析）。修=解析前过滤 `status === 'cancelled'/'canceled'`；+1 fixture 变体测试（5933cf5）。验证：dws-widgets 17/17、typecheck ✓、desktop **352**/352。**待发**：可与后续攒批一起发；用户 dev 重启后工作台最多 2 分钟轮询周期内消失。
+> **在途事项（2026-10-09 下午二批，钉钉工作台已取消会议仍显示「进行中」，已随 0.3.42 发，历史留档）**：用户实报「上午取消的会议在今日日程还显示进行中」。根因：聚合器跑的 `calendar event list`（非 +today，后者会滤掉取消）**仍返回已取消会议**（带 `"status": "cancelled"` 字段），而 `parseCalendarEvents` 没读 status——取消的会按 14:00-14:30 时段被前端推断成「进行中」（本机实测 JSON 实锤：那场「Fundet buddy试用」status=cancelled 但照常解析）。修=解析前过滤 `status === 'cancelled'/'canceled'`；+1 fixture 变体测试（5933cf5）。验证：dws-widgets 17/17、typecheck ✓、desktop **352**/352。**待发**：可与后续攒批一起发；用户 dev 重启后工作台最多 2 分钟轮询周期内消失。
 
 > **在途事项（2026-10-09 下午，pi 图片 bug 自查实验：两个 wasm 位置假说均排除，已回滚复绿，等官方）**：用户问「首要是不是 pi 问题、要等官方吗」→ 除等官方外主动做了两组自救实验（1.1.0 + wasm 拷入会话 workingDir / 拷入测试进程 cwd——两个候选解析位置都不救，placeholder 不变）→ 排除「wasm 相对 cwd 解析」假说；已把实验结果+我们完整 spawn 形态（--session-dir/--extension/PI_CODING_AGENT_DIR 隔离）追评 issue #10645 供维护者排查，主动提出可跑诊断构建。**结论：主路径=等官方（issue 活跃，维护者能复现）；被阻塞的只是虚拟模型/codemode 等新特性，0.84.4 当前稳定无已知问题**；探针已撤、pi 回滚 0.84.4、agent-core 894/894 复绿。
 
