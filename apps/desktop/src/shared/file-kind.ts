@@ -2,13 +2,27 @@
  * 本地文件预览 / 附件分类（无 Node API，main 与 renderer 共用）。
  */
 
-export type FileKind = 'image' | 'video' | 'audio' | 'html' | 'pdf' | 'markdown' | 'text' | 'other';
+export type FileKind =
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'html'
+  | 'pdf'
+  | 'docx'
+  | 'xlsx'
+  | 'pptx'
+  | 'markdown'
+  | 'text'
+  | 'other';
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif']);
 const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.mkv', '.m4v', '.ogv', '.avi']);
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.opus', '.wma']);
 const HTML_EXT = new Set(['.html', '.htm', '.xhtml']);
 const PDF_EXT = new Set(['.pdf']);
+const DOCX_EXT = new Set(['.docx']);
+const XLSX_EXT = new Set(['.xlsx', '.xlsm']);
+const PPTX_EXT = new Set(['.pptx']);
 const MARKDOWN_EXT = new Set(['.md', '.markdown', '.mdx']);
 const TEXT_EXT = new Set([
   '.txt',
@@ -90,6 +104,10 @@ const MIME_BY_EXT: Record<string, string> = {
   '.htm': 'text/html',
   '.xhtml': 'application/xhtml+xml',
   '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xlsm': 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   '.md': 'text/markdown',
   '.markdown': 'text/markdown',
   '.txt': 'text/plain',
@@ -119,6 +137,9 @@ export function fileKind(filePath: string): FileKind {
   if (AUDIO_EXT.has(e)) return 'audio';
   if (HTML_EXT.has(e)) return 'html';
   if (PDF_EXT.has(e)) return 'pdf';
+  if (DOCX_EXT.has(e)) return 'docx';
+  if (XLSX_EXT.has(e)) return 'xlsx';
+  if (PPTX_EXT.has(e)) return 'pptx';
   if (MARKDOWN_EXT.has(e)) return 'markdown';
   if (TEXT_EXT.has(e)) return 'text';
   return 'other';

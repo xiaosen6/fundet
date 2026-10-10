@@ -5,7 +5,7 @@
  * 打开 Canvas 预览。数据来自 checkpoint 快照 numstat（仅最新一轮，不持久化）。
  */
 import { useEffect, useState } from 'react';
-import { FileDiff, FileText, Film, Globe, Image as ImageIcon, Music } from 'lucide-react';
+import { FileDiff, FileSpreadsheet, FileText, Film, Globe, Image as ImageIcon, Music, Presentation } from 'lucide-react';
 import { basename } from '../lib/artifacts';
 import type { FileKind } from '../../../shared/file-kind.ts';
 import { fileKind } from '../../../shared/file-kind.ts';
@@ -22,6 +22,8 @@ function KindIcon({ kind }: { kind: FileKind }): React.JSX.Element {
   if (kind === 'video') return <Film {...props} />;
   if (kind === 'audio') return <Music {...props} />;
   if (kind === 'html') return <Globe {...props} />;
+  if (kind === 'xlsx') return <FileSpreadsheet {...props} />;
+  if (kind === 'pptx') return <Presentation {...props} />;
   return <FileText {...props} />;
 }
 
