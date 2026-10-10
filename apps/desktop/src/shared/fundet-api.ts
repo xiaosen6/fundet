@@ -622,8 +622,8 @@ export interface FundetApi {
   onNotifyOpenSession(cb: (payload: { sessionId: string }) => void): () => void;
   /** 完成提醒提示音（渲染层 WebAudio 播放） */
   onNotifyChime(cb: () => void): () => void;
-  /** 轮末改动文件统计（对齐 Cindy TurnChangesCard v1，仅最新一轮） */
-  onTurnChanges(cb: (payload: { sessionId: string; files: Array<{ path: string; additions: number; deletions: number }> }) => void): () => void;
+  /** 轮末改动文件统计（对齐 Cindy TurnChangesCard，仅最新一轮）；baseSha=轮前快照（撤销目标，null=不可撤销） */
+  onTurnChanges(cb: (payload: { sessionId: string; files: Array<{ path: string; additions: number; deletions: number }>; baseSha: string | null }) => void): () => void;
   /** 轮末产物扫描：bash/python 等脚本生成的文件（write 工具面收不到）补充进 Canvas 产物列表 */
   onTurnArtifacts(cb: (payload: { sessionId: string; paths: string[] }) => void): () => void;
   /** 完成提醒开关（设置 → 桌宠） */
