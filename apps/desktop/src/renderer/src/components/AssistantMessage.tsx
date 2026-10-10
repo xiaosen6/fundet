@@ -9,8 +9,11 @@
  * - 逐词淡入（lib/streamWordFade）只挂尾块，按块位号独立账本；块内容稳定后
  *   连同账本一起冻结，不重播。reduced-motion 下整条链不挂。
  * 终版渲染单次 ReactMarkdown 原文，零 span 包装。
+ * 终版还挂 remarkArtifactPaths：正文里命中「已知产物 basename / 路径形状」的
+ * 片段切成路径 chip（悬停出完整路径卡 + 复制，见 lib/artifactPathChips 与
+ * chat/FilePathChip）；流式中间态不做（正文未封口，chip 会闪）。
  */
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
+import React, { memo, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -21,6 +24,13 @@ import 'katex/dist/katex.min.css';
 import { normalizeMathDelimiters } from '../lib/mathMarkdown';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { isImagePath } from '../lib/artifacts';
+import {
+  ARTIFACT_HREF_PREFIX,
+  decodeArtifactHref,
+  remarkArtifactPaths,
+  resolveArtifactToken,
+} from '../lib/artifactPathChips';
+import { FilePathChip } from './chat/FilePathChip';
 import { cancelScheduledHoverPreview, scheduleHoverPreview } from './ui/HoverImgPreview';
 import { createStreamFadeState, rehypeStreamWordFade, type StreamFadeState } from '../lib/streamWordFade';
 import { repairStreamingMarkdown, splitStreamingMarkdownChunks } from '../lib/streamingMarkdown';
@@ -38,6 +48,9 @@ interface AssistantMessageProps {
   onOpenFile?: (path: string) => void;
   /** 本轮 knowledge_search 的来源清单：回复里的【n】会被渲染成可点角标 */
   knowledgeSources?: KnowledgeSource[];
+  /** Canvas 产物全集（write/edit + 附件 + 轮末扫描）：正文里命中 basename /
+   *  路径形状的片段升级为路径 chip（悬停出完整路径卡 + 复制） */
+  artifactPaths?: string[];
 }
 
 function flattenText(node: ReactNode): string {
@@ -52,9 +65,16 @@ function flattenText(node: ReactNode): string {
 
 const REMARK_PLUGINS = [remarkGfm, remarkCjkFriendly, remarkMath];
 
+/** 块级 code 标记：无语言围栏里的单行文件名没有 className/换行信号，
+ *  靠 pre 组件渲染时注入的上下文区分（行内 code 永远读到 false）。 */
+const InsidePreContext = React.createContext(false);
+
 type MarkdownCallbacks = {
   workDir?: string;
   onOpenFile?: (path: string) => void;
+  artifactPaths?: string[];
+  /** 路径 chip 是否激活：只在终版渲染开（流式中间态正文未封口，chip 会闪） */
+  artifactChips?: boolean;
 };
 
 /** 长会话里历史消息的 text/workDir/onOpenFile 都不变；不 memo 的话流式期间
@@ -65,6 +85,7 @@ function AssistantMessageImpl({
   workDir,
   onOpenFile,
   knowledgeSources,
+  artifactPaths,
 }: AssistantMessageProps): React.JSX.Element {
   const reducedMotion = useReducedMotion();
   const streamingOn = streaming === true && !reducedMotion;
@@ -74,7 +95,20 @@ function AssistantMessageImpl({
 
   // 回调经 ref 中转成稳定引用：分块 memo 的比较器只看内容，交互回调永远最新
   const callbacksRef = useRef<MarkdownCallbacks>({ workDir, onOpenFile });
-  callbacksRef.current = { workDir, onOpenFile };
+  callbacksRef.current = {
+    workDir,
+    onOpenFile,
+    artifactPaths,
+    // 流式分块共用本 ref；流式期间关闭路径 chip（终版渲染才开）
+    artifactChips: !streamingOn,
+  };
+
+  // 终版渲染的路径 chip 插件：knownPaths/workDir 不变则实例稳定
+  const artifactPlugin = useMemo(
+    () => remarkArtifactPaths({ knownPaths: artifactPaths, workDir }),
+    [artifactPaths, workDir],
+  );
+  const finalRemarkPlugins = useMemo(() => [...REMARK_PLUGINS, artifactPlugin], [artifactPlugin]);
 
   // 逐词淡入账本：跨渲染存活（流式一轮一份；流式结束即丢弃，下一轮 turn 重新开播）。
   // 分块渲染下按「块位号 → 账本」，只有尾块挂插件；块位号内容稳定后账本随之冻结。
@@ -106,7 +140,7 @@ function AssistantMessageImpl({
       <div className="flex w-full min-w-0 flex-col">
         <div className="md text-primary select-text">
           <ReactMarkdown
-            remarkPlugins={REMARK_PLUGINS}
+            remarkPlugins={finalRemarkPlugins}
             rehypePlugins={rehypePlugins}
             components={{
               ...buildMarkdownComponents(callbacksRef),
@@ -231,7 +265,7 @@ const StreamingMarkdownChunk = memo(function StreamingMarkdownChunk({
 
 /** markdown 元素级定制：回调从 ref 中转（引用稳定，行为永远取最新）。 */
 function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks>): Components {
-  const { workDir, onOpenFile } = callbacksRef.current;
+  const { workDir, onOpenFile, artifactPaths, artifactChips } = callbacksRef.current;
   return {
     pre: ({ children }) => {
       // ```mermaid 围栏 → SVG 图表（解析失败回落源码）
@@ -241,27 +275,46 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
         const raw = flattenText((child as { props?: { children?: ReactNode } }).props?.children);
         return <MarkdownMermaidBlock raw={raw} />;
       }
-      return <pre>{children}</pre>;
+      return (
+        <InsidePreContext.Provider value={true}>
+          <pre>{children}</pre>
+        </InsidePreContext.Provider>
+      );
     },
-    a: ({ href, children }) => (
+    a: ({ href, children }) => {
+      // 路径 chip（remarkArtifactPaths 切出的产物/路径 token）
+      if (href && href.startsWith(ARTIFACT_HREF_PREFIX)) {
+        const fullPath = decodeArtifactHref(href);
+        return (
+          <FilePathChip
+            label={flattenText(children).trim() || fullPath}
+            fullPath={fullPath}
+            onOpen={onOpenFile}
+          />
+        );
+      }
       // http(s) 进系统浏览器；相对/本地路径走右侧 Canvas 预览。
       // 不拦截会让 Electron 主窗口整页跳走（will-navigate 还有一道主进程兜底）。
-      <a
-        href={href}
-        className="cursor-pointer"
-        onClick={(e) => {
-          if (!href || href.startsWith('#')) return;
-          e.preventDefault();
-          if (/^https?:\/\//i.test(href)) void window.fundet.openExternal(href);
-          else onOpenFile?.(href);
-        }}
-      >
-        {children}
-      </a>
-    ),
+      return (
+        <a
+          href={href}
+          className="cursor-pointer"
+          onClick={(e) => {
+            if (!href || href.startsWith('#')) return;
+            e.preventDefault();
+            if (/^https?:\/\//i.test(href)) void window.fundet.openExternal(href);
+            else onOpenFile?.(href);
+          }}
+        >
+          {children}
+        </a>
+      );
+    },
     code: ({ className, children }) => {
+      // 无语言围栏里的单行内容没有 className/换行信号，用 pre 注入的上下文判块级
+      const inPre = useContext(InsidePreContext);
       const raw = flattenText(children).trim();
-      const isBlock = Boolean(className) || raw.includes('\n');
+      const isBlock = inPre || Boolean(className) || raw.includes('\n');
       if (!isBlock && looksLikeFilePath(raw) && isImagePath(raw)) {
         return (
           <span className="my-2 block">
@@ -278,6 +331,13 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
             ) : null}
           </span>
         );
+      }
+      // 行内 code 里的产物/路径（`` `draft-01-公众号.md` ``）同款升级为路径 chip
+      if (!isBlock && artifactChips) {
+        const fullPath = resolveArtifactToken(raw, artifactPaths ?? [], workDir);
+        if (fullPath) {
+          return <FilePathChip label={raw} fullPath={fullPath} onOpen={onOpenFile} />;
+        }
       }
       return <code className={className}>{children}</code>;
     },

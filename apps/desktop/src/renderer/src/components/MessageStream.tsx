@@ -301,6 +301,8 @@ interface MessageStreamProps {
   ) => Promise<void>;
   /** 删除某条用户消息及其后全部内容（confirm 在调用方） */
   onDeleteUserMessage?: (createdAt: number) => void;
+  /** Canvas 产物全集：助手正文里命中 basename/路径形状的片段升级为路径 chip */
+  artifactPaths?: string[];
 }
 
 function isTurnTailAssistant(
@@ -378,6 +380,7 @@ function AssistantTurn({
   onDelete,
   knowledgeSources,
   turnFiles,
+  artifactPaths,
 }: {
   item: AssistantItem;
   pinned: boolean;
@@ -390,6 +393,8 @@ function AssistantTurn({
   knowledgeSources?: KnowledgeSource[];
   /** 本轮 write/edit 产出的文件（Cindy GeneratedFilesCard 简化版） */
   turnFiles?: string[];
+  /** Canvas 产物全集：正文路径 chip 用 */
+  artifactPaths?: string[];
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   return (
@@ -404,6 +409,7 @@ function AssistantTurn({
           workDir={workDir}
           onOpenFile={onOpenFile}
           knowledgeSources={knowledgeSources}
+          artifactPaths={artifactPaths}
         />
         {turnFiles && turnFiles.length > 0 && (
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -461,6 +467,7 @@ function AssistantRow({
   onAddToChat,
   onDelete,
   setSharePayload,
+  artifactPaths,
 }: {
   item: AssistantItem;
   index: number;
@@ -475,6 +482,7 @@ function AssistantRow({
   onAddToChat?: (text: string) => void;
   onDelete?: (id: string) => Promise<void>;
   setSharePayload: React.Dispatch<React.SetStateAction<ShareTurnPayload | null>>;
+  artifactPaths?: string[];
 }): React.JSX.Element {
   const showBar = isTurnTailAssistant(grouped, index, slice.isRunning, hasStreaming);
   const kbSources = knowledgeSourcesFor(slice.items, item.id);
@@ -487,6 +495,7 @@ function AssistantRow({
             workDir={workDir}
             onOpenFile={onOpenFile}
             knowledgeSources={kbSources}
+            artifactPaths={artifactPaths}
           />
         </div>
       </div>
@@ -502,6 +511,7 @@ function AssistantRow({
       onOpenFile={onOpenFile}
       knowledgeSources={kbSources}
       turnFiles={generatedFilesFor(slice.items, item.id)}
+      artifactPaths={artifactPaths}
       onShare={() =>
         setSharePayload({
           userText,
@@ -576,6 +586,7 @@ export function MessageStream({
   onEditStart,
   onEditSubmit,
   onDeleteUserMessage,
+  artifactPaths,
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1034,6 +1045,7 @@ export function MessageStream({
                     onAddToChat={onAddToChat}
                     onDelete={onDelete}
                     setSharePayload={setSharePayload}
+                    artifactPaths={artifactPaths}
                   />
                 ) : item.kind === 'error' ? (
                   <div className="flex items-start gap-2 rounded-inner border border-error-border bg-error-bg px-3 py-2">
