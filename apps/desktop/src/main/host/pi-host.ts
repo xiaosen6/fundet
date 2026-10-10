@@ -7,7 +7,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { app } from 'electron';
 import {
@@ -171,22 +171,42 @@ function buildRuntimeConfig(memoryManager: MakerMemoryManager): AgentRuntimeConf
  * 只做 system prompt 速查段的门控；dws 真实可用性由各调用方自行探测。
  */
 let dwsInstalledCache: boolean | null = null;
+let dwsProbeInFlight = false;
 function isDwsCliInstalled(): boolean {
   if (dwsInstalledCache !== null) return dwsInstalledCache;
   const fallback = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'dws.exe' : 'dws');
-  let installed = fs.existsSync(fallback);
-  if (!installed) {
+  if (fs.existsSync(fallback)) {
+    dwsInstalledCache = true;
+    return true;
+  }
+  // 官方落点不存在（多为没装 dws 的用户）：PATH 探测转异步后台——原 spawnSync
+  // 同步阻塞主进程最长 3s，首启 prewarm 的 systemPrompt getter 就会踩到，
+  // 没装的用户白卡一次启动（2026-10-10 用户实报）。探测完成前按 false：
+  // 没装 → 速查表本就不注入，功能最终一致；探测到 PATH 里的 dws 后下个
+  // 会话起注入。
+  if (!dwsProbeInFlight) {
+    dwsProbeInFlight = true;
+    const cmd = process.platform === 'win32' ? 'cmd.exe' : 'which';
+    const args = process.platform === 'win32' ? ['/d', '/c', 'where', 'dws'] : ['dws'];
     try {
-      installed =
-        process.platform === 'win32'
-          ? spawnSync('cmd.exe', ['/d', '/c', 'where', 'dws'], { timeout: 3000, stdio: 'ignore', windowsHide: true }).status === 0
-          : spawnSync('which', ['dws'], { timeout: 3000, stdio: 'ignore' }).status === 0;
+      const child = spawn(cmd, args, { stdio: 'ignore', windowsHide: true });
+      const timer = setTimeout(() => child.kill(), 3000);
+      child.on('error', () => {
+        clearTimeout(timer);
+        dwsInstalledCache = false;
+        dwsProbeInFlight = false;
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        dwsInstalledCache = code === 0;
+        dwsProbeInFlight = false;
+      });
     } catch {
-      installed = false;
+      dwsInstalledCache = false;
+      dwsProbeInFlight = false;
     }
   }
-  dwsInstalledCache = installed;
-  return installed;
+  return false;
 }
 
 /** 每会话隔离的 pi 配置目录（PI_CODING_AGENT_DIR 的宿主侧根） */
