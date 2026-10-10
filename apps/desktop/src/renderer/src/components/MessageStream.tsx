@@ -303,6 +303,8 @@ interface MessageStreamProps {
   onDeleteUserMessage?: (createdAt: number) => void;
   /** Canvas 产物全集：助手正文里命中 basename/路径形状的片段升级为路径 chip */
   artifactPaths?: string[];
+  /** 轮末改动卡 slot：渲染在消息流末尾（最后一轮回复下方，跟内容滚动不浮动） */
+  turnChangesSlot?: React.ReactNode;
 }
 
 function isTurnTailAssistant(
@@ -587,6 +589,7 @@ export function MessageStream({
   onEditSubmit,
   onDeleteUserMessage,
   artifactPaths,
+  turnChangesSlot,
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -950,8 +953,7 @@ export function MessageStream({
         )}
 
         {virtualizer.getVirtualItems().map((vr) => {
-          const item = rows[vr.index]!;
-          // 入场账本：追加批次里首次出现的行播一次软淡入（幂等登记，重挂不重播；
+          const item = rows[vr.index]!;          // 入场账本：追加批次里首次出现的行播一次软淡入（幂等登记，重挂不重播；
           // __streaming__ 伪行 id 常量，天然只播首次——流式本身即动效，跳过）
           const rowEnter =
             item.kind !== 'streaming' &&
@@ -1077,6 +1079,8 @@ export function MessageStream({
             </div>
           );
         })}
+        {/* 轮末改动卡：作为对话内容渲染在最后一轮回复下方（跟内容滚动，不浮在视口） */}
+        {turnChangesSlot ? <div className="mt-1.5">{turnChangesSlot}</div> : null}
       </div>
       {sharePayload ? (
         <ShareTurnModal payload={sharePayload} onClose={() => setSharePayload(null)} />
