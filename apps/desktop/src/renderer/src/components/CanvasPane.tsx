@@ -6,7 +6,7 @@
  * - text/html 源码 highlight.js 高亮；HTML 轮末自动刷新（turnActive 转折 bump key）
  * - 空态设计化（图标 + 标题 + 描述）
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/common';
@@ -93,7 +93,20 @@ export function CanvasPane({
   onClose,
   turnActive,
 }: CanvasPaneProps): React.JSX.Element {
-  const active = artifacts.find((a) => a.path === activePath) ?? artifacts[0] ?? null;
+  // 预览读取发现文件已不存在（AI 清理临时脚本等）→ 从列表自动移除该条目，
+  // 选中自动落到下一个可用项（2026-10-10 用户实报：幽灵条目挂在首位）
+  const [missingPaths, setMissingPaths] = useState<string[]>([]);
+  useEffect(() => {
+    setMissingPaths([]);
+  }, [artifacts]);
+  const visibleArtifacts = useMemo(
+    () => artifacts.filter((a) => !missingPaths.includes(a.path)),
+    [artifacts, missingPaths],
+  );
+  const markMissing = useCallback((p: string): void => {
+    setMissingPaths((prev) => (prev.includes(p) ? prev : [...prev, p]));
+  }, []);
+  const active = visibleArtifacts.find((a) => a.path === activePath) ?? visibleArtifacts[0] ?? null;
   const [width, setWidth] = useState(loadWidth);
   const [maximized, setMaximized] = useState(false);
   const pillsRef = useRef<HTMLDivElement>(null);
@@ -184,9 +197,9 @@ export function CanvasPane({
         </div>
       ) : (
         <>
-          {/* 产物横 pill 行 */}
+          {/* 产物横 pill 行（已失效条目自动移除） */}
           <div ref={pillsRef} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-board px-2 scrollbar-none">
-            {artifacts.map((a) => (
+            {visibleArtifacts.map((a) => (
               <button
                 key={a.path}
                 type="button"
@@ -206,7 +219,9 @@ export function CanvasPane({
             ))}
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-3">
-            {active ? <Preview workDir={workDir} artifact={active} htmlReloadKey={htmlReloadKey} /> : null}
+            {active ? (
+              <Preview workDir={workDir} artifact={active} htmlReloadKey={htmlReloadKey} onMissing={markMissing} />
+            ) : null}
           </div>
         </>
       )}
@@ -218,10 +233,12 @@ function Preview({
   workDir,
   artifact,
   htmlReloadKey,
+  onMissing,
 }: {
   workDir: string;
   artifact: Artifact;
   htmlReloadKey: number;
+  onMissing: (path: string) => void;
 }): React.JSX.Element {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -243,11 +260,13 @@ function Preview({
         const body = await window.fundet.readTextFile(artifact.path, workDir);
         if (!cancelled) setText(body);
       } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        if (/ENOENT/i.test(raw)) onMissing(artifact.path);
         if (!cancelled)
           setError(
-            /ENOENT/i.test(err instanceof Error ? err.message : String(err))
+            /ENOENT/i.test(raw)
               ? '文件已不存在（可能已被助手清理）——列表记录的是历史产出路径'
-              : err instanceof Error ? err.message : String(err),
+              : raw,
           );
       }
     };
