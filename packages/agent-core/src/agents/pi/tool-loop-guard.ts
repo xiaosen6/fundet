@@ -7,7 +7,7 @@
  */
 
 export interface ToolLoopGuardOptions {
-  /** 连续相同调用次数阈值 */
+  /** 连续相同调用次数阈值（对齐 Cindy 快速全同档：30 次） */
   limit?: number;
   /** 相邻调用超过该间隔（ms）重置计数——视作在等外部进展 */
   resetWindowMs?: number;
@@ -17,32 +17,41 @@ export interface ToolLoopGuardOptions {
 export type ToolLoopVerdict = 'ok' | 'trip';
 
 export interface ToolLoopGuard {
-  feed(toolName: string, inputKey: string): ToolLoopVerdict;
+  feed(toolName: string, inputKey: string, resultKey?: string): ToolLoopVerdict;
   /** 每轮 turn 开始时清零（turn 结束自然停止计数） */
   reset(): void;
 }
 
 export function createToolLoopGuard(opts: ToolLoopGuardOptions = {}): ToolLoopGuard {
-  const limit = opts.limit ?? 10;
+  const limit = opts.limit ?? 30;
   const resetWindowMs = opts.resetWindowMs ?? 30_000;
   const now = opts.now ?? (() => Date.now());
   let key: string | null = null;
+  let resultKey: string | null = null;
   let count = 0;
   let lastAt = 0;
   return {
-    feed(toolName, inputKey) {
+    // 结果纳入判定：输入相同但输出在变化 = 有外部进展（AI 在反复调试验证），
+    // 不计数——只锁「输入输出全同」的死循环。这挡掉了「跑脚本→报错→重跑」
+    // 的合法调试循环误伤（2026-10-09 PPT 生成实报）。
+    feed(toolName, inputKey, rk) {
       const t = now();
       const k = `${toolName}\u0000${inputKey}`;
       if (k !== key || (count > 0 && t - lastAt > resetWindowMs)) {
         key = k;
         count = 0;
       }
+      if (resultKey !== null && rk !== resultKey) {
+        count = 0; // 输出变了：外部世界在动，不算死循环
+      }
+      resultKey = rk ?? null;
       count++;
       lastAt = t;
       return count >= limit ? 'trip' : 'ok';
     },
     reset() {
       key = null;
+      resultKey = null;
       count = 0;
       lastAt = 0;
     },

@@ -96,6 +96,7 @@ import { capturePiRuntimeCapabilityManifest } from './runtime-capabilities.js';
 import { createToolLoopGuard, toolInputKey } from './tool-loop-guard.js';
 import {
   createPiTranslateContext,
+  toolResultFullText,
   disposePiTranslateContext,
   translatePiEvent,
   usageSnapshotOf,
@@ -1374,14 +1375,15 @@ export class PiAgent extends BaseAgent {
           }
           // 工具循环熔断：同一工具同一入参连续打满阈值（无外部进展的死循环）
           // → terminal error + abort 该 turn，替用户止损烧 token。
-          if (event.type === 'tool_execution_start') {
-            const te = event as { toolName?: string; input?: unknown };
-            if (te.toolName && toolLoopGuard.feed(te.toolName, toolInputKey(te.input)) === 'trip') {
+          if (event.type === 'tool_execution_end') {
+            const te = event as { toolName?: string; input?: unknown; result?: unknown };
+            const resultKey = toolResultFullText(te.result as never).slice(0, 2000);
+            if (te.toolName && toolLoopGuard.feed(te.toolName, toolInputKey(te.input), toolInputKey(resultKey)) === 'trip') {
               deps.logger.warn('pi tool loop guard tripped', { toolName: te.toolName });
               queue.push({
                 type: 'error',
                 data: {
-                  message: `工具循环熔断：${te.toolName} 连续相同调用已达上限，已自动停止。可能是任务不明确或工具反复失败，请换个说法或检查目标后重试。`,
+                  message: `工具循环熔断：${te.toolName} 连续相同调用（输入与结果均无变化）已达上限，已自动停止。可能是任务不明确或工具反复失败，请换个说法或检查目标后重试。`,
                   isTerminal: true,
                 },
                 source: 'pi',
