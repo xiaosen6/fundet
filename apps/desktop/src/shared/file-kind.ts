@@ -8,9 +8,6 @@ export type FileKind =
   | 'audio'
   | 'html'
   | 'pdf'
-  | 'docx'
-  | 'xlsx'
-  | 'pptx'
   | 'markdown'
   | 'text'
   | 'other';
@@ -20,9 +17,6 @@ const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.mkv', '.m4v', '.ogv', '.av
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.opus', '.wma']);
 const HTML_EXT = new Set(['.html', '.htm', '.xhtml']);
 const PDF_EXT = new Set(['.pdf']);
-const DOCX_EXT = new Set(['.docx']);
-const XLSX_EXT = new Set(['.xlsx', '.xlsm']);
-const PPTX_EXT = new Set(['.pptx']);
 const MARKDOWN_EXT = new Set(['.md', '.markdown', '.mdx']);
 const TEXT_EXT = new Set([
   '.txt',
@@ -137,9 +131,6 @@ export function fileKind(filePath: string): FileKind {
   if (AUDIO_EXT.has(e)) return 'audio';
   if (HTML_EXT.has(e)) return 'html';
   if (PDF_EXT.has(e)) return 'pdf';
-  if (DOCX_EXT.has(e)) return 'docx';
-  if (XLSX_EXT.has(e)) return 'xlsx';
-  if (PPTX_EXT.has(e)) return 'pptx';
   if (MARKDOWN_EXT.has(e)) return 'markdown';
   if (TEXT_EXT.has(e)) return 'text';
   return 'other';

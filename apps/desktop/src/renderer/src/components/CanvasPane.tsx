@@ -12,7 +12,6 @@ import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/common';
 import {
   ExternalLink,
-  FileSpreadsheet,
   FileText,
   Film,
   Globe,
@@ -21,19 +20,13 @@ import {
   Minimize2,
   Music,
   PanelRight,
-  Presentation,
   X,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { basename, type Artifact, type ArtifactKind } from '../lib/artifacts';
 import { LocalImagePreview } from './LocalImagePreview';
-import { OfficePreviewLoading } from './officePreviewShared';
 import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
 
-// Office 预览三件按需加载（xlsx/mammoth/jszip 体积可观，拆独立 chunk）
-const DocxPreview = lazy(() => import('./DocxPreview'));
-const XlsxPreview = lazy(() => import('./XlsxPreview'));
-const PptxPreview = lazy(() => import('./PptxPreview'));
 
 const WIDTH_KEY = 'fundet.canvas.width';
 const DEFAULT_WIDTH = 420;
@@ -55,8 +48,6 @@ function KindIcon({ kind }: { kind: ArtifactKind }): React.JSX.Element {
   if (kind === 'video') return <Film {...props} />;
   if (kind === 'audio') return <Music {...props} />;
   if (kind === 'html') return <Globe {...props} />;
-  if (kind === 'xlsx') return <FileSpreadsheet {...props} />;
-  if (kind === 'pptx') return <Presentation {...props} />;
   return <FileText {...props} />;
 }
 
@@ -342,13 +333,6 @@ function Preview({
           className="min-h-[240px] w-full flex-1 rounded-inner border border-board bg-card"
           src={mediaUrl}
         />
-      )}
-      {(artifact.kind === 'docx' || artifact.kind === 'xlsx' || artifact.kind === 'pptx') && (
-        <Suspense fallback={<OfficePreviewLoading label="加载预览…" />}>
-          {artifact.kind === 'docx' && <DocxPreview path={artifact.path} workDir={workDir} />}
-          {artifact.kind === 'xlsx' && <XlsxPreview path={artifact.path} workDir={workDir} />}
-          {artifact.kind === 'pptx' && <PptxPreview path={artifact.path} workDir={workDir} />}
-        </Suspense>
       )}
       {artifact.kind === 'markdown' && text !== null && (
         <div className="md min-h-0 flex-1 overflow-auto rounded-inner border border-board bg-card p-3 text-primary">

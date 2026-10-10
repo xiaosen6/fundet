@@ -22,11 +22,11 @@ describe('fileKind', () => {
     assert.equal(fileKind('archive.zip'), 'other');
   });
 
-  it('classifies office documents (Canvas 预览)', () => {
-    assert.equal(fileKind('报告.DOCX'), 'docx');
-    assert.equal(fileKind('预算表.xlsx'), 'xlsx');
-    assert.equal(fileKind('宏表.xlsm'), 'xlsx');
-    assert.equal(fileKind('路演.pptx'), 'pptx');
+  it('classifies office documents (对齐 Cindy：不接内嵌预览，走系统打开)', () => {
+    assert.equal(fileKind('报告.DOCX'), 'other');
+    assert.equal(fileKind('预算表.xlsx'), 'other');
+    assert.equal(fileKind('宏表.xlsm'), 'other');
+    assert.equal(fileKind('路演.pptx'), 'other');
     // 老格式二进制 Office（.doc/.xls/.ppt）不接内嵌预览，保持 other
     assert.equal(fileKind('legacy.doc'), 'other');
     assert.equal(fileKind('legacy.xls'), 'other');
