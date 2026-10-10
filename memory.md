@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-10-09（0.3.42 已发：双修批——已取消会议过滤 + 手动停止中性化；此前 0.3.25~0.3.41 二十连发。详见 §3.5）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
+> 最后更新：2026-10-10（在途：消息导航器 minimap 已实现待实测；0.3.42 已发。详见 §3.5 与在途事项）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
 > 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
@@ -619,6 +619,8 @@ pnpm -r --if-present run test
 6. 用户附件路径：工作目录外必须 stage 进 `.fundet-uploads`，否则 fail-closed。
 7. UI 文案一律 `brand.name`；内部路径常量不许动。
 8. 改完产品事实立刻更新本文件。发版收尾三查：§3.5 版本行标「已发」、在途块头同步状态、头部「最后更新」——「未发版」标签已多次漏清（动效批/PDF 批拖了一个多月、0.3.22/0.3.23 收尾各漏一次），收尾后应 grep「未发版」清零。
+
+> **在途事项（2026-10-10，消息导航器 minimap（对齐 Cindy），已实现待用户实测）**：用户点名「长会话右侧 minimap 条 + 悬停展开消息列表浮层，点击跳转到对应消息」。三件：①纯函数 `renderer/src/lib/messageNavigator.ts`（`minimapMarks` 行序/总行数→top 百分比、`visibleIndexRange` 从 getVirtualItems 剥 overscan 取真实相交行范围、`activeUserMarkIndex` ≤视口末行的最后一条 user 行=当前高亮（视口落在两条 user 之间取上方最近=正在读的那轮）、`navigatorPreview` 首个非空行 trim 截 60 与「上一条提问」chip 同口径、`MIN_NAVIGATOR_USERS=5` 门槛），+10 node --test。②组件 `components/MessageNavigator.tsx`：收起态=消息流右缘垂直居中细列（`right-2` 让出 8px 滚动条不挡拖拽；h-[min(360px,65%)]），每条 user 消息一根 `w-5 h-[3px] rounded-full` 横线按 top% 定位，当前项 `bg-accent` 其余 `bg-muted/40`；悬停展开 `w-[300px] rounded-container border-board bg-card shadow-menu` 浮层（左侧一行 truncate 预览 + 右侧横线，当前项文字 text-accent，点击 `scrollToIndex(align:'start')` + `setStuck(false)` 防贴底 RO 拉回 + 收浮层）；移出 150ms 收起、无点击外部关闭（Cindy 移出即收）；**细列滚轮转发回滚动容器**（右缘是去滚动条必经路，上滚同口径解除贴底，防滚动死区）；组件 React.memo+稳定 props 滚动路径零额外渲染。③MessageStream 集成：原 `updatePrevQuestion` rAF 探测扩成 `updateScrollProbes`（一次读 getVirtualItems 现成值同时供 chip 与导航器高亮，navActive 原始值不变 React 跳过重渲染），复用 userIndexes；≥5 条 user 消息才挂载。验证：typecheck ✓/desktop **359**/359（+10）/IPC 145/0/build ✓。**待用户实测**：长会话（≥5 问）右缘横线分布与滚动时高亮跟手、悬停展开点条目跳转、跳后不被拉回底部。
 
 > **在途事项（2026-10-09 晚，标注 UI 对齐 Cindy 整套移植，已修待用户实测观感）**：用户拍板「外观要和 Cindy 一模一样，不要额外的东西」→ 解剖 Cindy ImageLightbox（655 行标注集成）整套移植（83f3199）：**Cindy 形态=Lightbox 标注模式**（非独立编辑器）——**仅 1 个手绘画笔**（无矩形/箭头/文字/颜色板/粗细档），红笔 #FF3B30 白描边（×1.8 宽）、线宽=短边 0.5% 钳 4..24px；底部居中胶囊工具栏（[X 放弃][Undo2 撤销上一笔]│[Check 保存标注]）；Esc=先弃笔迹再关、Ctrl+Z 撤销、双击缩放让位画笔、滚轮缩放仍可用；SVG 笔迹归一化坐标叠加层；烧录 JPEG 源保 q0.92 其余 PNG。自创全屏 AnnotationEditor（四工具/三色）整套退役（净 -335 行）。入口改 Cindy 同款：点附件缩略图开 Lightbox → 工具条「标注」按钮进标注模式（旧悬停 PenLine 删）。**有意差异仅数据流**：保存即烧录替换附件（任务契约保 ChatPage 零改动）；会话内图片标注入口未做（Cindy 依赖其会话缓存体系，Fundet lightbox 是通用 service——宁可少做）。验证：typecheck ✓/349/349（-15 自创 +12 Cindy 规格移植）/IPC 145/0/build ✓。**待用户实测观感**。
 
