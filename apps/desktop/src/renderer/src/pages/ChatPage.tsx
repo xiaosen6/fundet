@@ -82,6 +82,11 @@ import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { cn } from '../lib/cn';
 
+/** 产物去重键：Windows 路径分隔符/大小写归一（write 工具、附件与扫描可能给同一路径的不同写法） */
+function artifactKey(p: string): string {
+  return p.replace(/\//g, '\\').toLowerCase();
+}
+
 export function ChatPage(): React.JSX.Element {
   const sessions = useSessionList();
   const runningIds = useRunningIds();
@@ -93,6 +98,8 @@ export function ChatPage(): React.JSX.Element {
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const [dwsEnabled, setDwsEnabled] = useState(true);
   const [turnChanges, setTurnChanges] = useState<TurnChangeEntry[] | null>(null);
+  // 轮末产物扫描：脚本生成的文件路径（跨轮累积，activeId 切换清空）
+  const [turnArtifactPaths, setTurnArtifactPaths] = useState<string[]>([]);
   // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
   const [planContent, setPlanContent] = useState<string | undefined>(undefined);
 
@@ -113,6 +120,29 @@ export function ChatPage(): React.JSX.Element {
     setTurnChanges(null);
     const off = window.fundet.onTurnChanges((p) => {
       if (p.sessionId === activeId) setTurnChanges(p.files);
+    });
+    return off;
+  }, [activeId]);
+
+  // 轮末产物扫描：主进程 turn:artifacts push（脚本生成的 pptx/png 等）补充进
+  // Canvas 产物列表；只在当前会话累积，切会话清空（历史轮产物仍由消息流
+  // collectArtifacts 提供——write/edit 工具面不变，本机制是补充）
+  useEffect(() => {
+    setTurnArtifactPaths([]);
+    const off = window.fundet.onTurnArtifacts((p) => {
+      if (p.sessionId !== activeId) return;
+      setTurnArtifactPaths((prev) => {
+        const seen = new Set(prev);
+        let added = false;
+        const merged = [...prev];
+        for (const filePath of p.paths) {
+          if (seen.has(filePath)) continue;
+          seen.add(filePath);
+          merged.push(filePath);
+          added = true;
+        }
+        return added ? merged : prev;
+      });
     });
     return off;
   }, [activeId]);
@@ -211,14 +241,20 @@ export function ChatPage(): React.JSX.Element {
 
   const artifacts = useMemo(() => {
     const fromItems = collectArtifacts(slice.items);
-    const seen = new Set(fromItems.map((a) => a.path));
+    const seen = new Set<string>();
+    for (const a of fromItems) seen.add(artifactKey(a.path));
     const extra: Artifact[] = [];
-    for (const a of attachments) {
-      if (seen.has(a.path)) continue;
-      extra.push({ path: a.path, kind: fileKind(a.path), toolName: 'attach' });
-    }
+    const add = (path: string, toolName: string): void => {
+      const k = artifactKey(path);
+      if (seen.has(k)) return;
+      seen.add(k);
+      extra.push({ path, kind: fileKind(path), toolName });
+    };
+    for (const a of attachments) add(a.path, 'attach');
+    // 轮末扫描产物（脚本生成）最后并入：与 write/edit 工具面/附件按归一路径去重
+    for (const p of turnArtifactPaths) add(p, 'script');
     return extra.length > 0 ? [...fromItems, ...extra] : fromItems;
-  }, [slice.items, attachments]);
+  }, [slice.items, attachments, turnArtifactPaths]);
   const modelSpec = useMemo(() => {
     const id = activeMeta?.model;
     if (!id) return undefined;

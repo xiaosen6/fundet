@@ -79,6 +79,11 @@ import {
 import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
+import {
+  diffArtifacts,
+  scanArtifactSnapshot,
+  type TurnArtifactSnapshot,
+} from '../host/turn-artifact-scan.ts';
 import { transcribeAudio, probeGateway, SERVICE_GATEWAY_SETTING } from '../host/service-gateway.js';
 import { embedKbChunks } from '../knowledge/embeddings.js';
 import { bridgeAgentEvent, bridgeInteractionRequest, bridgeReset } from '../host/pet-state-bridge.js';
@@ -206,6 +211,31 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
   }
 }
 
+/**
+ * 轮末产物扫描（后台，fire-and-forget）：diff 轮前快照，白名单内新增/变更的
+ * 文件（bash/python 等脚本产物——write/edit 工具面收不到，collectArtifacts
+ * 只认工具入参）PUSH 给渲染层进 Canvas。基线只在 SESSION_SEND 拍：retry 不
+ * 重拍，失败尝试中已写的产物在重试轮末一并报出。失败静默；无基线/无
+ * workDir/空 diff 不推送。
+ */
+async function captureAndPushTurnArtifacts(sessionId: string): Promise<void> {
+  try {
+    const baseline = turnArtifactSnapshots.get(sessionId);
+    if (!baseline) return;
+    const workDir = getDb()
+      .select({ workDir: sessions.workDir })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .get()?.workDir;
+    if (!workDir) return;
+    const paths = diffArtifacts(baseline, await scanArtifactSnapshot(workDir));
+    if (paths.length === 0) return;
+    broadcast(FUNDET_PUSH.TURN_ARTIFACTS, { sessionId, paths });
+  } catch (err) {
+    console.warn('[fundet:artifacts] 轮末产物扫描失败（不影响会话）', err);
+  }
+}
+
 function maybeNotifyCompletion(sessionId: string, event: AgentEvent): void {  let summary = '';
   if (event.type === 'done') {
     const data = event.data as { result?: string } | undefined;
@@ -236,6 +266,8 @@ interface PendingInteraction {
 const pendingInteractions = new Map<string, PendingInteraction>();
 /** 已接线（事件/审批监听）的 sessionId */
 const wiredSessions = new Set<string>();
+/** 轮末产物扫描基线：sessionId → 轮前文件快照（只随 SESSION_SEND 更新，轮末 diff 后不回写） */
+const turnArtifactSnapshots = new Map<string, TurnArtifactSnapshot>();
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -347,6 +379,8 @@ export function wireSession(session: Session): void {
         (event.data as { willRetry?: boolean } | undefined)?.willRetry !== true)
     ) {
       void captureAndPushTurnChanges(session.id);
+      // 轮末产物扫描：脚本生成的文件（pptx/png/...）进 Canvas 产物列表
+      void captureAndPushTurnArtifacts(session.id);
     }
   });
 
@@ -373,6 +407,7 @@ export function wireSession(session: Session): void {
   session.onStatusChange((status) => {
     if (status !== 'closed' && status !== 'error') return;
     wiredSessions.delete(session.id);
+    turnArtifactSnapshots.delete(session.id);
     // 会话关闭/出错时清掉悬挂的审批/问答条目——否则 promise 永不 resolve、
     // pendingInteractions 常驻（渲染层 getPendingInteractions 会一直拿到幽灵卡）
     for (const [requestId, entry] of [...pendingInteractions]) {
@@ -397,11 +432,23 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
       // 权限档热切（与模型热切同语义）：预热会话以默认 ask 创建，draft 阶段
       // 选的档在这之后——不同步的话 pi 内部仍是 ask，用户选了完全放行照样
       // 弹审批卡（2026-10-10 用户实报「对话后切回每次询问」的根因）。
-      // 带参即 set（幂等，Session 无现档 getter 可比）
+      // 带参即 set（幂等，Session 无现档 getter 可比）。
+      // 同时必须落 DB：prewarm 已预落 permission_mode=null 的会话行，
+      // draft 阶段选档只改了渲染层——不更新 DB 的话轮末 refreshSessionList
+      // 拉回 null，UI 弹回「每次询问」（0.3.43 只热切了 pi 没落库的教训）
       if (input.create?.permissionMode) {
         await alive
           .setPermissionMode(input.create.permissionMode)
           .catch(() => undefined); // 热切失败不阻断发送，行为回落 pi 现档
+        try {
+          getDb()
+            .update(sessions)
+            .set({ permissionMode: input.create.permissionMode, updatedAt: Date.now() })
+            .where(eq(sessions.id, input.sessionId))
+            .run();
+        } catch {
+          /* 落库失败不阻断（行可能尚不存在，首条消息主路径会补） */
+        }
       }
       return alive;
     }
@@ -688,6 +735,7 @@ export function registerIpcHandlers(): void {
     // DB 先删（毫秒级）立即返回；杀 pi 与删快照仓放后台——同步 rmSync 删大仓
     // 会冻结主进程事件循环，点删除整体卡顿（2026-10-07 用户实报根因）
     getDb().delete(sessions).where(eq(sessions.id, id)).run();
+    turnArtifactSnapshots.delete(id);
     void (async () => {
       try {
         if (maker.isSessionAlive(id)) await maker.closeSession(id, 'requested');
@@ -710,6 +758,18 @@ export function registerIpcHandlers(): void {
           ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
         if (workDir) {
           enqueueSnapshot(session.id, workDir, input.text);
+        }
+      }
+      // 轮末产物扫描基线（与 checkpoint 可用性无关，独立拍）：fire-and-forget——
+      // 目录扫描毫秒级，远快于模型首响，轮内产物不会错拍进基线；失败静默
+      // （无基线=轮末无 diff=不推送）
+      if (input.retry !== true) {
+        const workDir = input.create?.workDir
+          ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
+        if (workDir) {
+          void scanArtifactSnapshot(workDir)
+            .then((snap) => turnArtifactSnapshots.set(session.id, snap))
+            .catch(() => undefined);
         }
       }
       // 自动重试重发：user 消息与标题已落库，跳过重复插入
@@ -792,6 +852,7 @@ ${input.text}`;
   ipcMain.handle(FUNDET_INVOKE.SESSION_CLOSE, async (_e, id: string) => {
     const { maker } = getHost();
     if (maker.isSessionAlive(id)) await maker.closeSession(id, 'requested');
+    turnArtifactSnapshots.delete(id);
     getDb()
       .update(sessions)
       .set({ status: 'closed', updatedAt: Date.now() })
