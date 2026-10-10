@@ -97,7 +97,7 @@ export function ChatPage(): React.JSX.Element {
   const [notice, setNotice] = useState('');
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const [dwsEnabled, setDwsEnabled] = useState(true);
-  const [turnChanges, setTurnChanges] = useState<{ files: TurnChangeEntry[]; baseSha: string | null } | null>(null);
+  const [turnChanges, setTurnChanges] = useState<{ sessionId: string; files: TurnChangeEntry[]; baseSha: string | null } | null>(null);
   // 轮末产物扫描：脚本生成的文件路径（跨轮累积，activeId 切换清空）
   const [turnArtifactPaths, setTurnArtifactPaths] = useState<string[]>([]);
   // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
@@ -120,7 +120,7 @@ export function ChatPage(): React.JSX.Element {
   useEffect(() => {
     setTurnChanges(null);
     const off = window.fundet.onTurnChanges((p) => {
-      if (p.sessionId === activeId) setTurnChanges({ files: p.files, baseSha: p.baseSha ?? null });
+      if (p.sessionId === activeId) setTurnChanges({ sessionId: p.sessionId, files: p.files, baseSha: p.baseSha ?? null });
     });
     return off;
   }, [activeId]);
@@ -1072,20 +1072,7 @@ export function ChatPage(): React.JSX.Element {
               workDir={activeMeta?.workDir || workDir}
               onOpenFile={openCanvas}
               artifactPaths={artifactPathList}
-              turnChangesSlot={
-                !slice.isRunning &&
-                slice.items.length > 0 &&
-                activeId &&
-                turnChanges &&
-                turnChanges.files.length > 0 ? (
-                  <TurnChangesBar
-                    sessionId={activeId}
-                    files={turnChanges.files}
-                    baseSha={turnChanges.baseSha}
-                    onOpenFile={openCanvas}
-                  />
-                ) : null
-              }
+              turnChanges={slice.isRunning ? null : turnChanges}
               canFork={Boolean(activeId) && !isDraftSession(activeId)}
               onFork={async (createdAt) => {
                 if (!activeId) return;

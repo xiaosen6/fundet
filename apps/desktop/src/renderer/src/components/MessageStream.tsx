@@ -31,6 +31,7 @@ import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
 import { AgentTaskCard } from './AgentTaskCard';
+import { TurnChangesBar } from './TurnChangesBar';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useReducedMotion } from '../hooks/useReducedMotion';
@@ -303,8 +304,12 @@ interface MessageStreamProps {
   onDeleteUserMessage?: (createdAt: number) => void;
   /** Canvas 产物全集：助手正文里命中 basename/路径形状的片段升级为路径 chip */
   artifactPaths?: string[];
-  /** 轮末改动卡 slot：渲染在消息流末尾（最后一轮回复下方，跟内容滚动不浮动） */
-  turnChangesSlot?: React.ReactNode;
+  /** 轮末改动卡数据（checkpoint diff；非空且非 running 时渲染为末尾伪行） */
+  turnChanges?: {
+    sessionId: string;
+    files: Array<{ path: string; additions: number; deletions: number }>;
+    baseSha: string | null;
+  } | null;
 }
 
 function isTurnTailAssistant(
@@ -589,7 +594,7 @@ export function MessageStream({
   onEditSubmit,
   onDeleteUserMessage,
   artifactPaths,
-  turnChangesSlot,
+  turnChanges,
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -605,11 +610,20 @@ export function MessageStream({
   // 编辑入口只给最后一条 user 消息（Cindy edit-last-message）
   let lastUserId = '';
   for (const it of slice.items) if (it.kind === 'user') lastUserId = it.id;
-  // 虚拟化行 = 分组行 + 流式未封口伪行（永远最后一行）
-  const rows = useMemo<Array<GroupedRow | { kind: 'streaming'; id: string }>>(
-    () => (slice.streamingText ? [...grouped, { kind: 'streaming', id: '__streaming__' }] : grouped),
-    [grouped, slice.streamingText],
-  );
+  // 虚拟化行 = 分组行 + 流式未封口伪行（永远最后一行）+ 轮末改动卡伪行（最后一轮回复下方）
+  const rows = useMemo<
+    Array<GroupedRow | { kind: 'streaming'; id: string } | { kind: 'turnchanges'; id: string }>
+  >(() => {
+    const base: Array<GroupedRow | { kind: 'streaming'; id: string }> = slice.streamingText
+      ? [...grouped, { kind: 'streaming', id: '__streaming__' }]
+      : grouped;
+    // 轮末改动卡：跑完（非 running）且有文件改动时追加在末尾（最后一轮回复下方，
+    // 跟内容滚动）；AI 运行中隐藏（结束才出现，Cindy TurnChangesCard 同语义）
+    if (!slice.isRunning && turnChanges && turnChanges.files.length > 0) {
+      return [...base, { kind: 'turnchanges' as const, id: '__turnchanges__' }];
+    }
+    return base;
+  }, [grouped, slice.streamingText, slice.isRunning, turnChanges]);
   // 入场动画：本渲染是否「尾部追加批次」（少量增量；首渲染与 0→N 批量不算）
   const prevRowsLenRef = useRef(0);
   const firstRenderRef = useRef(true);
@@ -625,7 +639,7 @@ export function MessageStream({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ESTIMATE_ROW_PX,
+    estimateSize: (i) => (rows[i]?.kind === 'turnchanges' ? 170 : ESTIMATE_ROW_PX),
     overscan: OVERSCAN_ROWS,
     getItemKey: (i) => rows[i]!.id,
   });
@@ -1067,6 +1081,15 @@ export function MessageStream({
                       )}
                     </div>
                   </div>
+                ) : item.kind === 'turnchanges' ? (
+                  <div className="mb-1.5">
+                    <TurnChangesBar
+                      sessionId={turnChanges?.sessionId ?? ''}
+                      files={turnChanges?.files ?? []}
+                      baseSha={turnChanges?.baseSha ?? null}
+                      onOpenFile={onOpenFile ?? (() => undefined)}
+                    />
+                  </div>
                 ) : item.kind === 'notice' ? (
                   <div className="flex items-center justify-center gap-1.5 select-none">
                     <Info size={12} className="text-muted" />
@@ -1080,7 +1103,6 @@ export function MessageStream({
           );
         })}
         {/* 轮末改动卡：作为对话内容渲染在最后一轮回复下方（跟内容滚动，不浮在视口） */}
-        {turnChangesSlot ? <div className="mt-1.5">{turnChangesSlot}</div> : null}
       </div>
       {sharePayload ? (
         <ShareTurnModal payload={sharePayload} onClose={() => setSharePayload(null)} />
