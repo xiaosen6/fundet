@@ -1111,6 +1111,9 @@ export class PiAgent extends BaseAgent {
     // 熔断触发后调用 handle.abort（later-bound：abort 在下方 handle 对象定义）
     let requestAbortRef: (() => Promise<void>) | null = null;
     const toolLoopGuard = createToolLoopGuard();
+    // start 事件 args 按 toolCallId 暂存，供 end 事件关联入参（end 无 args 字段）
+    const pendingToolInputs = new Map<string, string>();
+    let toolLoopTripped = false;
     const ctx: PiTranslateContext = createPiTranslateContext(this.deps.logger);
     let interactionResolver: InteractionResolver | null = null;
     // Host 每轮权限策略(个人微信 / Telegram 群)。刻意保留在 send 之外的闭包里:
@@ -1372,13 +1375,25 @@ export class PiAgent extends BaseAgent {
           ) {
             clearActiveTurnPermissionPolicy('turn_terminal', { dismissPending: true });
             toolLoopGuard.reset();
+            toolLoopTripped = false;
+            pendingToolInputs.clear();
           }
           // 工具循环熔断：同一工具同一入参连续打满阈值（无外部进展的死循环）
           // → terminal error + abort 该 turn，替用户止损烧 token。
-          if (event.type === 'tool_execution_end') {
-            const te = event as { toolName?: string; input?: unknown; result?: unknown };
+          // 入参来自 start 事件的 args（end 事件无 args 字段——rpc.md 与 pi 源码
+          // 均只带 toolCallId/toolName/result/isError），按 toolCallId 关联。
+          // tripped latch：abort 生效前飞行中的同 key end 不再重复终止。
+          if (event.type === 'tool_execution_start') {
+            const ts = event as { toolCallId?: string; args?: unknown };
+            if (ts.toolCallId) pendingToolInputs.set(ts.toolCallId, toolInputKey(ts.args));
+          }
+          if (event.type === 'tool_execution_end' && !toolLoopTripped) {
+            const te = event as { toolCallId?: string; toolName?: string; result?: unknown };
+            const inputKey = (te.toolCallId && pendingToolInputs.get(te.toolCallId)) ?? 'unknown';
+            if (te.toolCallId) pendingToolInputs.delete(te.toolCallId);
             const resultKey = toolResultFullText(te.result as never).slice(0, 2000);
-            if (te.toolName && toolLoopGuard.feed(te.toolName, toolInputKey(te.input), toolInputKey(resultKey)) === 'trip') {
+            if (te.toolName && toolLoopGuard.feed(te.toolName, inputKey, toolInputKey(resultKey)) === 'trip') {
+              toolLoopTripped = true;
               deps.logger.warn('pi tool loop guard tripped', { toolName: te.toolName });
               queue.push({
                 type: 'error',
