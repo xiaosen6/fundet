@@ -24,7 +24,11 @@ export function useOfficeFileBytes(path: string, workDir: string): OfficeFileSta
       } catch (err) {
         if (cancelled) return;
         const raw = err instanceof Error ? err.message : String(err);
-        const message = /超过\s*8\s*MB/.test(raw) ? '文件超过 8 MB，请用系统打开' : raw;
+        const message = /ENOENT/i.test(raw)
+          ? '文件已不存在（可能已被助手清理）'
+          : /超过\s*8\s*MB/.test(raw)
+            ? '文件超过 8 MB，请用系统打开'
+            : raw;
         setState({ phase: 'error', message });
       }
     };

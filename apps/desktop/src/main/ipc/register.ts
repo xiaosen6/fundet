@@ -221,14 +221,21 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
 async function captureAndPushTurnArtifacts(sessionId: string): Promise<void> {
   try {
     const baseline = turnArtifactSnapshots.get(sessionId);
-    if (!baseline) return;
+    if (!baseline) {
+      console.info('[fundet:artifacts] 轮末跳过：无基线快照', { sessionId });
+      return;
+    }
     const workDir = getDb()
       .select({ workDir: sessions.workDir })
       .from(sessions)
       .where(eq(sessions.id, sessionId))
       .get()?.workDir;
-    if (!workDir) return;
+    if (!workDir) {
+      console.info('[fundet:artifacts] 轮末跳过：会话无 workDir', { sessionId });
+      return;
+    }
     const paths = diffArtifacts(baseline, await scanArtifactSnapshot(workDir));
+    console.info('[fundet:artifacts] 轮末 diff', { sessionId, hits: paths.length, paths: paths.slice(0, 5) });
     if (paths.length === 0) return;
     broadcast(FUNDET_PUSH.TURN_ARTIFACTS, { sessionId, paths });
   } catch (err) {

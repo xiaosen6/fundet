@@ -243,7 +243,12 @@ function Preview({
         const body = await window.fundet.readTextFile(artifact.path, workDir);
         if (!cancelled) setText(body);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled)
+          setError(
+            /ENOENT/i.test(err instanceof Error ? err.message : String(err))
+              ? '文件已不存在（可能已被助手清理）——列表记录的是历史产出路径'
+              : err instanceof Error ? err.message : String(err),
+          );
       }
     };
     void run();
