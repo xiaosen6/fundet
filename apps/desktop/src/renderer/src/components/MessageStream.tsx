@@ -16,8 +16,10 @@
  * - 条目间距 gap-3.5（14px，对齐 Cindy msg-stream-items）。
  * - 每轮完成后的助手消息挂 MessageActionBar（复制 / 分享 / 分叉 / 更多），
  *   不含「复制当前消息链接」。
+ * - 消息导航器（Cindy minimap）：右缘细列（每条 user 消息一根横线）+ 悬停展开
+ *   消息列表浮层点击跳转（MessageNavigator，≥5 条 user 消息才渲染）。
  */
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Loader2, Pen, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { getFocusedSessionId, type DisplayItem, type SessionSlice } from '../stores/sessionStore';
@@ -34,6 +36,13 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { Tooltip } from './ui/Tooltip';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
+import {
+  MIN_NAVIGATOR_USERS,
+  activeUserMarkIndex,
+  navigatorPreview,
+  visibleIndexRange,
+} from '../lib/messageNavigator';
+import { MessageNavigator, type NavigatorEntry } from './MessageNavigator';
 
 /** 用户消息气泡：长文本自动收起（抄 Cindy userMessageCollapse：镜像节点实测行数
  * + ResizeObserver 跟宽重算），折叠态 line-clamp-10 + 「展开全文 / 收起」。 */
@@ -653,9 +662,11 @@ export function MessageStream({
     }
   };
 
-  // 跳到上一条提问（对齐 Cindy PrevMessageJumpChip：icon-only 圆钮落右上角）。
-  // rAF 节流地找「视口首个可见条目」之前最近的一条 user 消息。
+  // 跳到上一条提问（对齐 Cindy PrevMessageJumpChip：icon-only 圆钮落右上角）+
+  // 消息导航器高亮：同一个 rAF 探测里读 virtualizer 现成值，一次算两处。
   const [prevQuestion, setPrevQuestion] = useState<{ index: number; preview: string } | null>(null);
+  // 导航器当前高亮行（≤视口末行的最后一条 user 行；null=视口在首条 user 之前）
+  const [navActive, setNavActive] = useState<number | null>(null);
   const userIndexes = useMemo(() => {
     const idx: number[] = [];
     grouped.forEach((g, i) => {
@@ -663,8 +674,17 @@ export function MessageStream({
     });
     return idx;
   }, [grouped]);
+  // 导航器条目（行 index + 一行预览；totalRows 见挂载点）
+  const navigatorEntries = useMemo<NavigatorEntry[]>(
+    () =>
+      userIndexes.map((index) => {
+        const g = grouped[index];
+        return { index, preview: navigatorPreview(g?.kind === 'user' ? g.text : '') };
+      }),
+    [userIndexes, grouped],
+  );
   const rafPendingRef = useRef(false);
-  const updatePrevQuestion = (): void => {
+  const updateScrollProbes = (): void => {
     if (rafPendingRef.current) return;
     rafPendingRef.current = true;
     requestAnimationFrame(() => {
@@ -672,17 +692,14 @@ export function MessageStream({
       const el = containerRef.current;
       if (!el || rows.length === 0) {
         setPrevQuestion(null);
+        setNavActive(null);
         return;
       }
-      // 首个与视口顶相交的虚拟行（items 有序，含 overscan）
-      const offset = el.scrollTop;
-      let firstVisible = -1;
-      for (const it of virtualizer.getVirtualItems()) {
-        if (it.end >= offset + 4) {
-          firstVisible = it.index;
-          break;
-        }
-      }
+      // 视口真实相交的行范围（getVirtualItems 有序但含 overscan 外扩，剥掉）
+      const range = visibleIndexRange(virtualizer.getVirtualItems(), el.scrollTop, el.clientHeight);
+      // 导航器高亮（原始值不变时 React 跳过重渲染）
+      setNavActive(range ? activeUserMarkIndex(userIndexes, range.last) : null);
+      const firstVisible = range?.first ?? -1;
       if (firstVisible <= 0) {
         setPrevQuestion(null);
         return;
@@ -697,10 +714,7 @@ export function MessageStream({
         setPrevQuestion(null);
         return;
       }
-      const preview = (item.text.split('\n').find((l) => l.trim().length > 0) ?? '')
-        .trim()
-        .slice(0, 60);
-      setPrevQuestion({ index: prev, preview });
+      setPrevQuestion({ index: prev, preview: navigatorPreview(item.text) });
     });
   };
 
@@ -712,6 +726,32 @@ export function MessageStream({
       behavior: reducedMotion ? 'auto' : 'smooth',
     });
   };
+
+  // 导航器跳转：对齐目标 user 行顶 + 解除贴底（跳过去后不被 RO 拉回底部）
+  const jumpToNavigatorIndex = useCallback(
+    (index: number): void => {
+      setStuck(false);
+      virtualizer.scrollToIndex(index, {
+        align: 'start',
+        behavior: reducedMotion ? 'auto' : 'smooth',
+      });
+    },
+    // setStuck 只闭包稳定 ref/state 封装；virtualizer 实例跨渲染稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [virtualizer, reducedMotion],
+  );
+  // 收起态细列盖在消息流右缘（去滚动条的必经之路），滚轮转发回滚动容器，
+  // 语义与容器自身 onWheel 一致（上滚解除贴底）
+  const navigatorRailWheel = useCallback(
+    (e: React.WheelEvent): void => {
+      const el = containerRef.current;
+      if (!el) return;
+      if (e.deltaY < 0) setStuck(false);
+      el.scrollBy({ top: e.deltaY });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // 划选引用：消息文本被划选后浮出「引用」钮（点击走 onAddToChat，> 前缀引用）
   const [quoteSel, setQuoteSel] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -755,13 +795,13 @@ export function MessageStream({
     setShowJump(distance > 150 && !stickRef.current);
     // 滚动时收起划选引用钮（选区与按钮错位没有意义）
     setQuoteSel(null);
-    // 右上角「上一条提问」跳钮探测（rAF 节流）
-    updatePrevQuestion();
+    // 右上角「上一条提问」跳钮 + 导航器高亮探测（rAF 节流）
+    updateScrollProbes();
   };
 
-  // 切会话后重估「上一条提问」跳钮（视口内容变了）
+  // 切会话后重估「上一条提问」跳钮与导航器高亮（视口内容变了）
   useEffect(() => {
-    updatePrevQuestion();
+    updateScrollProbes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slice.historyLoaded]);
 
@@ -986,6 +1026,16 @@ export function MessageStream({
             </button>
           </Tooltip>
         </div>
+      )}
+      {/* 消息导航器 minimap（Cindy 同款）：≥5 条 user 消息才渲染 */}
+      {navigatorEntries.length >= MIN_NAVIGATOR_USERS && (
+        <MessageNavigator
+          entries={navigatorEntries}
+          totalRows={rows.length}
+          activeIndex={navActive}
+          onJump={jumpToNavigatorIndex}
+          onRailWheel={navigatorRailWheel}
+        />
       )}
       {/* 有未读时计数优先，无未读时显示跳底快捷钮（互斥，Cindy 同款） */}
       <StreamBottomChip
