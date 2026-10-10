@@ -83,6 +83,9 @@ import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPan
 import { cn } from '../lib/cn';
 
 /** 产物去重键：Windows 路径分隔符/大小写归一（write 工具、附件与扫描可能给同一路径的不同写法） */
+/** 轮末扫描产物（per-session 累积）：模块级 Map，背景会话完成的 push 也不丢 */
+const turnArtifactPathsStore = new Map<string, string[]>();
+
 function artifactKey(p: string): string {
   return p.replace(/\//g, '\\').toLowerCase();
 }
@@ -99,7 +102,7 @@ export function ChatPage(): React.JSX.Element {
   const [dwsEnabled, setDwsEnabled] = useState(true);
   const [turnChanges, setTurnChanges] = useState<{ sessionId: string; files: TurnChangeEntry[]; baseSha: string | null } | null>(null);
   // 轮末产物扫描：脚本生成的文件路径（跨轮累积，activeId 切换清空）
-  const [turnArtifactPaths, setTurnArtifactPaths] = useState<string[]>([]);
+  const [turnArtifactPathsTick, setTurnArtifactPathsTick] = useState(0);
   // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
   const [planContent, setPlanContent] = useState<string | undefined>(undefined);
 
@@ -125,28 +128,30 @@ export function ChatPage(): React.JSX.Element {
     return off;
   }, [activeId]);
 
-  // 轮末产物扫描：主进程 turn:artifacts push（脚本生成的 pptx/png 等）补充进
-  // Canvas 产物列表；只在当前会话累积，切会话清空（历史轮产物仍由消息流
-  // collectArtifacts 提供——write/edit 工具面不变，本机制是补充）
+  // 轮末产物扫描：主进程 turn:artifacts push 补充进 Canvas 产物列表。
+  // 累积在模块级 Map（per-session），背景会话完成的 push 也不丢（review P1-2：
+  // 此前按 activeId 过滤直接丢弃，切回后产物永远消失）。
   useEffect(() => {
-    setTurnArtifactPaths([]);
     const off = window.fundet.onTurnArtifacts((p) => {
-      if (p.sessionId !== activeId) return;
-      setTurnArtifactPaths((prev) => {
-        const seen = new Set(prev);
-        let added = false;
-        const merged = [...prev];
-        for (const filePath of p.paths) {
-          if (seen.has(filePath)) continue;
-          seen.add(filePath);
-          merged.push(filePath);
-          added = true;
-        }
-        return added ? merged : prev;
-      });
+      const cur = turnArtifactPathsStore.get(p.sessionId) ?? [];
+      const seen = new Set(cur);
+      let added = false;
+      const merged = [...cur];
+      for (const filePath of p.paths) {
+        if (seen.has(filePath)) continue;
+        seen.add(filePath);
+        merged.push(filePath);
+        added = true;
+      }
+      if (added) {
+        turnArtifactPathsStore.set(p.sessionId, merged);
+        setTurnArtifactPathsTick((n) => n + 1);
+      }
     });
     return off;
-  }, [activeId]);
+  }, []);
+  // 当前会话的扫描产物（切会话自动切换到对应集合）
+  const turnArtifactPaths = activeId ? (turnArtifactPathsStore.get(activeId) ?? []) : [];
 
   // 钉钉组件：订阅主进程 push + 回焦触发刷新（主进程按 TTL 去抖，不会刷爆）
   useEffect(() => {
@@ -255,7 +260,8 @@ export function ChatPage(): React.JSX.Element {
     // 轮末扫描产物（脚本生成）最后并入：与 write/edit 工具面/附件按归一路径去重
     for (const p of turnArtifactPaths) add(p, 'script');
     return extra.length > 0 ? [...fromItems, ...extra] : fromItems;
-  }, [slice.items, attachments, turnArtifactPaths]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slice.items, attachments, turnArtifactPaths, turnArtifactPathsTick, activeId]);
   // 助手正文路径 chip 的已知产物全集（stable 引用，AssistantMessage memo 依赖）
   const artifactPathList = useMemo(() => artifacts.map((a) => a.path), [artifacts]);
   const modelSpec = useMemo(() => {
@@ -696,6 +702,9 @@ export function ChatPage(): React.JSX.Element {
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
     if (!activeId || (!text && attachments.length === 0 && pastedTexts.length === 0)) return;
+    // 发送即清上一轮改动卡：无改动轮结束后旧卡不再"复活"（review P1——
+    // 旧卡带旧 baseSha，撤销会把多轮改动一起回滚）
+    setTurnChanges(null);
     const pending = attachments;
     setInput('');
     setAttachments([]);
