@@ -210,6 +210,13 @@ function createWindow(): void {
 
   revealWindow(win);
   win.webContents.once('did-finish-load', () => revealWindow(win));
+  // 加载失败/窗口异常关闭必须留日志——黑屏排障时这是唯一线索源
+  // （2026-10-10 用户实报间歇性黑屏：Chromium Network service 崩溃时
+  // loadURL 失败窗口空白，此前零日志无从定位）
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[fundet:window] 页面加载失败 code=${code} desc=${desc} url=${url}`);
+  });
+  win.on('closed', () => console.warn('[fundet:window] 主窗口已关闭'));
   if (process.platform !== 'darwin') setupTrayAndCloseBehavior(win);
 
   if (process.env['ELECTRON_RENDERER_URL']) {
