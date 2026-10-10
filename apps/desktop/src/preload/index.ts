@@ -259,6 +259,7 @@ const api: FundetApi = {
   onNotifyOpenSession: (cb) => subscribe(FUNDET_PUSH.NOTIFY_OPEN_SESSION, cb),
   onNotifyChime: (cb) => subscribe(FUNDET_PUSH.NOTIFY_CHIME, cb),
   onTurnChanges: (cb) => subscribe(FUNDET_PUSH.TURN_CHANGES, cb),
+  onTurnArtifacts: (cb) => subscribe(FUNDET_PUSH.TURN_ARTIFACTS, cb),
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
   onDwsEnabledChanged: (cb) => subscribe(FUNDET_PUSH.DWS_ENABLED_CHANGED, cb),

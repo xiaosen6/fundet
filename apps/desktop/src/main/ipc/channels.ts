@@ -168,6 +168,8 @@ export const FUNDET_PUSH = {
   SESSION_LIST_CHANGED: 'session:list-changed',
   /** 轮末改动文件统计（对齐 Cindy TurnChangesCard 数据面 v1）：payload { sessionId, files: [{path, additions, deletions}] } */
   TURN_CHANGES: 'turn:changes',
+  /** 轮末产物扫描（bash/python 等脚本生成的文件进 Canvas 产物列表）：payload { sessionId, paths } */
+  TURN_ARTIFACTS: 'turn:artifacts',
   IM_STATUS_CHANGED: 'im:status-changed',
   /** 钉钉组件板快照变化：payload = DwsWidgetsSnapshot */
   DWS_WIDGETS_CHANGED: 'dws:widgets-changed',
