@@ -21,6 +21,26 @@ describe('fileKind', () => {
     assert.equal(fileKind('main.ts'), 'text');
     assert.equal(fileKind('archive.zip'), 'other');
   });
+
+  it('classifies office documents (Canvas 预览)', () => {
+    assert.equal(fileKind('报告.DOCX'), 'docx');
+    assert.equal(fileKind('预算表.xlsx'), 'xlsx');
+    assert.equal(fileKind('宏表.xlsm'), 'xlsx');
+    assert.equal(fileKind('路演.pptx'), 'pptx');
+    // 老格式二进制 Office（.doc/.xls/.ppt）不接内嵌预览，保持 other
+    assert.equal(fileKind('legacy.doc'), 'other');
+    assert.equal(fileKind('legacy.xls'), 'other');
+    assert.equal(fileKind('legacy.ppt'), 'other');
+  });
+
+  it('maps office extensions to OOXML mime（readFileDataUrl 数据 URL 用）', () => {
+    assert.equal(
+      mimeFromExt('a.docx'),
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    assert.equal(mimeFromExt('a.xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    assert.equal(mimeFromExt('a.pptx'), 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  });
 });
 
 describe('isImagePath / mime / sendBlockKind', () => {

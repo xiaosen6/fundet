@@ -379,6 +379,12 @@ textarea:focus-visible {
   padding: 0;
 }
 
+/* docx 预览（复用 .md 排版）：mammoth 内联 base64 图片不撑破容器 */
+.office-docx img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* highlight.js token → 主题变量（近单色，仅注释/字符串等轻微区分） */
 .hljs-comment,
 .hljs-quote {
