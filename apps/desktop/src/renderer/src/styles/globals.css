@@ -781,6 +781,18 @@ a {
   }
 }
 
+/* 产物路径卡入场（左锚定，仅纵向微移；区别于居中定位的 tooltip-in） */
+@keyframes path-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* 确认对话框进出场（对齐 Cindy confirm-content/overlay：遮罩淡入淡出，卡片微缩放） */
 @keyframes confirm-overlay-in {
   from {

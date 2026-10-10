@@ -256,6 +256,8 @@ export function ChatPage(): React.JSX.Element {
     for (const p of turnArtifactPaths) add(p, 'script');
     return extra.length > 0 ? [...fromItems, ...extra] : fromItems;
   }, [slice.items, attachments, turnArtifactPaths]);
+  // 助手正文路径 chip 的已知产物全集（stable 引用，AssistantMessage memo 依赖）
+  const artifactPathList = useMemo(() => artifacts.map((a) => a.path), [artifacts]);
   const modelSpec = useMemo(() => {
     const id = activeMeta?.model;
     if (!id) return undefined;
@@ -1069,6 +1071,7 @@ export function ChatPage(): React.JSX.Element {
               slice={slice}
               workDir={activeMeta?.workDir || workDir}
               onOpenFile={openCanvas}
+              artifactPaths={artifactPathList}
               canFork={Boolean(activeId) && !isDraftSession(activeId)}
               onFork={async (createdAt) => {
                 if (!activeId) return;
