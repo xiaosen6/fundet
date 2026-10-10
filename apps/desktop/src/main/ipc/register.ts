@@ -191,7 +191,11 @@ const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
  * 终止 error 判定与 events.ts 语义对齐：先看 isTerminal，缺省但有 willRetry
  * 时用 !willRetry 兜底，两者都缺的老事件按终止处理。
  */
-/** 轮末改动统计（后台，fire-and-forget）：base=轮前快照链落完后的 HEAD */
+/**
+ * 轮末改动统计（后台，fire-and-forget）：base=轮前快照链落完后的 HEAD。
+ * baseSha 随 payload 推给渲染层作撤销目标（checkpoint:rewind 到该时点即撤销
+ * 本轮；null=无快照基准，渲染层隐藏撤销按钮）。
+ */
 async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
   try {
     if (!isCheckpointAvailable()) return;
@@ -205,7 +209,7 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
     const base = await currentCheckpointHead(sessionId);
     const files = await captureTurnDiff(sessionId, workDir, base, `turn-end`);
     if (files.length === 0) return;
-    broadcast(FUNDET_PUSH.TURN_CHANGES, { sessionId, files });
+    broadcast(FUNDET_PUSH.TURN_CHANGES, { sessionId, files, baseSha: base });
   } catch (err) {
     console.warn('[fundet:checkpoint] 轮末改动统计失败（不影响会话）', err);
   }

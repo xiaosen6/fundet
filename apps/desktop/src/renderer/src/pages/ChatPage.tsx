@@ -97,7 +97,7 @@ export function ChatPage(): React.JSX.Element {
   const [notice, setNotice] = useState('');
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const [dwsEnabled, setDwsEnabled] = useState(true);
-  const [turnChanges, setTurnChanges] = useState<TurnChangeEntry[] | null>(null);
+  const [turnChanges, setTurnChanges] = useState<{ files: TurnChangeEntry[]; baseSha: string | null } | null>(null);
   // 轮末产物扫描：脚本生成的文件路径（跨轮累积，activeId 切换清空）
   const [turnArtifactPaths, setTurnArtifactPaths] = useState<string[]>([]);
   // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
@@ -115,11 +115,12 @@ export function ChatPage(): React.JSX.Element {
     setPlanContent(undefined);
   }, [activeId]);
 
-  // 轮末改动（对齐 Cindy v1）：只显示当前会话最新一轮；切会话清空
+  // 轮末改动（对齐 Cindy TurnChangesCard）：只显示当前会话最新一轮；切会话清空。
+  // baseSha=轮前快照（卡片「撤销」的回滚目标）
   useEffect(() => {
     setTurnChanges(null);
     const off = window.fundet.onTurnChanges((p) => {
-      if (p.sessionId === activeId) setTurnChanges(p.files);
+      if (p.sessionId === activeId) setTurnChanges({ files: p.files, baseSha: p.baseSha ?? null });
     });
     return off;
   }, [activeId]);
@@ -1187,9 +1188,14 @@ export function ChatPage(): React.JSX.Element {
                         <PlanCard content={planContent} />
                       </div>
                     )}
-                    {!slice.isRunning && slice.items.length > 0 && turnChanges && turnChanges.length > 0 && (
+                    {!slice.isRunning && slice.items.length > 0 && activeId && turnChanges && turnChanges.files.length > 0 && (
                       <div className="mb-1.5">
-                        <TurnChangesBar files={turnChanges} onOpenFile={openCanvas} />
+                        <TurnChangesBar
+                          sessionId={activeId}
+                          files={turnChanges.files}
+                          baseSha={turnChanges.baseSha}
+                          onOpenFile={openCanvas}
+                        />
                       </div>
                     )}
                     <ChatInput
