@@ -249,7 +249,7 @@ function assistantTextOf(message: PiAssistantMessage): string {
   return parts.join('\n\n');
 }
 
-function toolResultFullText(result: unknown): string {
+export function toolResultFullText(result: unknown): string {
   if (typeof result !== 'object' || result === null) return '';
   const content = (result as { content?: unknown }).content;
   if (!Array.isArray(content)) return '';
