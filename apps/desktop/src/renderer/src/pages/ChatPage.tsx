@@ -1072,6 +1072,20 @@ export function ChatPage(): React.JSX.Element {
               workDir={activeMeta?.workDir || workDir}
               onOpenFile={openCanvas}
               artifactPaths={artifactPathList}
+              turnChangesSlot={
+                !slice.isRunning &&
+                slice.items.length > 0 &&
+                activeId &&
+                turnChanges &&
+                turnChanges.files.length > 0 ? (
+                  <TurnChangesBar
+                    sessionId={activeId}
+                    files={turnChanges.files}
+                    baseSha={turnChanges.baseSha}
+                    onOpenFile={openCanvas}
+                  />
+                ) : null
+              }
               canFork={Boolean(activeId) && !isDraftSession(activeId)}
               onFork={async (createdAt) => {
                 if (!activeId) return;
@@ -1189,16 +1203,6 @@ export function ChatPage(): React.JSX.Element {
                     {!slice.isRunning && permissionMode === 'plan' && planContent !== undefined && (
                       <div className="mb-1.5">
                         <PlanCard content={planContent} />
-                      </div>
-                    )}
-                    {!slice.isRunning && slice.items.length > 0 && activeId && turnChanges && turnChanges.files.length > 0 && (
-                      <div className="mb-1.5">
-                        <TurnChangesBar
-                          sessionId={activeId}
-                          files={turnChanges.files}
-                          baseSha={turnChanges.baseSha}
-                          onOpenFile={openCanvas}
-                        />
                       </div>
                     )}
                     <ChatInput
