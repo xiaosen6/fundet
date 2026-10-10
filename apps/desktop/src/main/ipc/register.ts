@@ -394,6 +394,15 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
       if (input.create?.model && input.create.model !== alive.model) {
         await alive.setModel(input.create.model, { providerId: input.create.providerId });
       }
+      // 权限档热切（与模型热切同语义）：预热会话以默认 ask 创建，draft 阶段
+      // 选的档在这之后——不同步的话 pi 内部仍是 ask，用户选了完全放行照样
+      // 弹审批卡（2026-10-10 用户实报「对话后切回每次询问」的根因）。
+      // 带参即 set（幂等，Session 无现档 getter 可比）
+      if (input.create?.permissionMode) {
+        await alive
+          .setPermissionMode(input.create.permissionMode)
+          .catch(() => undefined); // 热切失败不阻断发送，行为回落 pi 现档
+      }
       return alive;
     }
     if (decision === 'discard') {
