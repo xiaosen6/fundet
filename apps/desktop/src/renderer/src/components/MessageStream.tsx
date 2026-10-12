@@ -567,7 +567,13 @@ export function MessageStream({
   const touchStartYRef = useRef<number | null>(null);
   const [sharePayload, setSharePayload] = useState<ShareTurnPayload | null>(null);
   const grouped = useMemo(
-    () => groupWorkItems(slice.items, slice.isRunning),
+    () =>
+      groupWorkItems(
+        // turnArtifacts 不渲染气泡（turnArtifacts 伪条目只喂轮末产出卡，
+        // 数据走 splitGeneratedFileTurns 的全量 items）
+        slice.items.filter((it) => it.kind !== 'turnArtifacts'),
+        slice.isRunning,
+      ),
     [slice.items, slice.isRunning],
   );
   const hasStreaming = Boolean(slice.streamingText);

@@ -1,8 +1,8 @@
 /**
  * GeneratedFilesCard — 每个 user turn 末尾的「本轮产出文件」卡（Cindy
  * GeneratedFilesCard 移植，用户拍板对齐 Cindy）。数据由 lib/generatedFiles
- * 从持久化 tool 条目派生（write/edit 目标路径），历史轮同样渲染；无产物
- * 不占版面（返回 null）。
+ * 从持久化条目派生（write/edit 目标 + 轮末扫描的脚本产物 turnArtifacts，
+ * 文档类交付物排最前），历史轮同样渲染；无产物不占版面（返回 null）。
  *
  * 条目两形态：①普通 pill；②pdf/docx/pptx/xlsx 文档卡——v1 顶部为简单的
  * 格式图标 + 文件名 + 格式标签（Cindy 的 xlsx 表格 / pptx 幻灯片预览是

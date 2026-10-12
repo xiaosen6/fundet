@@ -1,11 +1,16 @@
 /**
- * generatedFiles — 按轮次从 DisplayItem[] 派生「本轮 agent 写入的文件」。
+ * generatedFiles — 按轮次从 DisplayItem[] 派生「本轮 agent 产出的文件」。
  * ---------------------------------------------------------------------------
- * 纯派生、不新增持久化：tool 条目本身已落库并随历史回放，历史轮同样能重建。
- * 工具名判定与 lib/artifacts.ts 的 collectArtifacts 同口径（write/edit 族，
- * read/bash 不算产出）；差异是按轮次分组（每条 user 消息到下一条 user 消息
- * 之间为一个 turn），供消息流每轮末尾的产出文件卡（components/chat/
- * GeneratedFilesCard.tsx，Cindy GeneratedFilesCard 移植）消费。
+ * 两个来源合并（用户实报：写 gen_docx.js 再 node 跑出 docx，卡上只有脚本
+ * 没有文档——write/edit 工具面收不到脚本运行产物）：
+ * 1. kind:'turnArtifacts' 条目——主进程轮末 mtime 扫描（turn:artifacts push
+ *    落库），bash/python 等脚本生成的 docx/pptx/pdf/图片，绝对路径、mtime
+ *    倒序（交付文档最后落盘排最前，卡上文档先出）；
+ * 2. tool 条目的 write/edit 目标——与 lib/artifacts.ts 的 collectArtifacts
+ *    同口径（read/bash 不算产出），多为脚本源码等中间文件。
+ * 两者都落库并随历史回放，历史轮同样能重建。按轮次分组（每条 user 消息到
+ * 下一条 user 消息之间为一个 turn），供消息流每轮末尾的产出文件卡
+ * （components/chat/GeneratedFilesCard.tsx，Cindy GeneratedFilesCard 移植）消费。
  */
 import type { DisplayItem } from '../stores/sessionStore';
 import { extOf, fileKind } from '../../../shared/file-kind.ts';
@@ -57,23 +62,44 @@ function pathKey(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase();
 }
 
+/** 绝对路径形态（Windows 盘符 / UNC / POSIX 根）；相对路径走 basename 去重 */
+function isAbsoluteish(p: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\');
+}
+
 /**
- * 单个 turn 的条目 → 本轮写入文件（有序去重）。
- * 失败（isError）与仍在跑（!done）的写入不算产出；目录形态（尾分隔符）不收。
+ * 单个 turn 的条目 → 本轮产出文件（有序去重）。
+ * 扫描产物（绝对路径）在前、write/edit 目标在后；失败（isError）与仍在跑
+ * （!done）的写入不算产出；目录形态（尾分隔符）不收。
+ * 去重：绝对路径按归一全路径；相对路径只按 basename（跨来源时 write 给相对
+ * 路径、扫描给绝对路径，同 basename 视为同一文件，先到的绝对路径胜出——
+ * 点击路由用它更稳，不会拼错 workDir）。
  */
 export function collectGeneratedFiles(items: readonly DisplayItem[]): GeneratedFileRef[] {
-  const seen = new Set<string>();
+  const seenKeys = new Set<string>();
+  const seenNames = new Set<string>();
   const out: GeneratedFileRef[] = [];
+  const push = (p: string): void => {
+    if (!p || /[\\/]$/.test(p)) return;
+    const name = p.replace(/\\/g, '/').split('/').pop() ?? p;
+    const nameKey = name.toLowerCase();
+    if (isAbsoluteish(p)) {
+      const key = pathKey(p);
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+    } else {
+      if (seenNames.has(nameKey)) return;
+    }
+    seenNames.add(nameKey);
+    out.push({ path: p, name, doc: DOC_FORMAT_BY_EXT[extOf(p)] ?? null });
+  };
+  for (const it of items) {
+    if (it.kind === 'turnArtifacts') for (const p of it.paths) push(p);
+  }
   for (const it of items) {
     if (it.kind !== 'tool' || !it.done || it.isError) continue;
     if (!isWriteTool(it.toolName)) continue;
-    const p = pathFromInput(it.input);
-    if (!p || /[\\/]$/.test(p)) continue;
-    const key = pathKey(p);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const name = p.replace(/\\/g, '/').split('/').pop() ?? p;
-    out.push({ path: p, name, doc: DOC_FORMAT_BY_EXT[extOf(p)] ?? null });
+    push(pathFromInput(it.input) ?? '');
   }
   return out;
 }

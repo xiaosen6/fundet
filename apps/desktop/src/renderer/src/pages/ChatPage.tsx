@@ -16,6 +16,7 @@ import type { ProviderView, SessionAttachment, SkillView } from '../../../shared
 import type { SlashItem } from '../components/SlashPalette';
 import {
   abortSession,
+  appendTurnArtifacts,
   deleteAssistantTurn,
   deleteDraftSession,
   ensureDraftSession,
@@ -128,11 +129,13 @@ export function ChatPage(): React.JSX.Element {
     return off;
   }, [activeId]);
 
-  // 轮末产物扫描：主进程 turn:artifacts push 补充进 Canvas 产物列表。
+  // 轮末产物扫描：主进程 turn:artifacts push 补充进 Canvas 产物列表 + 轮末
+  // 产出卡（live 追加条目；未展开的会话跳过，切进时由落库行重建）。
   // 累积在模块级 Map（per-session），背景会话完成的 push 也不丢（review P1-2：
   // 此前按 activeId 过滤直接丢弃，切回后产物永远消失）。
   useEffect(() => {
     const off = window.fundet.onTurnArtifacts((p) => {
+      appendTurnArtifacts(p.sessionId, p.paths);
       const cur = turnArtifactPathsStore.get(p.sessionId) ?? [];
       const seen = new Set(cur);
       let added = false;
