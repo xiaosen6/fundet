@@ -209,7 +209,10 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
     const base = await currentCheckpointHead(sessionId);
     const files = await captureTurnDiff(sessionId, workDir, base, `turn-end`);
     if (files.length === 0) return;
-    broadcast(FUNDET_PUSH.TURN_CHANGES, { sessionId, files, baseSha: base });
+    // git numstat 给的是 workDir 相对路径——拼成绝对路径再推（Canvas 产物列表
+    // 存绝对路径，相对路径匹配不上会 fallback 到列表第一个=选错文件）
+    const absFiles = files.map((f) => ({ ...f, path: path.resolve(workDir, f.path) }));
+    broadcast(FUNDET_PUSH.TURN_CHANGES, { sessionId, files: absFiles, baseSha: base });
   } catch (err) {
     console.warn('[fundet:checkpoint] 轮末改动统计失败（不影响会话）', err);
   }
