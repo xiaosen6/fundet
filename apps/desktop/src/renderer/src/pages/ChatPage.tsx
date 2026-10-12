@@ -829,7 +829,7 @@ export function ChatPage(): React.JSX.Element {
       {/* Canvas 开关钉在窗口右上（WindowControls 左侧），不随主列/Canvas 面板
           宽度变化漂移——对齐 Cindy「折叠 toggle 钉在窗口层，不跟面板跑」；
           面板视图时隐藏（右侧不是会话） */}
-      {activeId && !activePanel && (
+      {activeId && !activePanel && !canvasOpen && (
         <Tooltip label="Canvas 产物画布" side="bottom">
           <button
             type="button"
