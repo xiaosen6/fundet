@@ -1,29 +1,29 @@
 /**
- * TodoListCard —— todo 工具结果的待办清单卡（替代普通工具文本卡）。
- * 数据源：官方 todo 扩展的 list 输出（lib/todoList.ts 解析）。
+ * TodoListCard —— 计划/待办清单卡（Cindy InlinePlanCard 同位）。
+ * 数据源：todo 工具输出的重放快照（lib/todoList.ts replayTodoSnapshots，
+ * 增量确认「Added todo #N」/「Todo #N completed」按序重建的清单状态）。
  */
 import { CheckCircle2, Circle, ListTodo } from 'lucide-react';
-import { parseTodoList } from '../lib/todoList';
+import type { TodoEntry } from '../lib/todoList';
 
 interface TodoListCardProps {
-  resultText?: string;
+  entries: readonly TodoEntry[];
 }
 
-export function TodoListCard({ resultText }: TodoListCardProps): React.JSX.Element | null {
-  const todos = parseTodoList(resultText);
-  if (!todos) return null;
-  const done = todos.filter((t) => t.done).length;
+export function TodoListCard({ entries }: TodoListCardProps): React.JSX.Element | null {
+  if (entries.length === 0) return null;
+  const done = entries.filter((t) => t.done).length;
   return (
     <div className="rounded-container border border-board bg-card p-3">
       <div className="mb-2 flex items-center gap-2">
         <ListTodo size={14} className="text-muted" />
-        <span className="text-13 font-medium text-primary">待办清单</span>
+        <span className="text-13 font-medium text-primary">计划清单</span>
         <span className="ml-auto text-11 tabular-nums text-muted">
-          {done}/{todos.length}
+          {done}/{entries.length}
         </span>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {todos.map((t) => (
+        {entries.map((t) => (
           <li key={t.id} className="flex items-start gap-2">
             {t.done ? (
               <CheckCircle2 size={15} className="mt-px shrink-0 text-accent" />

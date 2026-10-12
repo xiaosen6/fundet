@@ -33,7 +33,7 @@ import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
 import { groupWorkItems, isTodoToolItem, WorkGroupBlock } from './WorkGroupBlock';
 import { TodoListCard } from './TodoListCard';
-import { parseTodoList } from '../lib/todoList';
+import { replayTodoSnapshots, type TodoEntry } from '../lib/todoList';
 import { AgentTaskCard } from './AgentTaskCard';
 import { TurnChangesBar } from './TurnChangesBar';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -288,6 +288,7 @@ type AssistantItem = Extract<DisplayItem, { kind: 'assistant' }>;
 type GroupedRow = ReturnType<typeof groupWorkItems>[number];
 /** 轮末产物卡伪行（Cindy generated_files 渲染项的虚拟化对应物） */
 type GenFilesRow = { kind: 'genfiles'; id: string; files: GeneratedFileRef[] };
+type TodoRow = { kind: 'todo'; id: string; entries: TodoEntry[] };
 
 interface MessageStreamProps {
   slice: SessionSlice;
@@ -587,14 +588,30 @@ export function MessageStream({
   // 虚拟化行 = 分组行 + 各轮产物卡伪行 + 流式未封口伪行 + 轮末改动卡伪行
   const rows = useMemo<
     Array<
-      GroupedRow | { kind: 'streaming'; id: string } | { kind: 'turnchanges'; id: string } | GenFilesRow
+      GroupedRow | { kind: 'streaming'; id: string } | { kind: 'turnchanges'; id: string } | GenFilesRow | TodoRow
     >
   >(() => {
     // 轮末产物卡（Cindy generated_files 行）：按 user 消息切轮，write/edit 产物
     // 非空才插行，位置在该轮最后一个分组行之后、下一轮 user 行之前；数据从
     // 持久化 items 派生，历史轮同样渲染。
     const filesByTurn = genFilesByTurn;
-    const base: Array<GroupedRow | GenFilesRow> = [];
+    // 计划清单重放：pi todo 扩展输出的是增量确认（"Added todo #N: …" /
+    // "Todo #N completed"），单条解析不出清单——按调用顺序重放成
+    // 「每次调用后的快照」，行行配对（Cindy InlinePlanCard 快照语义）
+    const todoSnapshots = new Map<string, TodoEntry[]>();
+    {
+      let replayInputs: string[] = [];
+      const todoIds: string[] = [];
+      for (const it of slice.items) {
+        if (it.kind === 'tool' && isTodoToolItem(it)) {
+          todoIds.push(it.id);
+          replayInputs.push(it.done ? (it.resultText ?? '') : '');
+        }
+      }
+      const snaps = replayTodoSnapshots(replayInputs);
+      todoIds.forEach((id, i) => todoSnapshots.set(id, snaps[i] ?? []));
+    }
+    const base: Array<GroupedRow | GenFilesRow | TodoRow> = [];
     let turnKey: string | null = null;
     const closeTurn = (): void => {
       if (turnKey === null) return;
@@ -608,16 +625,17 @@ export function MessageStream({
         closeTurn();
         turnKey = g.id;
       }
-      // todo 直通行只在确有清单内容时占行（done 且输出可解析为清单）——
-      // 进行中 / add·toggle 确认型输出渲染 null，仍占行会留出一段段空白
-      // （虚拟化行实测高度只剩 padding，用户实报「中间好多空行」）
-      if (g.kind === 'tool' && isTodoToolItem(g) && !(g.done && parseTodoList(g.resultText))) {
+      // todo 行 → 重放快照卡；快照为空（重放不出任何条目）不占行，
+      // 此前 null 渲染会留空白段（虚拟化行实测高度只剩 padding）
+      if (g.kind === 'tool' && isTodoToolItem(g)) {
+        const entries = todoSnapshots.get(g.id) ?? [];
+        if (entries.length > 0) base.push({ kind: 'todo', id: g.id, entries });
         continue;
       }
       base.push(g);
     }
     closeTurn();
-    const withStreaming: Array<GroupedRow | GenFilesRow | { kind: 'streaming'; id: string }> =
+    const withStreaming: Array<GroupedRow | GenFilesRow | TodoRow | { kind: 'streaming'; id: string }> =
       slice.streamingText ? [...base, { kind: 'streaming', id: '__streaming__' }] : base;
     // 轮末改动卡：跑完（非 running）且有文件改动时追加在末尾（最后一轮回复下方，
     // 跟内容滚动）；AI 运行中隐藏（结束才出现，Cindy TurnChangesCard 同语义）
@@ -1106,12 +1124,11 @@ export function MessageStream({
                   </div>
                 ) : item.kind === 'task' ? (
                   <AgentTaskCard item={item} />
+                ) : item.kind === 'todo' ? (
+                  <TodoListCard entries={item.entries} />
                 ) : item.kind === 'tool' && isTodoToolItem(item) ? (
-                  // 计划清单卡（todo 工具）独立渲染在时间线——不进工作组折叠，
-                  // 一直可见（用户拍板）；非清单结果（add/toggle 确认）不占版面
-                  item.done && parseTodoList(item.resultText) ? (
-                    <TodoListCard resultText={item.resultText} />
-                  ) : null
+                  // 防御：todo 行正常都在 rows 构建时转成 kind:'todo'，走不到这
+                  null
                 ) : null}
               </div>
             </div>
