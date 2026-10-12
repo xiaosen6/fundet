@@ -352,6 +352,12 @@ export interface UsageSnapshot {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** 本轮输出生成累计时长（ms，排除工具执行等待）——运行态 TPS 的分母。
+   *  Cindy 同口径：速率只按输出生成 token ÷ 生成时长，绝不拿 input+cache 差分
+   *  算（每轮请求重发整段提示，差分口径会虚高到几百上千 tok/s）。 */
+  generationDurationMs?: number;
+  /** false=本轮有未计时的输出消息，时长分母不完整，UI 不应显示速率 */
+  generationTimingReliable?: boolean;
 }
 
 /**

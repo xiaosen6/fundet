@@ -1249,6 +1249,9 @@ export function ChatPage(): React.JSX.Element {
                       visible={slice.isRunning}
                       status={slice.statusText}
                       tokenUsage={slice.usage.tokenUsage}
+                      outputTokens={slice.usage.outputTokens ?? 0}
+                      generationDurationMs={slice.usage.generationDurationMs ?? 0}
+                      generationReliable={slice.usage.generationTimingReliable !== false}
                     />
                     {!slice.isRunning && permissionMode === 'plan' && planContent !== undefined && (
                       <div className="mb-1.5">
