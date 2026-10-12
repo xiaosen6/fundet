@@ -1139,11 +1139,12 @@ export function ChatPage(): React.JSX.Element {
             </header>
 
             {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留）。
-                空消息态不挂 MessageStream（Cindy 首页布局接管，见 composer 段） */}
+                空消息态不挂 MessageStream（Cindy 首页布局接管，见 composer 段）。
+                计划卡在消息列上方右侧占一行（布局流，不遮挡内容） */}
             {slice.items.length > 0 && (
-            <div className="relative min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 flex-col">
             <PinnedPlanCard entries={planEntries} running={slice.isRunning} />
-            <FadeSwitcher trigger={activeId ?? 'none'} className="h-full">
+            <FadeSwitcher trigger={activeId ?? 'none'} className="min-h-0 flex-1">
             <MessageStream
               slice={slice}
               workDir={activeMeta?.workDir || workDir}
