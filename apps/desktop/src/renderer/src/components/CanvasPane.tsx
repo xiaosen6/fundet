@@ -87,9 +87,9 @@ export function CanvasPane({
   // 预览读取发现文件已不存在（AI 清理临时脚本等）→ 从列表自动移除该条目，
   // 选中自动落到下一个可用项（2026-10-10 用户实报：幽灵条目挂在首位）
   const [missingPaths, setMissingPaths] = useState<string[]>([]);
-  useEffect(() => {
-    setMissingPaths([]);
-  }, [artifacts]);
+  // 产物集合变化时不重置——轮末新 push 的产物会换 artifacts 引用，重置会让
+  // 已被 ENOENT 清掉的条目回列表（用户实报「gen_docx.js 复活还变成默认选中」）
+  // 匹配 activePath 时同时做归一化（chip 传来的路径可能是 / 分隔）
   const visibleArtifacts = useMemo(
     () => artifacts.filter((a) => !missingPaths.includes(a.path)),
     [artifacts, missingPaths],
@@ -97,7 +97,10 @@ export function CanvasPane({
   const markMissing = useCallback((p: string): void => {
     setMissingPaths((prev) => (prev.includes(p) ? prev : [...prev, p]));
   }, []);
-  const active = visibleArtifacts.find((a) => a.path === activePath) ?? visibleArtifacts[0] ?? null;
+  // activePath 归一化匹配（\ → /，小写）：chip/tool/扫描三源路径写法可能不同
+  const active = visibleArtifacts.find(
+    (a) => a.path.replace(/\\/g, '/').toLowerCase() === (activePath ?? '').replace(/\\/g, '/').toLowerCase(),
+  ) ?? visibleArtifacts[0] ?? null;
   const [width, setWidth] = useState(loadWidth);
   const [maximized, setMaximized] = useState(false);
   const pillsRef = useRef<HTMLDivElement>(null);
@@ -152,8 +155,9 @@ export function CanvasPane({
         />
       )}
 
-      {/* 头部：当前文件名 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识） */}
-      <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-board px-3">
+      {/* 头部：当前文件名 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识；
+          右侧 pr 让出窗口控件区——撑满/关闭按钮不与 min/max/close 重叠） */}
+      <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-board px-3 pr-[150px]">
         {active && (
           <span className="min-w-0 flex-1 truncate text-12 text-muted" title={active.path}>
             {basename(active.path)}
