@@ -31,7 +31,9 @@ import { AssistantMessage } from './AssistantMessage';
 import { AttachmentThumb } from './AttachmentThumb';
 import { MessageActionBar } from './MessageActionBar';
 import { ShareTurnModal, type ShareTurnPayload } from './ShareTurnModal';
-import { groupWorkItems, WorkGroupBlock } from './WorkGroupBlock';
+import { groupWorkItems, isTodoToolItem, WorkGroupBlock } from './WorkGroupBlock';
+import { TodoListCard } from './TodoListCard';
+import { parseTodoList } from '../lib/todoList';
 import { AgentTaskCard } from './AgentTaskCard';
 import { TurnChangesBar } from './TurnChangesBar';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -1098,6 +1100,12 @@ export function MessageStream({
                   </div>
                 ) : item.kind === 'task' ? (
                   <AgentTaskCard item={item} />
+                ) : item.kind === 'tool' && isTodoToolItem(item) ? (
+                  // 计划清单卡（todo 工具）独立渲染在时间线——不进工作组折叠，
+                  // 一直可见（用户拍板）；非清单结果（add/toggle 确认）不占版面
+                  item.done && parseTodoList(item.resultText) ? (
+                    <TodoListCard resultText={item.resultText} />
+                  ) : null
                 ) : null}
               </div>
             </div>

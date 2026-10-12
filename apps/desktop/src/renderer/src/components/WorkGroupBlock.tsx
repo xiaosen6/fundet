@@ -5,12 +5,16 @@ import { cn } from '../lib/cn';
 import { Collapse } from './ui/Collapse';
 import { ThinkingCard, formatDuration } from './ThinkingCard';
 import { ToolCallCard } from './ToolCallCard';
-import { TodoListCard } from './TodoListCard';
-import { parseTodoList } from '../lib/todoList';
+import { summarizeLatestWork } from '../lib/work-summary';
 
 /** MCP 双下划线前缀的工具取短名（mcp__srv__todo → todo） */
-function shortToolName(name: string): string {
+export function shortToolName(name: string): string {
   return name.includes('__') ? (name.split('__').pop() ?? name) : name;
+}
+
+/** todo 工具（计划清单）独立渲染在时间线，不进工作组（用户拍板：计划卡要一直可见，不被折叠/命令淹没） */
+export function isTodoToolItem(it: DisplayItem): boolean {
+  return it.kind === 'tool' && shortToolName(it.toolName) === 'todo';
 }
 
 export type WorkChild = Extract<DisplayItem, { kind: 'thinking' } | { kind: 'tool' }>;
@@ -54,13 +58,10 @@ function WorkGroupBlockImpl({
   workDir?: string;
   onOpenFile?: (path: string) => void;
 }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(streaming);
+  // 默认折叠（用户拍板：命令全展开太乱）——运行中也不自动展开，折叠头
+  // 显示最新一条动作摘要；展开状态纯本地（会话内不重置，切走重挂载即收起）。
+  const [expanded, setExpanded] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    if (streaming) setExpanded(true);
-    else setExpanded(false);
-  }, [streaming]);
 
   useEffect(() => {
     if (!streaming) return;
@@ -80,6 +81,9 @@ function WorkGroupBlockImpl({
     : durationMs !== undefined
       ? `已工作 ${formatDuration(durationMs)}`
       : '工作过程';
+  // 折叠头单行动作：label + N 项 + 最新命令摘要（组内没有动作时只有 label）
+  const latest = summarizeLatestWork(childrenItems);
+  const toolCount = childrenItems.filter((c) => c.kind === 'tool').length;
 
   return (
     <div className="w-full">
@@ -96,7 +100,15 @@ function WorkGroupBlockImpl({
         <span className="inline-flex h-[1lh] shrink-0 items-center">
           <Layers size={14} className="text-secondary" />
         </span>
-        <span className="min-w-0 translate-y-[1px] truncate text-14 text-secondary">{label}</span>
+        <span className="min-w-0 shrink-0 translate-y-[1px] truncate text-14 text-secondary">{label}</span>
+        {toolCount > 0 && (
+          <span className="shrink-0 text-12 text-muted">· {toolCount} 项</span>
+        )}
+        {latest && !expanded && (
+          <span className="min-w-0 translate-y-[1px] truncate text-13 text-muted" title={latest}>
+            {latest}
+          </span>
+        )}
         <div className="flex-1" />
         {streaming && elapsed > 0 && (
           <span className="font-mono text-12 text-secondary">{formatDuration(elapsed)}</span>
@@ -120,9 +132,6 @@ function WorkGroupBlockImpl({
                 running={item.running}
                 durationMs={item.durationMs}
               />
-            ) : item.kind === 'tool' && item.done && shortToolName(item.toolName) === 'todo' && parseTodoList(item.resultText) ? (
-              // todo 工具的清单输出升级为待办卡；非清单结果（add/toggle 确认）回落普通工具卡
-              <TodoListCard key={item.id} resultText={item.resultText} />
             ) : (
               <ToolCallCard
                 key={item.id}
@@ -153,9 +162,19 @@ export function groupWorkItems(
   let i = 0;
   while (i < items.length) {
     const it = items[i];
+    // todo（计划清单）独立成行渲染在时间线，不进工作组——计划卡不被
+    // 折叠吞掉（用户拍板：一直可见）
+    if (it.kind === 'tool' && isTodoToolItem(it)) {
+      out.push(it);
+      i += 1;
+      continue;
+    }
     if (it.kind === 'thinking' || it.kind === 'tool') {
       const children: WorkChild[] = [];
-      while (i < items.length && (items[i].kind === 'thinking' || items[i].kind === 'tool')) {
+      while (
+        i < items.length &&
+        (items[i].kind === 'thinking' || (items[i].kind === 'tool' && !isTodoToolItem(items[i])))
+      ) {
         children.push(items[i] as WorkChild);
         i += 1;
       }
