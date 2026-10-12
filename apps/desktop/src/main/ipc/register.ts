@@ -80,7 +80,9 @@ import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
 import { getHost } from '../host/pi-host.js';
 import {
+  attributeFilesToTurnWindows,
   diffArtifacts,
+  LAST_TURN_TAIL_MS,
   scanArtifactSnapshot,
   type TurnArtifactSnapshot,
 } from '../host/turn-artifact-scan.ts';
@@ -252,6 +254,58 @@ async function captureAndPushTurnArtifacts(sessionId: string): Promise<void> {
     broadcast(FUNDET_PUSH.TURN_ARTIFACTS, { sessionId, paths });
   } catch (err) {
     console.warn('[fundet:artifacts] 轮末产物扫描失败（不影响会话）', err);
+  }
+}
+
+/**
+ * 老会话轮末产物回填（SESSION_GET 读时计算，不落库）：0.3.45 前轮末扫描只
+ * push 不落库，老会话重开后产出卡只剩 write 脚本（用户实报：卡上只有
+ * gen_pptx.js 没有 PDF/Word/PPT）。按「文件 mtime 落在该轮 user 消息到下一轮
+ * user 消息之间」把当前 workDir 的白名单文件归属回各轮，拼 turn_artifacts 伪
+ * 行混进历史；窗口内已有落库行的轮次（修复后的新轮次真数据）跳过。扫描失败/
+ * 无工具消息/无 user 消息静默返回空。
+ */
+async function backfillTurnArtifacts(
+  sessionId: string,
+  workDir: string | null,
+  messages: ReadonlyArray<{ role: string; createdAt: number }>,
+): Promise<Array<{ id: string; role: string; content: string; createdAt: number }>> {
+  if (!workDir || workDir === os.homedir()) return [];
+  if (!messages.some((m) => m.role === 'tool')) return [];
+  try {
+    const snap = await scanArtifactSnapshot(workDir);
+    if (snap.size === 0) return [];
+    const userTimes = messages.filter((m) => m.role === 'user').map((m) => m.createdAt);
+    if (userTimes.length === 0) return [];
+    const lastAt = messages[messages.length - 1]?.createdAt ?? userTimes[userTimes.length - 1]!;
+    const windows = userTimes.map((start, i) => ({
+      startAt: start,
+      endAt: i + 1 < userTimes.length ? userTimes[i + 1]! : lastAt + LAST_TURN_TAIL_MS,
+    }));
+    const existing = messages.filter((m) => m.role === 'turn_artifacts').map((m) => m.createdAt);
+    const attributed = attributeFilesToTurnWindows(
+      [...snap].map(([filePath, mtimeMs]) => ({ path: filePath, mtimeMs })),
+      windows,
+    );
+    const out: Array<{ id: string; role: string; content: string; createdAt: number }> = [];
+    for (const { turnIndex, paths } of attributed) {
+      const w = windows[turnIndex]!;
+      // 窗口内已有真落库行：该轮不回填（伪行只补老轮次缺口）
+      if (existing.some((t) => t >= w.startAt && t < w.endAt)) continue;
+      // 行时间取本轮产物最大 mtime（=排序首位），夹在窗口内保证 rebuildItems
+      // 分桶落在该轮末尾
+      const maxMtime = Math.max(...paths.map((p) => snap.get(p) ?? w.startAt));
+      out.push({
+        id: `ta-backfill-${sessionId.slice(0, 8)}-${turnIndex}`,
+        role: 'turn_artifacts',
+        content: JSON.stringify({ paths }),
+        createdAt: Math.min(Math.max(maxMtime, w.startAt + 1), w.endAt - 1),
+      });
+    }
+    return out;
+  } catch (err) {
+    console.warn('[fundet:artifacts] 老会话产物回填失败（不影响历史加载）', err);
+    return [];
   }
 }
 
@@ -707,6 +761,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(FUNDET_INVOKE.SESSION_GET, async (_e, id: string): Promise<SessionDetail | null> => {
     const row = getDb().select().from(sessions).where(eq(sessions.id, id)).get();
     if (!row) return null;
+    const dbMessages = listMessages(id);
+    // 老会话产物回填：伪行按 createdAt 混排（stable sort 保序）
+    const backfilled = await backfillTurnArtifacts(id, row.workDir, dbMessages);
+    const messages = [
+      ...dbMessages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
+      ...backfilled,
+    ].sort((a, b) => a.createdAt - b.createdAt);
     return {
       meta: {
         id: row.id,
@@ -719,12 +780,7 @@ export function registerIpcHandlers(): void {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       },
-      messages: listMessages(id).map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-      })),
+      messages,
     };
   });
 

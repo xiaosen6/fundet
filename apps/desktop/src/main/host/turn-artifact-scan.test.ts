@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import {
   SNAPSHOT_MAX_FILES,
   TURN_ARTIFACT_MAX,
+  attributeFilesToTurnWindows,
   diffArtifacts,
   isArtifactPath,
   isExcludedDirName,
@@ -78,6 +79,46 @@ test('diffArtifacts：mtime 倒序 + 截断 TURN_ARTIFACT_MAX（15 变更只回�
     got.map((p) => Number(p.match(/f(\d+)\.png/)?.[1])),
     [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3],
   );
+});
+
+test('attributeFilesToTurnWindows：mtime 落在哪个轮次窗口就归哪轮；窗口外与非白名单不收', () => {
+  const files = [
+    { path: 'D:\\w\\pre.pdf', mtimeMs: 100 }, // 会话开始前
+    { path: 'D:\\w\\gen.js', mtimeMs: 1100 }, // 轮 1（脚本先写）
+    { path: 'D:\\w\\deck.pptx', mtimeMs: 1800 }, // 轮 1（文档最后落盘→排最前）
+    { path: 'D:\\w\\doc.docx', mtimeMs: 1750 }, // 轮 1
+    { path: 'D:\\w\\shot.png', mtimeMs: 2600 }, // 轮 2
+    { path: 'D:\\w\\after.xlsx', mtimeMs: 9900 }, // 会话结束后
+    { path: 'D:\\w\\noise.exe', mtimeMs: 1500 }, // 非白名单
+  ];
+  const windows = [
+    { startAt: 1000, endAt: 2000 },
+    { startAt: 2000, endAt: 3000 },
+  ];
+  const got = attributeFilesToTurnWindows(files, windows);
+  assert.deepEqual(got, [
+    { turnIndex: 0, paths: ['D:\\w\\deck.pptx', 'D:\\w\\doc.docx', 'D:\\w\\gen.js'] },
+    { turnIndex: 1, paths: ['D:\\w\\shot.png'] },
+  ]);
+});
+
+test('attributeFilesToTurnWindows：无命中返回空；边界含头不含尾（endAt 时刻归下一轮）', () => {
+  assert.deepEqual(attributeFilesToTurnWindows([], [{ startAt: 0, endAt: 100 }]), []);
+  const windows = [
+    { startAt: 0, endAt: 1000 },
+    { startAt: 1000, endAt: 2000 },
+  ];
+  const got = attributeFilesToTurnWindows(
+    [
+      { path: 'a.png', mtimeMs: 999 },
+      { path: 'b.png', mtimeMs: 1000 },
+    ],
+    windows,
+  );
+  assert.deepEqual(got, [
+    { turnIndex: 0, paths: ['a.png'] },
+    { turnIndex: 1, paths: ['b.png'] },
+  ]);
 });
 
 test('scanArtifactSnapshot：顶层 + 一层子目录收（含 fundet-images），排除目录与两层深不收', async () => {

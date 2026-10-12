@@ -142,10 +142,12 @@ export function foldGeneratedFiles<T>(
 }
 
 /**
- * 点击路由：Canvas 可内嵌预览的（文本/代码/图片/网页/音视频/Markdown）开 Canvas
- * 侧栏；pdf/docx/pptx/xlsx 及其余（zip 等）用系统默认应用打开（FS_OPEN_PATH）。
+ * 点击路由：Canvas 可内嵌预览的（PDF 原生 iframe、文本/代码/图片/网页/音视频/
+ * Markdown）开 Canvas 侧栏；docx/pptx/xlsx（Canvas 渲染不了）及其余（zip 等）
+ * 用系统默认应用打开（FS_OPEN_PATH）。
  */
 export function generatedFileOpenAction(path: string): 'canvas' | 'system' {
+  if (extOf(path) === '.pdf') return 'canvas';
   if (DOC_FORMAT_BY_EXT[extOf(path)]) return 'system';
   const kind = fileKind(path);
   if (

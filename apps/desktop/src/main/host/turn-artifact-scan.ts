@@ -17,6 +17,8 @@ export type TurnArtifactSnapshot = Map<string, number>;
 export const SNAPSHOT_MAX_FILES = 800;
 /** 单轮推送产物数上限（mtime 倒序截断） */
 export const TURN_ARTIFACT_MAX = 12;
+/** 末轮时间窗尾巴（秒）：done 消息落库后脚本还在收尾写文件的余量 */
+export const LAST_TURN_TAIL_MS = 120_000;
 
 /** 依赖仓/缓存/附件暂存排除；一切点开头目录也排除（fundet-images 无点前缀，收） */
 const EXCLUDED_DIR_NAMES = new Set(['node_modules', '.git', '.venv', '__pycache__', '.fundet-uploads']);
@@ -73,6 +75,42 @@ export function diffArtifacts(
   }
   changed.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return changed.slice(0, TURN_ARTIFACT_MAX).map((c) => c.path);
+}
+
+/**
+ * 老会话回填：把「现在扫到的文件 mtime」按消息时间窗归属到轮次。
+ * ---------------------------------------------------------------------------
+ * 场景：0.3.45 前轮末扫描只 push 不落库，老会话重开后产出卡只剩 write 脚本
+ * （用户实报：卡上只有 gen_pptx.js 没有 PDF/Word/PPT）。修复后的新轮次有
+ * turn_artifacts 落库行；老轮次没有——这里用「文件 mtime 落在该轮 user 消息
+ * 到下一轮 user 消息之间」归属，语义与 live 扫描（轮内 mtime 变化）一致，
+ * 只是边界更粗（轮间用户手动放进来的文件也会归上一轮，v1 接受）。
+ * 文件在窗口外的（会话开始前就存在/结束后才出现）不归属。
+ * 每轮 mtime 倒序截 TURN_ARTIFACT_MAX，与 live 推送同口径。
+ */
+export function attributeFilesToTurnWindows(
+  files: ReadonlyArray<{ path: string; mtimeMs: number }>,
+  windows: ReadonlyArray<{ startAt: number; endAt: number }>,
+): Array<{ turnIndex: number; paths: string[] }> {
+  const buckets = windows.map(() => [] as Array<{ path: string; mtimeMs: number }>);
+  for (const f of files) {
+    if (!isArtifactPath(f.path)) continue;
+    // 窗口按 startAt 升序，找最后一个 startAt <= mtime 的（且 mtime < endAt）
+    for (let i = windows.length - 1; i >= 0; i--) {
+      const w = windows[i]!;
+      if (f.mtimeMs >= w.startAt && f.mtimeMs < w.endAt) {
+        buckets[i]!.push(f);
+        break;
+      }
+    }
+  }
+  const out: Array<{ turnIndex: number; paths: string[] }> = [];
+  buckets.forEach((b, i) => {
+    if (b.length === 0) return;
+    b.sort((x, y) => y.mtimeMs - x.mtimeMs);
+    out.push({ turnIndex: i, paths: b.slice(0, TURN_ARTIFACT_MAX).map((f) => f.path) });
+  });
+  return out;
 }
 
 async function listDirNames(dir: string): Promise<{ files: string[]; dirs: string[] }> {
