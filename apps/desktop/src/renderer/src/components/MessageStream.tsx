@@ -608,6 +608,12 @@ export function MessageStream({
         closeTurn();
         turnKey = g.id;
       }
+      // todo 直通行只在确有清单内容时占行（done 且输出可解析为清单）——
+      // 进行中 / add·toggle 确认型输出渲染 null，仍占行会留出一段段空白
+      // （虚拟化行实测高度只剩 padding，用户实报「中间好多空行」）
+      if (g.kind === 'tool' && isTodoToolItem(g) && !(g.done && parseTodoList(g.resultText))) {
+        continue;
+      }
       base.push(g);
     }
     closeTurn();
