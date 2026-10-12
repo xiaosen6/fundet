@@ -835,7 +835,7 @@ export function ChatPage(): React.JSX.Element {
             type="button"
             onClick={() => setCanvasOpen((v) => !v)}
             className={cn(
-              'no-drag fixed top-0 z-40 flex h-[46px] w-10 items-center justify-center hover:bg-hover',
+              'no-drag fixed top-0 z-50 flex h-[46px] w-10 items-center justify-center hover:bg-hover',
               hasFramelessControls() ? 'right-[138px]' : 'right-0',
               canvasOpen ? 'text-primary' : 'text-muted',
             )}
@@ -923,7 +923,7 @@ export function ChatPage(): React.JSX.Element {
           </div>
         ) : (
           <div
-            className="relative flex min-h-0 min-w-0 flex-1"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-row"
             onDragEnter={(e) => {
               if (!dataTransferHasFiles(e.dataTransfer)) return;
               e.preventDefault();
