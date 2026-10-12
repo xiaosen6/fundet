@@ -79,7 +79,7 @@ import { confirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../components/ui/toast';
 import { FindBar } from '../components/FindBar';
 import { RewindDialog } from '../components/RewindDialog';
-import { preferScannedContextWindow } from '../../../shared/context-window.js';
+import { formatTokenCount, preferScannedContextWindow } from '../../../shared/context-window.js';
 import { FadeSwitcher } from '../components/ui/FadeSwitcher';
 import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPanelDrawer';
 import { cn } from '../lib/cn';
@@ -628,6 +628,39 @@ export function ChatPage(): React.JSX.Element {
   const shownWindow = activeMeta?.model
     ? preferScannedContextWindow(activeMeta.model, modelSpec?.contextWindow) ?? 0
     : 0;
+
+  // 上下文圆环点击 → 确认 → 手动压缩（对齐 Cindy：pi 原生 compact）。运行中
+  // 静默放弃（pi 会拒绝活跃 turn 的压缩）；null=无 live 会话给信息提示。
+  const handleCompactContext = useCallback(async () => {
+    if (!activeId || slice.isRunning) return;
+    const used = Math.min(slice.usage.contextTokens, shownWindow || Infinity);
+    const pct = shownWindow > 0 ? Math.round((used / shownWindow) * 100) : 0;
+    const ok = await confirmDialog({
+      title: '压缩上下文？',
+      description:
+        shownWindow > 0
+          ? `当前上下文 ${formatTokenCount(used)} / ${formatTokenCount(shownWindow)}（${pct}%）。压缩会把历史对话总结为摘要后继续，让上下文重新变空。`
+          : '压缩会把历史对话总结为摘要后继续，让上下文重新变空。',
+      confirmText: '压缩',
+    });
+    if (!ok || !activeId) return;
+    try {
+      const res = await window.fundet.compactSession(activeId);
+      if (res === null) {
+        toast.info('会话还没启动，先发条消息再压缩');
+      } else if (res.noop) {
+        toast.info('上下文还很小，无需压缩');
+      } else if (typeof res.estimatedTokensAfter === 'number') {
+        const before = typeof res.tokensBefore === 'number' ? `（${formatTokenCount(res.tokensBefore)} → ${formatTokenCount(res.estimatedTokensAfter)}）` : '';
+        toast.success(`上下文已压缩${before}`);
+      } else {
+        toast.success('上下文已压缩');
+      }
+    } catch (err) {
+      console.warn('[fundet] 手动压缩上下文失败', err);
+      toast.error('压缩失败，请稍后再试');
+    }
+  }, [activeId, slice.isRunning, slice.usage.contextTokens, shownWindow]);
 
   // 队列派发：本轮空闲（非运行/无审批）且队列有货 → 按序发下一条
   useEffect(() => {
@@ -1286,6 +1319,7 @@ export function ChatPage(): React.JSX.Element {
                   <ContextCapacityRing
                     contextTokens={slice.usage.contextTokens}
                     contextWindow={shownWindow}
+                    onCompact={activeId && !slice.isRunning ? handleCompactContext : undefined}
                   />
                   </div>
                 </div>
