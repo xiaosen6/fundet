@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { basename, type Artifact, type ArtifactKind } from '../lib/artifacts';
+import { fileKind } from '../../../shared/file-kind.ts';
 import { LocalImagePreview } from './LocalImagePreview';
 import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
 
@@ -98,9 +99,20 @@ export function CanvasPane({
     setMissingPaths((prev) => (prev.includes(p) ? prev : [...prev, p]));
   }, []);
   // activePath 归一化匹配（\ → /，小写）：chip/tool/扫描三源路径写法可能不同
-  const active = visibleArtifacts.find(
-    (a) => a.path.replace(/\\/g, '/').toLowerCase() === (activePath ?? '').replace(/\\/g, '/').toLowerCase(),
-  ) ?? visibleArtifacts[0] ?? null;
+  const activeNorm = (activePath ?? '').replace(/\\/g, '/').toLowerCase();
+  const activeFromList = visibleArtifacts.find(
+    (a) => a.path.replace(/\\/g, '/').toLowerCase() === activeNorm,
+  );
+  // 请求的文件不在产物列表（典型：老会话的轮末扫描产物没落库，正文里的绝对
+  // 路径 chip 仍可点）→ 作为临时条目列出并选中，绝不静默换成列表第一个文件
+  // （用户实报：老会话点 Word 文件弹出 gen_pptx.js）。预览 ENOENT 走既有
+  // markMissing 移除链，选中再落到下一个可用项。
+  const adhoc =
+    activePath && !activeFromList && !missingPaths.includes(activePath)
+      ? [{ path: activePath, kind: fileKind(activePath), toolName: 'chip' }]
+      : [];
+  const listArtifacts = [...adhoc, ...visibleArtifacts];
+  const active = activeFromList ?? adhoc[0] ?? visibleArtifacts[0] ?? null;
   const [width, setWidth] = useState(loadWidth);
   const [maximized, setMaximized] = useState(false);
   const pillsRef = useRef<HTMLDivElement>(null);
@@ -177,7 +189,7 @@ export function CanvasPane({
         </button>
       </div>
 
-      {artifacts.length === 0 ? (
+      {listArtifacts.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
           <div className="flex h-11 w-11 items-center justify-center rounded-full border border-board bg-chip text-secondary">
             <PanelRight size={18} />
@@ -192,7 +204,7 @@ export function CanvasPane({
         <>
           {/* 产物横 pill 行（已失效条目自动移除） */}
           <div ref={pillsRef} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-board px-2 scrollbar-none">
-            {visibleArtifacts.map((a) => (
+            {listArtifacts.map((a) => (
               <button
                 key={a.path}
                 type="button"
