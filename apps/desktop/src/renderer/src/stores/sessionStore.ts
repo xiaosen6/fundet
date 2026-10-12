@@ -84,7 +84,15 @@ export interface SessionSlice {
   attention: 'done' | 'error' | null;
 }
 
-const EMPTY_USAGE: UsageSnapshot = { tokenUsage: 0, contextTokens: 0, contextWindow: 0, costUsd: 0 };
+const EMPTY_USAGE: UsageSnapshot = {
+  tokenUsage: 0,
+  contextTokens: 0,
+  contextWindow: 0,
+  costUsd: 0,
+  outputTokens: 0,
+  generationDurationMs: 0,
+  generationTimingReliable: true,
+};
 
 const EMPTY_SLICE: SessionSlice = {
   items: [],
@@ -497,6 +505,10 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
           contextTokens: data.contextTokens ?? s.usage.contextTokens,
           contextWindow: data.contextWindow ?? s.usage.contextWindow,
           costUsd: data.costUsd ?? s.usage.costUsd,
+          // 运行态 TPS 三件套（Cindy 口径：速率=输出生成 token ÷ 生成时长）
+          outputTokens: data.outputTokens ?? s.usage.outputTokens,
+          generationDurationMs: data.generationDurationMs ?? s.usage.generationDurationMs,
+          generationTimingReliable: data.generationTimingReliable ?? s.usage.generationTimingReliable,
         },
       });
       return 'immediate';

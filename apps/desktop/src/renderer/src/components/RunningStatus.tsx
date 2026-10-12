@@ -18,9 +18,22 @@ interface RunningStatusProps {
   visible: boolean;
   status: string;
   tokenUsage: number;
+  /** 本轮输出生成 token（速率分子；Cindy 口径） */
+  outputTokens?: number;
+  /** 本轮输出生成累计时长 ms（速率分母；排除工具执行等待） */
+  generationDurationMs?: number;
+  /** false=时长分母不完整（有未计时输出消息），不显示速率 */
+  generationReliable?: boolean;
 }
 
-export function RunningStatus({ visible, status, tokenUsage }: RunningStatusProps): React.JSX.Element | null {
+export function RunningStatus({
+  visible,
+  status,
+  tokenUsage,
+  outputTokens = 0,
+  generationDurationMs = 0,
+  generationReliable = true,
+}: RunningStatusProps): React.JSX.Element | null {
   const reducedMotion = useReducedMotion();
   const [showContent, setShowContent] = useState(visible);
   const [fading, setFading] = useState(false);
@@ -59,25 +72,14 @@ export function RunningStatus({ visible, status, tokenUsage }: RunningStatusProp
     return () => clearInterval(interval);
   }, [visible]);
 
-  // 即时速度：tokenUsage 差分 / 时间差分的 EWMA（只在本轮运行期间累计）
-  const [tokPerSec, setTokPerSec] = useState<number | null>(null);
-  const lastUsageRef = useRef<{ tokens: number; at: number } | null>(null);
-  useEffect(() => {
-    const now = Date.now();
-    if (!visible) {
-      lastUsageRef.current = null;
-      setTokPerSec(null);
-      return;
-    }
-    const prev = lastUsageRef.current;
-    lastUsageRef.current = { tokens: tokenUsage, at: now };
-    if (!prev || now - prev.at < 400) return;
-    const dTokens = tokenUsage - prev.tokens;
-    const dt = (now - prev.at) / 1000;
-    if (dTokens <= 0 || dt <= 0) return;
-    const rate = dTokens / dt;
-    setTokPerSec((v) => (v == null ? rate : v * 0.6 + rate * 0.4));
-  }, [tokenUsage, visible]);
+  // 即时速度（Cindy resolveRunningUsageMeta 同口径）：输出生成 token ÷ 生成时长。
+  // 绝不拿 tokenUsage（input+output 累计）差分算——每轮请求重发整段提示，
+  // 差分口径会把速率虚高到几百上千 tok/s（用户实报）。时长不可靠（未计时
+  // 输出消息）或尚无生成时不显示速率，只显示 token 计数。
+  const tokPerSec =
+    generationReliable && outputTokens > 0 && generationDurationMs > 0
+      ? (outputTokens * 1000) / generationDurationMs
+      : null;
 
   // cadenced shimmer：每次真实动静（状态文案 / token 变化）重播一次呼吸；
   // 播放期间到达的动静置 pending，动画结束再连播一次

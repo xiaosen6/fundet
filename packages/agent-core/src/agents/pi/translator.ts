@@ -173,6 +173,8 @@ export function usageSnapshotOf(ctx: PiTranslateContext): UsageSnapshot {
     outputTokens: ctx.turnOutput,
     cacheReadTokens: ctx.turnCacheRead,
     cacheWriteTokens: ctx.turnCacheWrite,
+    generationDurationMs: ctx.generationDurationMs,
+    generationTimingReliable: ctx.generationTimingReliable,
   };
 }
 
