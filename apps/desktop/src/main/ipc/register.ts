@@ -221,7 +221,8 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
 /**
  * 轮末产物扫描（后台，fire-and-forget）：diff 轮前快照，白名单内新增/变更的
  * 文件（bash/python 等脚本产物——write/edit 工具面收不到，collectArtifacts
- * 只认工具入参）PUSH 给渲染层进 Canvas。基线只在 SESSION_SEND 拍：retry 不
+ * 只认工具入参）PUSH 给渲染层进 Canvas + 轮末产出卡（并落库回放）。基线
+ * 只在 SESSION_SEND 拍：retry 不
  * 重拍，失败尝试中已写的产物在重试轮末一并报出。失败静默；无基线/无
  * workDir/空 diff 不推送。
  */
@@ -244,6 +245,10 @@ async function captureAndPushTurnArtifacts(sessionId: string): Promise<void> {
     const paths = diffArtifacts(baseline, await scanArtifactSnapshot(workDir));
     console.info('[fundet:artifacts] 轮末 diff', { sessionId, hits: paths.length, paths: paths.slice(0, 5) });
     if (paths.length === 0) return;
+    // 落库回放：重开会话后这些脚本产物仍要进轮末产出卡（渲染层 rebuildItems
+    // 重建为 kind:'turnArtifacts'）；行序在 done 之后、下一轮 user 之前，
+    // 正好落在本轮 bucket。与 push 同数据，live 端 appendTurnArtifacts 幂等。
+    insertMessage(sessionId, 'turn_artifacts', { paths });
     broadcast(FUNDET_PUSH.TURN_ARTIFACTS, { sessionId, paths });
   } catch (err) {
     console.warn('[fundet:artifacts] 轮末产物扫描失败（不影响会话）', err);

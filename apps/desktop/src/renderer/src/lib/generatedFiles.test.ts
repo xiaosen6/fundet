@@ -90,6 +90,56 @@ describe('collectGeneratedFiles', () => {
       ['pdf', 'docx', 'pptx', 'xlsx', null, null, null],
     );
   });
+
+  it('turnArtifacts（轮末扫描）排在 write 产物前——文档交付物先出卡', () => {
+    const items = [
+      user('u1'),
+      tool('t1', 'write', { path: 'gen_docx.js' }),
+      tool('t2', 'write', { path: 'gen_pptx.js' }),
+      { kind: 'turnArtifacts', id: 'ta1', paths: ['D:\\Fundetdemo\\Transformer架构.docx', 'D:\\Fundetdemo\\Transformer架构.pptx'] },
+    ] as unknown as Items;
+    assert.deepEqual(
+      collectGeneratedFiles(items).map((f) => [f.path, f.doc]),
+      [
+        ['D:\\Fundetdemo\\Transformer架构.docx', 'docx'],
+        ['D:\\Fundetdemo\\Transformer架构.pptx', 'pptx'],
+        ['gen_docx.js', null],
+        ['gen_pptx.js', null],
+      ],
+    );
+  });
+
+  it('同一文件跨来源去重：write 相对路径与扫描绝对路径同 basename，绝对路径胜出', () => {
+    const items = [
+      user('u1'),
+      tool('t1', 'write', { path: 'gen_docx.js' }),
+      tool('t2', 'write', { path: 'notes.md' }),
+      {
+        kind: 'turnArtifacts',
+        id: 'ta1',
+        paths: ['D:\\Fundetdemo\\gen_docx.js', 'D:\\Fundetdemo\\report.pdf'],
+      },
+    ] as unknown as Items;
+    assert.deepEqual(
+      collectGeneratedFiles(items).map((f) => f.path),
+      ['D:\\Fundetdemo\\gen_docx.js', 'D:\\Fundetdemo\\report.pdf', 'notes.md'],
+    );
+  });
+
+  it('两个绝对路径同 basename 不同目录都保留；turnArtifacts 内部自身也去重', () => {
+    const items = [
+      user('u1'),
+      {
+        kind: 'turnArtifacts',
+        id: 'ta1',
+        paths: ['D:\\w\\out\\report.pdf', 'D:\\w\\backup\\report.pdf', 'D:\\w\\out\\report.pdf'],
+      },
+    ] as unknown as Items;
+    assert.deepEqual(
+      collectGeneratedFiles(items).map((f) => f.path),
+      ['D:\\w\\out\\report.pdf', 'D:\\w\\backup\\report.pdf'],
+    );
+  });
 });
 
 describe('splitGeneratedFileTurns（轮次分组）', () => {

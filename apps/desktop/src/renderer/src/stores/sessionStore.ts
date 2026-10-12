@@ -60,7 +60,15 @@ export type DisplayItem =
       model?: string | null;
     }
   | { kind: 'error'; id: string; message: string }
-  | { kind: 'notice'; id: string; text: string };
+  | { kind: 'notice'; id: string; text: string }
+  | {
+      /** 轮末扫描产物（主进程 turn:artifacts 落库回放 / live push 追加）：
+       *  bash/python 等脚本生成的文件，绝对路径。不渲染气泡，只供
+       *  lib/generatedFiles.ts 合并进轮末产出卡 */
+      kind: 'turnArtifacts';
+      id: string;
+      paths: string[];
+    };
 
 export interface SessionSlice {
   items: DisplayItem[];
@@ -777,6 +785,19 @@ export async function ensureHistory(sessionId: string): Promise<void> {
   }
 }
 
+/**
+ * 轮末扫描产物 live 追加（turn:artifacts push → 轮末产出卡实时更新）。
+ * 会话尚未在 UI 展开时跳过：不建只含一条产物的孤儿 slice（会挡住
+ * ensureHistory 的空态判定）——落库行在切进会话时由 rebuildItems 重建。
+ */
+export function appendTurnArtifacts(sessionId: string, paths: string[]): void {
+  if (sessionId.startsWith('auto-') || paths.length === 0) return;
+  const s = slices.get(sessionId);
+  if (!s || s.items.length === 0) return;
+  appendItem(sessionId, { kind: 'turnArtifacts', id: nextId('ta'), paths });
+  notifySlice(sessionId);
+}
+
 /** DB messages → 显示项（content 为 JSON 字符串，形状见 main/db/messages.ts） */
 function rebuildItems(messages: MessageView[]): DisplayItem[] {
   const items: DisplayItem[] = [];
@@ -855,6 +876,14 @@ function rebuildItems(messages: MessageView[]): DisplayItem[] {
           message: (c.message as string) || '未知错误',
         });
         break;
+      case 'turn_artifacts': {
+        // 轮末扫描产物（register.ts captureAndPushTurnArtifacts 落库）：
+        // 重建为 turnArtifacts 条目进轮末产出卡，不渲染气泡
+        if (Array.isArray(c.paths) && c.paths.every((p) => typeof p === 'string')) {
+          items.push({ kind: 'turnArtifacts', id: m.id, paths: c.paths as string[] });
+        }
+        break;
+      }
       default:
         break; // done 等不落显示
     }
