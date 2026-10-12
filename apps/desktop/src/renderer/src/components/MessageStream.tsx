@@ -636,7 +636,7 @@ export function MessageStream({
     estimateSize: (i) => {
       const r = rows[i];
       if (r?.kind === 'turnchanges') return 170;
-      if (r?.kind === 'genfiles') return r.files.some((f) => f.doc) ? 230 : 48;
+      if (r?.kind === 'genfiles') return 48;
       return ESTIMATE_ROW_PX;
     },
     overscan: OVERSCAN_ROWS,

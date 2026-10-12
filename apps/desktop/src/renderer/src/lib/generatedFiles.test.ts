@@ -67,14 +67,11 @@ describe('collectGeneratedFiles', () => {
     const files = collectGeneratedFiles(items);
     assert.deepEqual(
       files.map((f) => [f.path, f.name, f.doc]),
-      [
-        ['Out\\Report.XLSX', 'Report.XLSX', 'xlsx'],
-        ['gen.py', 'gen.py', null],
-      ],
+      [['Out\\Report.XLSX', 'Report.XLSX', 'xlsx']],
     );
   });
 
-  it('文档卡格式判定：pdf/docx/pptx/xlsx；.doc/.md/.py 是普通 pill', () => {
+  it('文档卡格式判定：pdf/docx/pptx/xlsx；.doc/.md 是普通 pill', () => {
     const items = [
       user('u1'),
       tool('t1', 'write', { path: 'a.pdf' }),
@@ -83,11 +80,23 @@ describe('collectGeneratedFiles', () => {
       tool('t4', 'write', { path: 'd.xlsx' }),
       tool('t5', 'write', { path: 'e.doc' }),
       tool('t6', 'write', { path: 'f.md' }),
-      tool('t7', 'write', { path: 'g.py' }),
     ] as unknown as Items;
     assert.deepEqual(
       collectGeneratedFiles(items).map((f) => f.doc),
-      ['pdf', 'docx', 'pptx', 'xlsx', null, null, null],
+      ['pdf', 'docx', 'pptx', 'xlsx', null, null],
+    );
+  });
+
+  it('脚本/源码扩展不展示（write 与扫描来源都滤，用户口径：.js 这种不需要展示）', () => {
+    const items = [
+      user('u1'),
+      tool('t1', 'write', { path: 'gen_pptx.js' }),
+      tool('t2', 'write', { path: 'build.ts' }),
+      { kind: 'turnArtifacts', id: 'ta1', paths: ['D:\\w\\gen.py', 'D:\\w\\deck.pptx'] },
+    ] as unknown as Items;
+    assert.deepEqual(
+      collectGeneratedFiles(items).map((f) => f.path),
+      ['D:\\w\\deck.pptx'],
     );
   });
 
@@ -103,8 +112,6 @@ describe('collectGeneratedFiles', () => {
       [
         ['D:\\Fundetdemo\\Transformer架构.docx', 'docx'],
         ['D:\\Fundetdemo\\Transformer架构.pptx', 'pptx'],
-        ['gen_docx.js', null],
-        ['gen_pptx.js', null],
       ],
     );
   });
@@ -112,17 +119,17 @@ describe('collectGeneratedFiles', () => {
   it('同一文件跨来源去重：write 相对路径与扫描绝对路径同 basename，绝对路径胜出', () => {
     const items = [
       user('u1'),
-      tool('t1', 'write', { path: 'gen_docx.js' }),
+      tool('t1', 'write', { path: 'report.pdf' }),
       tool('t2', 'write', { path: 'notes.md' }),
       {
         kind: 'turnArtifacts',
         id: 'ta1',
-        paths: ['D:\\Fundetdemo\\gen_docx.js', 'D:\\Fundetdemo\\report.pdf'],
+        paths: ['D:\\Fundetdemo\\report.pdf', 'D:\\Fundetdemo\\gen_docx.js'],
       },
     ] as unknown as Items;
     assert.deepEqual(
       collectGeneratedFiles(items).map((f) => f.path),
-      ['D:\\Fundetdemo\\gen_docx.js', 'D:\\Fundetdemo\\report.pdf', 'notes.md'],
+      ['D:\\Fundetdemo\\report.pdf', 'notes.md'],
     );
   });
 
