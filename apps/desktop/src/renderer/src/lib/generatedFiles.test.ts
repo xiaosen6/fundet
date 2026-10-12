@@ -194,9 +194,9 @@ describe('foldGeneratedFiles（折叠逻辑）', () => {
 });
 
 describe('generatedFileOpenAction（点击路由）', () => {
-  it('Canvas 可预览的走 canvas；pdf/docx/pptx/xlsx 及其余走系统打开', () => {
-    const canvas = ['a.txt', 'gen.py', 'shot.png', 'site/index.html', 'clip.mp4', 'note.md', 'song.mp3'];
-    const system = ['report.pdf', 'doc.docx', 'slides.pptx', 'sheet.xlsx', 'old.doc', 'bundle.zip', 'app.exe'];
+  it('Canvas 可预览的走 canvas（PDF 原生 iframe）；docx/pptx/xlsx 及其余走系统打开', () => {
+    const canvas = ['a.txt', 'gen.py', 'shot.png', 'site/index.html', 'clip.mp4', 'note.md', 'song.mp3', 'report.pdf'];
+    const system = ['doc.docx', 'slides.pptx', 'sheet.xlsx', 'old.doc', 'bundle.zip', 'app.exe'];
     for (const p of canvas) assert.equal(generatedFileOpenAction(p), 'canvas', p);
     for (const p of system) assert.equal(generatedFileOpenAction(p), 'system', p);
   });
