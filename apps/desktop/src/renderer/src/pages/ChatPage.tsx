@@ -49,6 +49,7 @@ import {
   setDefaultWorkDir,
 } from '../lib/defaults';
 import { ChatInput } from '../components/ChatInput';
+import { generatedFileOpenAction } from '../lib/generatedFiles';
 import { AskUserQuestionPrompt } from '../components/AskUserQuestionPrompt';
 import { WelcomeSuggestions } from '../components/WelcomeSuggestions';
 import { SessionRenameInput } from '../components/SessionRenameInput';
@@ -317,6 +318,23 @@ export function ChatPage(): React.JSX.Element {
     setCanvasPath(p);
     setCanvasOpen(true);
   }, []);
+
+  // 消息流内点击文件（正文路径 chip / 工具卡 / 产出卡回流的 canvas 类）统一路由：
+  // 文档类（pdf/docx/pptx/xlsx 等）直接系统默认应用打开——走 Canvas 只会出
+  // 「无法预览」占位还多一步；其余（文本/图/网页/音视频）开 Canvas 侧栏。
+  // 与产出卡 generatedFileOpenAction 同一判定，不另立口径。
+  const openArtifact = useCallback(
+    (p: string) => {
+      if (generatedFileOpenAction(p) === 'system') {
+        void window.fundet.openPath(p, activeMeta?.workDir || workDir || undefined).catch((err: unknown) => {
+          toast.error(`打开文件失败：${err instanceof Error ? err.message : String(err)}`);
+        });
+        return;
+      }
+      openCanvas(p);
+    },
+    [openCanvas, activeMeta?.workDir, workDir],
+  );
 
   // providers 就绪门控：启动后 listProviders 异步返回前的窗口期里，桌宠等
   // 入口触发 createSession 会误报「请先配置 provider」（2026-09-29 用户实报）
@@ -1082,7 +1100,7 @@ export function ChatPage(): React.JSX.Element {
             <MessageStream
               slice={slice}
               workDir={activeMeta?.workDir || workDir}
-              onOpenFile={openCanvas}
+              onOpenFile={openArtifact}
               artifactPaths={artifactPathList}
               turnChanges={slice.isRunning ? null : turnChanges}
               canFork={Boolean(activeId) && !isDraftSession(activeId)}
