@@ -152,10 +152,8 @@ export function CanvasPane({
         />
       )}
 
-      {/* 头部：标题 + 当前文件名 + 撑满/关闭 */}
+      {/* 头部：当前文件名 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识） */}
       <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-board px-3">
-        <PanelRight size={14} className="shrink-0 text-secondary" />
-        <span className="shrink-0 text-13 font-medium text-primary">Canvas</span>
         {active && (
           <span className="min-w-0 flex-1 truncate text-12 text-muted" title={active.path}>
             {basename(active.path)}
