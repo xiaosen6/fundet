@@ -3,14 +3,16 @@
  * 数据源：todo 工具输出的重放快照（lib/todoList.ts replayTodoSnapshots，
  * 增量确认「Added todo #N」/「Todo #N completed」按序重建的清单状态）。
  */
-import { CheckCircle2, Circle, ListTodo } from 'lucide-react';
+import { CheckCircle2, Circle, ListTodo, X } from 'lucide-react';
 import type { TodoEntry } from '../lib/todoList';
 
 interface TodoListCardProps {
   entries: readonly TodoEntry[];
+  /** 提供时头行右侧显示关闭钮（右上角常驻卡用） */
+  onDismiss?: () => void;
 }
 
-export function TodoListCard({ entries }: TodoListCardProps): React.JSX.Element | null {
+export function TodoListCard({ entries, onDismiss }: TodoListCardProps): React.JSX.Element | null {
   if (entries.length === 0) return null;
   const done = entries.filter((t) => t.done).length;
   return (
@@ -21,6 +23,16 @@ export function TodoListCard({ entries }: TodoListCardProps): React.JSX.Element 
         <span className="ml-auto text-11 tabular-nums text-muted">
           {done}/{entries.length}
         </span>
+        {onDismiss && (
+          <button
+            type="button"
+            aria-label="收起计划卡"
+            onClick={onDismiss}
+            className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-hover hover:text-primary"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
       <ul className="flex flex-col gap-1.5">
         {entries.map((t) => (
