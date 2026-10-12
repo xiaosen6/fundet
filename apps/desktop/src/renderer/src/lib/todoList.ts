@@ -99,3 +99,10 @@ export function replayTodoSnapshots(resultTexts: readonly (string | undefined)[]
   }
   return out;
 }
+
+/** 重放后的最新清单（右上角常驻计划卡的数据源）；从未建过计划返回 null */
+export function latestTodoSnapshot(resultTexts: readonly (string | undefined)[]): TodoEntry[] | null {
+  const snaps = replayTodoSnapshots(resultTexts);
+  const last = snaps[snaps.length - 1];
+  return last && last.length > 0 ? last : null;
+}

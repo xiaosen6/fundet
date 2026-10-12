@@ -49,6 +49,9 @@ import {
   setDefaultWorkDir,
 } from '../lib/defaults';
 import { ChatInput } from '../components/ChatInput';
+import { PinnedPlanCard } from '../components/chat/PinnedPlanCard';
+import { isTodoToolItem } from '../components/WorkGroupBlock';
+import { latestTodoSnapshot } from '../lib/todoList';
 import { generatedFileOpenAction } from '../lib/generatedFiles';
 import { AskUserQuestionPrompt } from '../components/AskUserQuestionPrompt';
 import { WelcomeSuggestions } from '../components/WelcomeSuggestions';
@@ -629,6 +632,15 @@ export function ChatPage(): React.JSX.Element {
     ? preferScannedContextWindow(activeMeta.model, modelSpec?.contextWindow) ?? 0
     : 0;
 
+  // 右上角常驻计划卡：todo 增量确认重放出的最新清单快照（进行中的 todo
+  // 没有结果，传空串参与重放=状态沿用）
+  const planEntries = useMemo(() => {
+    const texts = slice.items
+      .filter((it): it is Extract<typeof it, { kind: 'tool' }> => it.kind === 'tool' && isTodoToolItem(it))
+      .map((it) => (it.done ? (it.resultText ?? '') : ''));
+    return latestTodoSnapshot(texts) ?? [];
+  }, [slice.items]);
+
   // 上下文圆环点击 → 确认 → 手动压缩（对齐 Cindy：pi 原生 compact）。运行中
   // 静默放弃（pi 会拒绝活跃 turn 的压缩）；null=无 live 会话给信息提示。
   const handleCompactContext = useCallback(async () => {
@@ -1129,7 +1141,9 @@ export function ChatPage(): React.JSX.Element {
             {/* 会话切换时消息区淡入（composer 不包——草稿/焦点跨会话保留）。
                 空消息态不挂 MessageStream（Cindy 首页布局接管，见 composer 段） */}
             {slice.items.length > 0 && (
-            <FadeSwitcher trigger={activeId ?? 'none'} className="min-h-0 flex-1">
+            <div className="relative min-h-0 flex-1">
+            <PinnedPlanCard entries={planEntries} running={slice.isRunning} />
+            <FadeSwitcher trigger={activeId ?? 'none'} className="h-full">
             <MessageStream
               slice={slice}
               workDir={activeMeta?.workDir || workDir}
@@ -1186,6 +1200,7 @@ export function ChatPage(): React.JSX.Element {
               }
             />
             </FadeSwitcher>
+            </div>
             )}
 
             {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方。
