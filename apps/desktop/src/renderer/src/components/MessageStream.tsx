@@ -16,12 +16,14 @@
  * - 条目间距 gap-3.5（14px，对齐 Cindy msg-stream-items）。
  * - 每轮完成后的助手消息挂 MessageActionBar（复制 / 分享 / 分叉 / 更多），
  *   不含「复制当前消息链接」。
+ * - 轮末产物卡（Cindy GeneratedFilesCard 移植）：每个 user turn 末尾一张，
+ *   从持久化 write/edit 条目派生，历史轮同样渲染；无产物不占版面。
  * - 消息导航条（Cindy MessageNavRail 整套移植）：左缘刻度列（每条用户提问一根
  *   刻度，当前阅读轮加深，hover 预览「提问 + 回答摘要」，点击跳回那一轮）；
  *   ≥4 轮且左留白足够才出场；完整覆盖导航时抑制右上角「跳到上一条提问」chip。
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, FilePlus2, Info, Loader2, Pen, Quote } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Info, Loader2, Pen, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { getFocusedSessionId, type DisplayItem, type SessionSlice } from '../stores/sessionStore';
 import type { SessionAttachment } from '../../../shared/fundet-api.js';
@@ -39,6 +41,8 @@ import { Tooltip } from './ui/Tooltip';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
 import { MessageNavRail } from './chat/MessageNavRail';
+import { GeneratedFilesCard } from './chat/GeneratedFilesCard';
+import { splitGeneratedFileTurns, type GeneratedFileRef } from '../lib/generatedFiles';
 import {
   NAV_RAIL_JUMP_TOP_OFFSET_PX,
   deriveNavRailEntries,
@@ -280,6 +284,8 @@ function UserTurn({
 
 type AssistantItem = Extract<DisplayItem, { kind: 'assistant' }>;
 type GroupedRow = ReturnType<typeof groupWorkItems>[number];
+/** 轮末产物卡伪行（Cindy generated_files 渲染项的虚拟化对应物） */
+type GenFilesRow = { kind: 'genfiles'; id: string; files: GeneratedFileRef[] };
 
 interface MessageStreamProps {
   slice: SessionSlice;
@@ -357,25 +363,6 @@ function lastUserTextBefore(items: DisplayItem[], assistantId: string): string {
   return '';
 }
 
-/** pi 结构化写工具（产出文件卡的判定集；bash 写入路径不可知，不纳入） */
-const WRITE_TOOLS = new Set(['write', 'edit']);
-
-/** 本轮产出文件：assistant 消息回溯到上一条 user 消息之间的 write/edit 目标路径 */
-function generatedFilesFor(items: DisplayItem[], assistantId: string): string[] {
-  const idx = items.findIndex((it) => it.id === assistantId);
-  if (idx < 0) return [];
-  const files: string[] = [];
-  for (let i = idx - 1; i >= 0; i--) {
-    const it = items[i]!;
-    if (it.kind === 'user') break;
-    if (it.kind === 'tool' && WRITE_TOOLS.has(it.toolName)) {
-      const p = typeof it.input?.['path'] === 'string' ? (it.input['path'] as string) : '';
-      if (p && !files.includes(p)) files.unshift(p);
-    }
-  }
-  return files.slice(0, 8);
-}
-
 function AssistantTurn({
   item,
   pinned,
@@ -386,7 +373,6 @@ function AssistantTurn({
   onAddToChat,
   onDelete,
   knowledgeSources,
-  turnFiles,
   artifactPaths,
 }: {
   item: AssistantItem;
@@ -398,8 +384,6 @@ function AssistantTurn({
   onAddToChat?: () => void;
   onDelete?: () => Promise<void>;
   knowledgeSources?: KnowledgeSource[];
-  /** 本轮 write/edit 产出的文件（Cindy GeneratedFilesCard 简化版） */
-  turnFiles?: string[];
   /** Canvas 产物全集：正文路径 chip 用 */
   artifactPaths?: string[];
 }): React.JSX.Element {
@@ -418,25 +402,6 @@ function AssistantTurn({
           knowledgeSources={knowledgeSources}
           artifactPaths={artifactPaths}
         />
-        {turnFiles && turnFiles.length > 0 && (
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            <span className="flex shrink-0 items-center gap-1 text-11 text-muted select-none">
-              <FilePlus2 size={12} aria-hidden />
-              产出
-            </span>
-            {turnFiles.map((p) => (
-              <button
-                key={p}
-                type="button"
-                title={p}
-                className="max-w-[220px] truncate rounded-full border border-board bg-chip px-2 py-0.5 text-11 text-secondary transition-colors hover:text-primary"
-                onClick={() => onOpenFile?.(p)}
-              >
-                {p.replace(/\\/g, '/').split('/').pop()}
-              </button>
-            ))}
-          </div>
-        )}
         <MessageActionBar
           createdAt={item.createdAt}
           copyText={item.text}
@@ -517,7 +482,6 @@ function AssistantRow({
       workDir={workDir}
       onOpenFile={onOpenFile}
       knowledgeSources={kbSources}
-      turnFiles={generatedFilesFor(slice.items, item.id)}
       artifactPaths={artifactPaths}
       onShare={() =>
         setSharePayload({
@@ -610,20 +574,44 @@ export function MessageStream({
   // 编辑入口只给最后一条 user 消息（Cindy edit-last-message）
   let lastUserId = '';
   for (const it of slice.items) if (it.kind === 'user') lastUserId = it.id;
-  // 虚拟化行 = 分组行 + 流式未封口伪行（永远最后一行）+ 轮末改动卡伪行（最后一轮回复下方）
+  // 各轮产物（只随 items 变化重算；流式文本帧不重复派生）
+  const genFilesByTurn = useMemo(() => splitGeneratedFileTurns(slice.items), [slice.items]);
+  // 虚拟化行 = 分组行 + 各轮产物卡伪行 + 流式未封口伪行 + 轮末改动卡伪行
   const rows = useMemo<
-    Array<GroupedRow | { kind: 'streaming'; id: string } | { kind: 'turnchanges'; id: string }>
+    Array<
+      GroupedRow | { kind: 'streaming'; id: string } | { kind: 'turnchanges'; id: string } | GenFilesRow
+    >
   >(() => {
-    const base: Array<GroupedRow | { kind: 'streaming'; id: string }> = slice.streamingText
-      ? [...grouped, { kind: 'streaming', id: '__streaming__' }]
-      : grouped;
+    // 轮末产物卡（Cindy generated_files 行）：按 user 消息切轮，write/edit 产物
+    // 非空才插行，位置在该轮最后一个分组行之后、下一轮 user 行之前；数据从
+    // 持久化 items 派生，历史轮同样渲染。
+    const filesByTurn = genFilesByTurn;
+    const base: Array<GroupedRow | GenFilesRow> = [];
+    let turnKey: string | null = null;
+    const closeTurn = (): void => {
+      if (turnKey === null) return;
+      const files = filesByTurn.get(turnKey);
+      if (files && files.length > 0) {
+        base.push({ kind: 'genfiles', id: `__genfiles__${turnKey}`, files });
+      }
+    };
+    for (const g of grouped) {
+      if (g.kind === 'user') {
+        closeTurn();
+        turnKey = g.id;
+      }
+      base.push(g);
+    }
+    closeTurn();
+    const withStreaming: Array<GroupedRow | GenFilesRow | { kind: 'streaming'; id: string }> =
+      slice.streamingText ? [...base, { kind: 'streaming', id: '__streaming__' }] : base;
     // 轮末改动卡：跑完（非 running）且有文件改动时追加在末尾（最后一轮回复下方，
     // 跟内容滚动）；AI 运行中隐藏（结束才出现，Cindy TurnChangesCard 同语义）
     if (!slice.isRunning && turnChanges && turnChanges.files.length > 0) {
-      return [...base, { kind: 'turnchanges' as const, id: '__turnchanges__' }];
+      return [...withStreaming, { kind: 'turnchanges' as const, id: '__turnchanges__' }];
     }
-    return base;
-  }, [grouped, slice.streamingText, slice.isRunning, turnChanges]);
+    return withStreaming;
+  }, [grouped, genFilesByTurn, slice.streamingText, slice.isRunning, turnChanges]);
   // 入场动画：本渲染是否「尾部追加批次」（少量增量；首渲染与 0→N 批量不算）
   const prevRowsLenRef = useRef(0);
   const firstRenderRef = useRef(true);
@@ -639,7 +627,12 @@ export function MessageStream({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: (i) => (rows[i]?.kind === 'turnchanges' ? 170 : ESTIMATE_ROW_PX),
+    estimateSize: (i) => {
+      const r = rows[i];
+      if (r?.kind === 'turnchanges') return 170;
+      if (r?.kind === 'genfiles') return r.files.some((f) => f.doc) ? 230 : 48;
+      return ESTIMATE_ROW_PX;
+    },
     overscan: OVERSCAN_ROWS,
     getItemKey: (i) => rows[i]!.id,
   });
@@ -1090,6 +1083,8 @@ export function MessageStream({
                       onOpenFile={onOpenFile ?? (() => undefined)}
                     />
                   </div>
+                ) : item.kind === 'genfiles' ? (
+                  <GeneratedFilesCard files={item.files} workDir={workDir} onOpenFile={onOpenFile} />
                 ) : item.kind === 'notice' ? (
                   <div className="flex items-center justify-center gap-1.5 select-none">
                     <Info size={12} className="text-muted" />
