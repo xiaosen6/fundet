@@ -784,6 +784,17 @@ export function registerIpcHandlers(): void {
     };
   });
 
+  // 手动压缩上下文（上下文圆环点击，对齐 Cindy）：pi 原生 compact。无 live
+  // 会话返回 null（渲染层静默/信息提示）；能力不支持抛错走 catch。noop（上下文
+  // 太小无可压缩）由引擎返回 {noop:true}，UI 给信息性提示而非失败。
+  ipcMain.handle(FUNDET_INVOKE.SESSION_COMPACT, async (_e, id: unknown) => {
+    if (typeof id !== 'string' || !id) return null;
+    const { maker } = getHost();
+    const session = maker.getSession(id);
+    if (!session) return null;
+    return session.compactSession();
+  });
+
   // 钉钉总开关（dws.enabled，默认 true）：关=隐藏工作台/灵动岛 + 新对话不注入
   // dws 速查表 + 停组件轮询。放在 register 层（settings 依赖 sqlite 原生模块，
   // 不能进 dws.ts——那会连带炸掉 dws.test.ts 的纯函数测试环境）

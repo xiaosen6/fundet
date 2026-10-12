@@ -431,6 +431,8 @@ export interface FundetApi {
   sessionPrewarmDiscard(sessionId: string): Promise<{ ok: boolean }>;
   listSessions(): Promise<SessionListItem[]>;
   getSession(id: string): Promise<SessionDetail | null>;
+  /** 手动压缩上下文（上下文圆环点击）：null=无 live 会话；{noop:true}=内容太少无可压缩 */
+  compactSession(id: string): Promise<{ noop?: boolean; tokensBefore?: number; estimatedTokensAfter?: number } | null>;
   deleteSession(id: string): Promise<void>;
   sendMessage(input: SessionSendInput): Promise<SendResult>;
   abortSession(id: string): Promise<void>;

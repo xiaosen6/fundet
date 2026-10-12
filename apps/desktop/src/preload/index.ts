@@ -67,6 +67,7 @@ const api: FundetApi = {
   sessionPrewarmDiscard: (sessionId) => invoke(FUNDET_INVOKE.SESSION_PREWARM_DISCARD, sessionId),
   listSessions: () => invoke(FUNDET_INVOKE.SESSION_LIST),
   getSession: (id) => invoke(FUNDET_INVOKE.SESSION_GET, id),
+  compactSession: (id) => invoke(FUNDET_INVOKE.SESSION_COMPACT, id),
   deleteSession: (id) => invoke(FUNDET_INVOKE.SESSION_DELETE, id),
   sendMessage: (input) => invoke(FUNDET_INVOKE.SESSION_SEND, input),
   abortSession: (id) => invoke(FUNDET_INVOKE.SESSION_ABORT, id),
