@@ -102,6 +102,30 @@ const EXCLUDES = [
   '*.tlb',
   '*.iobj',
   '*.ipdb',
+  // Windows 保留设备名：git 无法索引（`git add -A` 遇 `nul` 直接 fatal
+  // "adding files failed"，整个会话快照全灭——用户 workdir 实报）
+  'nul',
+  'con',
+  'prn',
+  'aux',
+  'com1',
+  'com2',
+  'com3',
+  'com4',
+  'com5',
+  'com6',
+  'com7',
+  'com8',
+  'com9',
+  'lpt1',
+  'lpt2',
+  'lpt3',
+  'lpt4',
+  'lpt5',
+  'lpt6',
+  'lpt7',
+  'lpt8',
+  'lpt9',
 ];
 
 /** git 超时被 SIGTERM 后残留的 index.lock 视为陈旧的最短年龄（快照已按会话串行，
@@ -189,11 +213,21 @@ async function ensureRepo(sessionId: string): Promise<string> {
   if (!fs.existsSync(path.join(dir, 'HEAD'))) {
     fs.mkdirSync(dir, { recursive: true });
     await git(['init', '--bare', '--quiet', dir]);
-    fs.writeFileSync(
-      path.join(dir, 'info', 'exclude'),
-      `${EXCLUDES.join('\n')}\n`,
-      'utf-8',
-    );
+  }
+  // exclude 幂等同步（不只新建时写）：EXCLUDES 扩充后存量仓也要拿到新规则
+  // ——否则老仓的 `git add -A` 照旧 fatal（如 0.3.45 前的仓遇 `nul` 保留名
+  // 文件，该会话快照全灭）。内容一致时零写入。
+  const excludePath = path.join(dir, 'info', 'exclude');
+  const wanted = `${EXCLUDES.join('\n')}\n`;
+  let current: string | null = null;
+  try {
+    current = fs.readFileSync(excludePath, 'utf-8');
+  } catch {
+    /* 尚未写过 */
+  }
+  if (current !== wanted) {
+    fs.mkdirSync(path.join(dir, 'info'), { recursive: true });
+    fs.writeFileSync(excludePath, wanted, 'utf-8');
   }
   return dir;
 }
