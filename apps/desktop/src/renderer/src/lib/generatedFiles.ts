@@ -7,10 +7,11 @@
  *    落库），bash/python 等脚本生成的 docx/pptx/pdf/图片，绝对路径、mtime
  *    倒序（交付文档最后落盘排最前，卡上文档先出）；
  * 2. tool 条目的 write/edit 目标——与 lib/artifacts.ts 的 collectArtifacts
- *    同口径（read/bash 不算产出），多为脚本源码等中间文件。
+ *    同口径（read/bash 不算产出）。
+ * 脚本/源码类扩展（.js/.py/…）一律不展示——卡上只留交付物（用户口径）。
  * 两者都落库并随历史回放，历史轮同样能重建。按轮次分组（每条 user 消息到
  * 下一条 user 消息之间为一个 turn），供消息流每轮末尾的产出文件卡
- * （components/chat/GeneratedFilesCard.tsx，Cindy GeneratedFilesCard 移植）消费。
+ * （components/chat/GeneratedFilesCard.tsx）消费。
  */
 import type { DisplayItem } from '../stores/sessionStore';
 import { extOf, fileKind } from '../../../shared/file-kind.ts';
@@ -43,6 +44,17 @@ const DOC_FORMAT_BY_EXT: Record<string, GeneratedDocFormat> = {
 
 /** 与 collectArtifacts 同口径的写入类工具集 */
 const WRITE_TOOLS = new Set(['write', 'edit', 'create', 'write_file', 'edit_file']);
+
+/**
+ * 中间脚本/源码扩展：不算「产出」，产出卡不展示（用户口径：.js 这种文件
+ * 不需要展示——真正要看得用 Canvas/编辑器，卡上只留交付物）。Canvas 产物
+ * 列表不受此影响（工作预览面照常收）。
+ */
+const SCRIPT_EXTS = new Set([
+  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.py', '.pyw', '.sh', '.ps1', '.bat', '.cmd',
+  '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.pl',
+  '.lua', '.swift', '.kt', '.scala', '.r',
+]);
 
 function isWriteTool(name: string): boolean {
   const n = name.toLowerCase();
@@ -81,6 +93,7 @@ export function collectGeneratedFiles(items: readonly DisplayItem[]): GeneratedF
   const out: GeneratedFileRef[] = [];
   const push = (p: string): void => {
     if (!p || /[\\/]$/.test(p)) return;
+    if (SCRIPT_EXTS.has(extOf(p))) return;
     const name = p.replace(/\\/g, '/').split('/').pop() ?? p;
     const nameKey = name.toLowerCase();
     if (isAbsoluteish(p)) {
