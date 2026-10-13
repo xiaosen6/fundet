@@ -679,6 +679,10 @@ export function MessageStream({
   }, [grouped.length, stuck]);
 
   const unpin = (): void => {
+    const el = containerRef.current;
+    // 内容不满一屏（无溢出）时没有「可脱离的底」：滚轮向上抖一下就假脱离，
+    // 恢复条件（滚动事件）又永不触发 → 满屏可见也弹「N 条新消息」（用户实报）
+    if (el && el.scrollHeight - el.clientHeight <= 0) return;
     setStuck(false);
   };
 
