@@ -1357,7 +1357,7 @@ export function ChatPage(): React.JSX.Element {
                 turnActive={slice.isRunning}
               />
             )}
-            {/* 计划侧栏：与 Canvas 同级挂 flex-row 右列（用户拍板：会话右侧） */}
+            {/* 计划悬浮卡：与 Canvas 同级挂（absolute 不占布局位），可收放 */}
             {slice.items.length > 0 && (
               <PinnedPlanCard entries={planEntries} running={slice.isRunning} />
             )}
