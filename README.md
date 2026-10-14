@@ -1,10 +1,10 @@
 # Fundet
 
-**Fundet** 是山东未来互联科技的本地优先桌面 AI 智能体：会话、技能、模型设置都在本机；模型用你自己的 Key（BYOK），不经过任何厂商云。
+**Fundet** 是山东未来互联科技有限公司的本地优先桌面 AI 智能体（网络运维大模型，基座模型 Fundet）：会话、技能、模型设置都在本机；模型用你自己的 Key（BYOK），不经过任何厂商云。
 
 ![Fundet](apps/desktop/resources/fundet/icon.png)
 
-界面和会话交互参考了 [Cindy](https://github.com/makecindy/cindy)（Apache-2.0）。Agent 内核裁自 Cindy 的 Pi 接入层，宿主、数据库、设置页为本项目自研；浏览器自动化内核来自 openclaw（MIT），电脑操作引擎为 [trycua/cua](https://github.com/trycua/cua)（MIT）。许可与归属见 [NOTICE](./NOTICE)。
+Agent 运行时基于开源 [Pi](https://github.com/earendil-works/pi)（Apache-2.0）接入层构建，宿主、数据库、设置页为本项目自研；浏览器自动化内核来自 openclaw（MIT），电脑操作引擎为 [trycua/cua](https://github.com/trycua/cua)（MIT）。许可与归属见 [NOTICE](./NOTICE)。
 
 ---
 
@@ -12,18 +12,25 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| 会话 | 多会话、流式输出、思考/工具卡片、中断、权限三档（每次询问 / 自动审批 / 完全放行） |
+| 会话 | 多会话、流式输出、思考与工作流卡片、中断、权限三档（每次询问 / 自动审批 / 完全放行） |
 | 工作目录 | 输入框旁文件夹 chip，最近目录 +「选择其他文件夹」，先选目录再开聊 |
+| 计划清单 | 多步骤任务自动建计划，右侧悬浮卡实时跟进进度（可收放） |
+| 产物卡 | 每轮对话末尾列出本条消息生成的文件（文档/图片等交付物），点击即预览或打开 |
 | 模型 | 30+ 厂商预设（智谱/Kimi/DeepSeek/火山/阿里百炼/Anthropic/OpenAI…）或自定义 Base URL + Key；列模型一键发现；对话里按厂商分组切换 |
 | 视觉 | 支持视觉的模型可直接看图（预设标注或手动勾选「视觉」）；粘贴图片自动嗅探真实格式 |
+| 生图 | 对话里直接说「画一个…」即可生成图片（走自建网关，产物落在工作目录） |
 | 附件 | 拖/贴文件与图片；PDF/Word 自动提取正文发给模型 |
+| 知识库 | 文档入库（本地索引），勾选后会话优先检索知识库作答 |
+| 记忆 | 跨会话记住你的偏好与项目背景；面板可查看、编辑、删除 |
+| 语音 | 按住说话转文字输入 |
 | Canvas | 右侧产物画布：图片/视频/音频/HTML/PDF/Markdown 预览，HTML 可切源码 |
 | 技能 | 导入 `SKILL.md` 或 zip（本产品不预装技能）。聊天输入 `/` 点选，消息以 `/skill:名字` 开头 |
 | 搜索 | 设置里填 Tavily / Brave / 博查 / 智谱 Web Search 的 Key，新对话即可「搜一下…」 |
 | 自动操作·浏览器 | 内置托管浏览器（默认关）：读网页正文、点击、填表；可一键拷贝你系统浏览器的登录网站状态，免重复登录 |
 | 自动操作·电脑 | 截屏、点击、输入、窗口管理（默认关；需电脑操作权限） |
 | 用量 | 首页仪表盘 + 设置用量历史：token 四列拆分、20 周热力图、30 天趋势、按模型统计 |
-| IM 机器人 | 个人微信（扫码）/ 企微 / 飞书 / 钉钉接入同一智能体，电脑开着就能在聊天软件里派活 |
+| IM 机器人 | 个人微信（扫码）/ 企微 / 飞书 / 钉钉接入同一智能体（与桌面共享记忆），电脑开着就能在聊天软件里派活 |
+| 钉钉工作台 | 钉钉组件看板与灵动岛：日程/待办/审批/文档等高频办公查询一站直达 |
 
 数据在本机 SQLite。Windows 用户数据目录：`%APPDATA%\Fundet\`。
 
@@ -40,21 +47,20 @@ Pi 运行时不进 Git，需要单独准备（见下）。
 
 ---
 
-## 启动（Windows，推荐）
+## 启动（Windows）
 
 在 **Windows PowerShell**（不要用 Ubuntu 终端）：
 
 ```powershell
-cd D:\AI\Fundet
+cd <仓库路径>
 pnpm install
 node tools\pi\update.mjs --platform=win32-x64
-# 版本自动读 tools\pi\latest.json 的 pin（当前 0.84.4）——别带版本参数，
-# 旧命令里的 0.83.0 会把 pi 降回有视觉发图 1210 事故的版本
-# 若 GitHub 超时：可走镜像 https://gh-proxy.com/ + 上面的完整 GitHub 下载地址
+# 版本自动读 tools\pi\latest.json 的 pin——别带版本参数
+# 若 GitHub 超时：先 $env:FUNDET_GH_PROXY='https://gh-proxy.com/' 再跑
 # 解到 apps\pi-bin\win32-x64\（目录里要有 pi.exe 和 theme\）
 node tools\git\update.mjs
 # 可选：随包 Git Bash（客户机没装 Git for Windows 时 pi 的 bash 工具与
-# 文件快照的兜底；直连超时设 $env:FUNDET_GH_PROXY='https://gh-proxy.com/'）
+# 文件快照的兜底；直连超时同样设 $env:FUNDET_GH_PROXY）
 
 pnpm dev:win
 ```
@@ -98,43 +104,24 @@ pnpm dev:win
 
 ---
 
-## 打包
-
-在 **Windows PowerShell** 打 Windows 安装包（NSIS exe）：
-
-```powershell
-cd D:\Go\fundet-buddy\apps\desktop
-pnpm dist:win
-```
-
-产物：`apps/desktop/dist/Fundet-Setup-<version>-x64.exe`（约 260MB，内置完整运行时）。**EBUSY 失败是 Defender 锁文件的高频项，重跑即过**。
-
-macOS（未签名，CI 或 mac 机器出包）：`Fundet-<version>-arm64.dmg` / `Fundet-<version>-x64.dmg`。**未签名应用在较新 macOS 上会报「文件已损坏」**（Gatekeeper 拦截，不是真损坏），终端执行一次即可：
-
-```bash
-sudo xattr -cr /Applications/Fundet.app
-```
-
----
-
 ## 仓库结构
 
 ```
 Fundet/
 ├── packages/
-│   ├── agent-core/        # Pi 接入、会话（源自 Cindy maker-core，Apache-2.0）
+│   ├── agent-core/        # Agent 内核：Pi 接入、会话、事件（Apache-2.0）
 │   ├── browser-runtime/   # 浏览器内核（vendored 自 openclaw，MIT）
 │   ├── browser-mcp/       # 浏览器 MCP 门面
 │   └── shared/            # 纯函数/类型
 ├── apps/
 │   ├── desktop/           # Electron 主工程
-│   │   ├── src/main/      # 宿主、IPC、技能、SQLite、内置 MCP
+│   │   ├── src/main/      # 宿主、IPC、技能、SQLite、内置 MCP（搜索/生图/记忆）
 │   │   ├── src/preload/
 │   │   └── src/renderer/  # React 19 + Tailwind 4
 │   ├── pi-bin/            # Pi 运行时（gitignore，需下载）
+│   ├── git-bin/           # 随包 Git Bash（gitignore，需下载）
 │   └── cua-driver-bin/    # 电脑操作驱动（gitignore，需下载）
-├── cindy/                 # 参考项目只读快照
-└── tools/                 # 二进制下载脚本、依赖打平脚本
+└── tools/                 # 二进制下载脚本、依赖打平脚本、IPC 审计
 ```
 
 数据流：
@@ -161,37 +148,12 @@ Fundet/
 
 ```powershell
 pnpm typecheck
-pnpm test        # 219 项（node --test，desktop 侧在 apps/desktop/package.json 逐文件枚举）
+pnpm test        # node --test（desktop 侧在 apps/desktop/package.json 逐文件枚举）
 pnpm --filter @fundet/agent-core test
 ```
 
 ---
 
-## 发版流程（0.3.18 实践版；每步细节见 memory.md 版本行）
-
-1. 发版前必跑：`node tools/check-ipc-channels.cjs`（在 apps/desktop 下；IPC 注册无测试覆盖，防静默失效）+ `pnpm test` 全绿
-2. `apps/desktop/package.json` 升版本号；`memory.md` 写版本行（内容、根因、验证方式）；提交
-3. `pnpm build && pnpm dist:win`（apps/desktop 下）
-4. **树外隔离冒烟**：把 `dist/win-unpacked` 复制到仓库树外（如 `C:\temp\iso-run`）运行——确认无启动崩溃、进程正常、关键窗口创建；冒完杀进程
-5. `git tag v<版本> && git push github main v<版本>`（远端名是 **github**）
-6. `gh release create v<版本> --draft --title ... --notes-file <notes> dist/latest.yml`；**大资产用脱离任务系统的方式上传**（PowerShell `Start-Process gh release upload v<版本> <exe> <blockmap> --clobber`），传完 `gh release edit v<版本> --draft=false`（直接在前台上传 263MB 会超时）
-7. 验证：GitHub 直连与 `gh-proxy.com` 镜像的 latest.yml 均 200 且 sha512 一致；安装包备份到 `D:\`
-
-工作节奏（用户约定）：**修复→本地提交→用户实测→用户说「发」才发版**。
-
----
-
-## 接手必读（AI / 新人）
-
-- **入口是 `AGENTS.md`**（多数编码 AI 会自动读取）：铁律、常用命令、必读顺序都在那里，先看它。
-- **`memory.md` 是项目记忆**：版本史、在途事项、技术事实（skillhub API 真参数、Cindy asar 抽取法、dws 命令族）、踩坑记录（E2E 探针必须写文件脚本忌内联转义、冒烟种子必须 db-only 忌整库拷贝、fixture 抓包必须脱敏凭证——GitHub Push Protection 会拦）。接手先通读。
-- **代码纪律**：主进程模块间 import 用 `.ts` 扩展（node --test 直跑 TS 源）；测试注入式依赖（看 `setSkillhubDeps` / `setAutomationDeps` 范式）；表结构变更走 client.ts 幂等 raw SQL（drizzle-kit 迁移留大版本）。
-- **设计基准**：UI 对齐 Cindy（本机 `D:\AI\Cindy` 可抽 asar 对照；主题原值已抄进 globals.css）；产品名 Fundet（技术标识 appId/userData/GitHub 仓不可动——动了断存量数据与更新通道）。
-- **E2E**：CDP 驱动，工具脚本库在 `C:\temp\fundet-dev-tools\`（launch-dev/sh-pack-launch 等）；引用圈 DOM 是 `button[title^=查看来源]` 不是 `.kb-cite`（渲染层被替换过）。
-- **dws 安装镜像**（0.3.7）：Gitee `sun-jisen/dws-mirror`（自建公开仓，v1.0.62 全资产），Fundet 安装 dws 全链走它（官方 Gitee 渠道仍回落 GitHub 下载——国内用户卡死根因）；每周一 09:30 本机定时同步（`C:\temp\dws-mirror-tools\sync-mirror.mjs`，token 在同目录 token.env 不进 git，幂等按 tag 跳过）；镜像仓分支是 **master**（raw URL 用 `/raw/master/`）。
-
----
-
 ## 许可
 
-Apache-2.0。含 Cindy 衍生代码与其它开源组件，见 [NOTICE](./NOTICE)。
+Apache-2.0。含其它开源组件，见 [NOTICE](./NOTICE)。
