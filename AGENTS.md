@@ -5,8 +5,8 @@ Windows 开发机；仓库 `D:\Go\fundet-buddy`；远端 `github` = `xiaosen6/fu
 
 ## 开工前必读（按序，不要跳过）
 
-1. **`memory.md`** —— 项目记忆：版本史、技术事实（每个大功能都有「实现定稿 + 时序红线」）、踩坑记录。通读后再动手；改动涉及哪个模块，就对照哪一节。
-2. **`README.md`** 的「接手必读」和「发版流程」两节。
+1. **`memory.md`** —— 项目记忆：版本史、技术事实（每个大功能都有「实现定稿 + 时序红线」）、踩坑记录。通读后再动手；改动涉及哪个模块，就对照哪一节。发版完整流程在 memory.md §6，在途状态在尾部「在途事项」段。
+2. **`README.md`** —— 产品与使用说明（用户向；发版/接手/打包细节已移入 memory.md，不在 README）。
 
 ## 铁律（不可违反）
 
@@ -18,7 +18,7 @@ Windows 开发机；仓库 `D:\Go\fundet-buddy`；远端 `github` = `xiaosen6/fu
 
 ```powershell
 pnpm typecheck            # apps/desktop 下
-pnpm test                 # 428 项（node --test）
+pnpm test                 # 全量测试（node --test；当前项数见 memory.md 版本行）
 pnpm dev                  # 开发
 pnpm build && pnpm dist:win   # 打包（约 3 分钟；EBUSY 重跑即过）
 node ../../tools/check-ipc-channels.cjs   # IPC 通道审计，发版前必跑（在 apps/desktop 下执行）
@@ -33,4 +33,4 @@ node ../../tools/check-ipc-channels.cjs   # IPC 通道审计，发版前必跑�
 
 ## 发版
 
-完整流程见 `README.md`「发版流程」节（版本 bump → 审计脚本 + 全量测试 → dist:win → 树外隔离冒烟 → tag/push → draft release + 脱离任务系统上传大资产 → 双通道验证 → 安装包备份到 `D:\`）。
+完整流程见 `memory.md` §6「发版流程」（版本 bump → 审计脚本 + 全量测试 → dist:win → 树外隔离冒烟 → tag/push → draft release + 脱离任务系统上传大资产 → 双通道验证 → 安装包备份到 `D:\`）。
