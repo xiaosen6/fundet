@@ -38,6 +38,7 @@ import { rehypeKnowledgeCite, type KnowledgeSource } from '../lib/knowledgeCite'
 import { cn } from '../lib/cn';
 import { LocalImagePreview, looksLikeFilePath } from './LocalImagePreview';
 import { isMermaidClassName, MarkdownMermaidBlock } from './chat/MarkdownMermaidBlock';
+import { MarkdownCodeBlock } from './chat/MarkdownCodeBlock';
 import { showLightbox } from './ui/Lightbox';
 
 interface AssistantMessageProps {
@@ -275,9 +276,14 @@ function buildMarkdownComponents(callbacksRef: React.RefObject<MarkdownCallbacks
         const raw = flattenText((child as { props?: { children?: ReactNode } }).props?.children);
         return <MarkdownMermaidBlock raw={raw} />;
       }
+      // 普通代码块 → 带头栏（语言标签 + 复制按钮）的容器（CDS 代码块规格）
+      const language = /language-([\w+-]+)/.exec(typeof cls === 'string' ? cls : '')?.[1] ?? '';
+      const raw = flattenText((child as { props?: { children?: ReactNode } }).props?.children).replace(/\n$/, '');
       return (
         <InsidePreContext.Provider value={true}>
-          <pre>{children}</pre>
+          <MarkdownCodeBlock language={language} text={raw}>
+            {children}
+          </MarkdownCodeBlock>
         </InsidePreContext.Provider>
       );
     },

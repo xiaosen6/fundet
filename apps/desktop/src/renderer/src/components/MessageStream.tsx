@@ -37,6 +37,7 @@ import { TurnChangesBar } from './TurnChangesBar';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { useScrollFade } from '../hooks/useScrollFade';
 import { Tooltip } from './ui/Tooltip';
 import { mayExceedVisualLineThreshold, useUserMessageAutoCollapse } from './chat/userMessageCollapse';
 import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCite';
@@ -214,6 +215,8 @@ function UserTurn({
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
+                  // IME 组词中 Esc 只关候选窗，不取消编辑
+                  if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
                   e.preventDefault();
                   cancelEdit();
                   return;
@@ -562,8 +565,11 @@ export function MessageStream({
 }: MessageStreamProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  useScrollFade(containerRef);
   const stickRef = useRef(true);
   const lastScrollTopRef = useRef(0);
+  // 用户最近一次手动滚动的时间戳（CDS 冷却锁）：150ms 内禁止程序化跟底
+  const lastUserScrollAtRef = useRef(0);
   const touchStartYRef = useRef<number | null>(null);
   const [sharePayload, setSharePayload] = useState<ShareTurnPayload | null>(null);
   const grouped = useMemo(
@@ -877,10 +883,10 @@ export function MessageStream({
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const goingDown = el.scrollTop > lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
-    // 恢复贴底：向下滚 + 贴死底部双信号（≤8px，Cindy REPIN_AT_BOTTOM_PX 口径）
-    if (!stickRef.current && goingDown && distance <= 8) setStuck(true);
-    // 悬浮跳底钮显隐：脱离贴底且离底足够远（近距不闪）
-    setShowJump(distance > 150 && !stickRef.current);
+    // 恢复贴底：向下滚 + 距底 ≤40px 双信号（CDS scroll-pinning 容差口径，比旧 8px 更好回贴）
+    if (!stickRef.current && goingDown && distance <= 40) setStuck(true);
+    // 悬浮跳底钮显隐：脱离贴底且离底足够远（>120px，CDS 口径；近距不闪）
+    setShowJump(distance > 120 && !stickRef.current);
     // 滚动时收起划选引用钮（选区与按钮错位没有意义）
     setQuoteSel(null);
     // 右上角「上一条提问」跳钮 + 导航器高亮探测（rAF 节流）
@@ -895,10 +901,12 @@ export function MessageStream({
 
   // 内容高度任何来源增长（token 追加/图片加载/卡片展开/测量校正）且贴底态 → 跟底。
   // 虚拟化后内容高度 = virtualizer 总尺寸，观察挂载容器即可。
+  // CDS 冷却锁：用户手动滚动后 150ms 内不做程序化跟底，杜绝「生成内容抢滚轮」。
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
     const ro = new ResizeObserver(() => {
+      if (performance.now() - lastUserScrollAtRef.current <= 150) return;
       if (stickRef.current && rows.length > 0) {
         virtualizer.scrollToIndex(rows.length - 1, { align: 'end' });
       }
@@ -913,6 +921,7 @@ export function MessageStream({
   useEffect(() => {
     setStuck(true);
     lastScrollTopRef.current = 0;
+    lastUserScrollAtRef.current = 0;
     setShowJump(false);
     requestAnimationFrame(() => {
       if (rows.length > 0) {
@@ -943,6 +952,7 @@ export function MessageStream({
         onScroll={handleScroll}
         onMouseUp={handleMouseUp}
         onWheel={(e) => {
+          lastUserScrollAtRef.current = performance.now();
           if (e.deltaY < 0) unpin();
         }}
         onTouchStart={(e) => {
@@ -951,15 +961,21 @@ export function MessageStream({
         onTouchMove={(e) => {
           const startY = touchStartYRef.current;
           const y = e.touches[0]?.clientY;
-          if (startY !== null && y !== undefined && startY - y > 1) unpin();
+          if (startY !== null && y !== undefined && startY - y > 1) {
+            lastUserScrollAtRef.current = performance.now();
+            unpin();
+          }
         }}
         onKeyDown={(e) => {
-          if (e.key === 'PageUp' || e.key === 'ArrowUp') unpin();
+          if (e.key === 'PageUp' || e.key === 'ArrowUp') {
+            lastUserScrollAtRef.current = performance.now();
+            unpin();
+          }
           if (e.key === 'Escape') setQuoteSel(null);
         }}
         /* 浏览器滚动锚定会与虚拟化的位移补偿互相打架，显式关掉 */
         style={{ overflowAnchor: 'none' }}
-        className="min-h-0 w-full flex-1 overflow-y-auto px-6 py-4"
+        className="scroll-fade min-h-0 w-full flex-1 overflow-y-auto px-6 py-4"
       >
       <div
         ref={contentRef}
