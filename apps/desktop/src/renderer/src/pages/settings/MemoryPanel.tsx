@@ -2,7 +2,8 @@
  * MemoryPanel —— 记忆管理面板（侧栏「记忆」能力入口）。
  *
  * 卡片语言与知识库面板同款：hero 大数字 + 发丝行 + 类型过滤 chips + FTS 搜索。
- * 记忆按工作目录分仓（与桌面会话的工作目录对应；IM 会话共享主目录仓）；
+ * 记忆分两层：「全局」仓跨所有会话/目录共享（user/feedback 默认路由），
+ * 项目仓按工作目录分仓（project/reference；IM 会话共享主目录仓）；
  * 每条记忆是一个 .md 分片（type_title 格式），可查看/编辑/删除/新建；
  * digest 类型是助手压缩上下文时自动沉淀的摘要，只读。
  */
@@ -10,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { Brain, Eraser, FolderOpen, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { MemoryRecordView, MemoryScopeView } from '../../../../shared/memory.ts';
+import { MEMORY_GLOBAL_SCOPE_KEY } from '../../../../shared/memory.ts';
 import { cn } from '../../lib/cn';
 import { confirmDialog } from '../../components/ui/ConfirmDialog';
 import { Tooltip } from '../../components/ui/Tooltip';
@@ -27,6 +29,7 @@ function relTime(iso: string): string {
 }
 
 function dirLabel(abs: string): string {
+  if (abs === MEMORY_GLOBAL_SCOPE_KEY) return '全局';
   const parts = abs.replace(/[\\/]+$/, '').split(/[\\/]/);
   return parts[parts.length - 1] || abs;
 }
@@ -284,7 +287,7 @@ export function MemoryPanel(): React.JSX.Element {
             <button
               key={s.absWorkdir}
               type="button"
-              title={s.absWorkdir}
+              title={s.absWorkdir === MEMORY_GLOBAL_SCOPE_KEY ? '全局仓：所有会话、所有工作目录共享' : s.absWorkdir}
               onClick={() => {
                 setActiveScope(s.absWorkdir);
                 setSearchHits(null);
@@ -502,7 +505,7 @@ export function MemoryPanel(): React.JSX.Element {
       )}
 
       <p className="pb-4 text-11 leading-relaxed text-placeholder">
-        记忆按工作目录分仓、纯本地存储（{scopes[0]?.scopeDir ?? '应用数据目录'}）；IM 机器人与桌面默认会话共享主目录的记忆仓。
+        记忆分两层、纯本地存储（{scopes[0]?.scopeDir ?? '应用数据目录'}）：「全局」仓所有会话共享（偏好/反馈），其余按工作目录分仓（项目事实）；IM 机器人与桌面默认会话共享主目录仓。
         分片为 .md 文件，可直接用任意编辑器修改。
       </p>
     </div>

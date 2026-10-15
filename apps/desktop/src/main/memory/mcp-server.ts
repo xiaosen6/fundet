@@ -34,7 +34,9 @@ const LIST_TOOLS = {
   description:
     '探索跨会话持久记忆（memory）的可用工具。不传参数 → 返回全部类目与工具简介；' +
     '传 category=read/write/maintain/search → 返回该类目工具的名称、简介与参数。' +
-    '拿到工具名后用 call_tool({name, args}) 执行。记忆按工作目录分仓、跨会话共享。',
+    '拿到工具名后用 call_tool({name, args}) 执行。记忆分两层：项目仓（按工作目录）+ ' +
+    '全局仓（用户偏好/反馈，跨目录跨会话共享）；list/read/search 自动合并两层，' +
+    '写入按类型自动路由（user/feedback→全局，project/reference→项目），可用 scope 参数覆盖。',
   inputSchema: {
     type: 'object',
     properties: {

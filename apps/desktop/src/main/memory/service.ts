@@ -9,7 +9,7 @@ import { app } from 'electron';
 import { memoryScopeDirName } from '@fundet/agent-core';
 import type { MakerMemoryManager, MemoryRecord, MemoryType, SearchHit } from '@fundet/agent-core';
 import { getBoolSetting, setBoolSetting } from '../db/settings.js';
-import { MEMORY_ENABLED_SETTING, type MemoryRecordView, type MemoryScopeView } from '../../shared/memory.ts';
+import { MEMORY_ENABLED_SETTING, MEMORY_GLOBAL_SCOPE_KEY, type MemoryRecordView, type MemoryScopeView } from '../../shared/memory.ts';
 
 /** userData/maker-memory 根目录（与 manager 的 MEMORY_SUBDIR 约定一致） */
 export function memoryRoot(): string {
@@ -45,9 +45,10 @@ export function listMemoryScopes(): MemoryScopeView[] {
   const scopes: MemoryScopeView[] = [];
   const def = defaultMemoryScope();
   const defDirName = path.basename(def.scopeDir);
+  const globalDirName = memoryScopeDirName(MEMORY_GLOBAL_SCOPE_KEY);
   for (const name of entries) {
     const scopeDir = path.join(root, name);
-    let absWorkdir = def.absWorkdir;
+    let absWorkdir = name === globalDirName ? MEMORY_GLOBAL_SCOPE_KEY : def.absWorkdir;
     let updatedAt: string | null = null;
     try {
       const meta = JSON.parse(fs.readFileSync(path.join(scopeDir, 'meta.json'), 'utf8')) as {
@@ -72,7 +73,19 @@ export function listMemoryScopes(): MemoryScopeView[] {
   if (!entries.includes(defDirName)) {
     scopes.push({ absWorkdir: def.absWorkdir, scopeDir: def.scopeDir, recordCount: 0, updatedAt: null });
   }
-  return scopes.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+  // 全局仓恒在列（空仓也显示——两层模型的共享层，否则用户无从发现/新建）
+  if (!entries.includes(globalDirName)) {
+    scopes.push({
+      absWorkdir: MEMORY_GLOBAL_SCOPE_KEY,
+      scopeDir: path.join(root, globalDirName),
+      recordCount: 0,
+      updatedAt: null,
+    });
+  }
+  // 全局仓置顶（共享层发现性优先），其余按最近更新排序
+  return scopes
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+    .sort((a) => (a.absWorkdir === MEMORY_GLOBAL_SCOPE_KEY ? -1 : 1));
 }
 
 export function toRecordView(r: MemoryRecord): MemoryRecordView {
