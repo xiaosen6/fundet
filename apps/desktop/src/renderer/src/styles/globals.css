@@ -488,6 +488,54 @@ textarea:focus-visible {
   animation: fundet-rise-in var(--motion-base) var(--motion-ease-out) both;
 }
 
+/* 计划卡打勾弹入（成功确认 pop-in：scale 0.4→1.12→1，CDS SPRING_BOUNCY 的 CSS 近似） */
+@keyframes fundet-plan-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-plan-check-pop {
+  animation: fundet-plan-check-pop var(--motion-enter) var(--motion-ease-out) both;
+}
+
+/* 计划卡形态切换入场（收起↔展开挂载入场：淡入+轻缩放+微降，CDS SPRING_GENTLE 近似） */
+@keyframes fundet-plan-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-plan-pop-in {
+  animation: fundet-plan-pop-in var(--motion-base) var(--motion-ease-out) both;
+}
+
+/* 计划卡全勾完成后的整体退场（缩放淡出） */
+@keyframes fundet-plan-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.animate-plan-fade-out {
+  animation: fundet-plan-fade-out var(--motion-exit) var(--motion-ease-in) both;
+}
+
 /* 卡片材质（0.2.27「有质感」批）：钉钉组件卡/知识库卡共用。
    静置两影 + 顶缘高光，悬停加深——只动 box-shadow，不动布局 */
 .fundet-surface {
@@ -751,6 +799,9 @@ textarea:focus-visible {
   .animate-float-in,
   .animate-fundet-rise-in,
   .animate-row-enter,
+  .animate-plan-check-pop,
+  .animate-plan-pop-in,
+  .animate-plan-fade-out,
   .session-settle,
   .session-dot-pulse::after,
   .status-done-pop,
