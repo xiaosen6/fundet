@@ -5,13 +5,13 @@ const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));
 
-import { PiRpcProcess } from './rpc-client.js';
+import { PiRpcProcess, type PiRpcDisconnectReason } from './rpc-client.js';
 
 interface FakeChild extends EventEmitter {
   pid: number;
   stdout: EventEmitter;
   stderr: EventEmitter;
-  stdin: { write: ReturnType<typeof vi.fn> };
+  stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
   kill: ReturnType<typeof vi.fn>;
 }
 
@@ -20,12 +20,12 @@ function makeChild(): FakeChild {
   child.pid = 4321;
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
-  child.stdin = { write: vi.fn() };
+  child.stdin = Object.assign(new EventEmitter(), { write: vi.fn() });
   child.kill = vi.fn();
   return child;
 }
 
-function createProcess() {
+function createProcess(onDisconnect?: (reason: PiRpcDisconnectReason) => void) {
   const logger = {
     trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn(), child: vi.fn(),
   };
@@ -40,6 +40,7 @@ function createProcess() {
     logger,
     onEvent: vi.fn(),
     onExit,
+    ...(onDisconnect ? { onDisconnect } : {}),
   });
   const child = mocks.spawn.mock.results[0]!.value as FakeChild;
   return { proc, child, onExit, logger };
@@ -111,3 +112,44 @@ describe('PiRpcProcess exit-driven lifecycle (#4182)', () => {
 function onExitAny(_proc: PiRpcProcess): boolean {
   return (_proc as unknown as { exitNotified: boolean }).exitNotified;
 }
+
+describe('PiRpcProcess disconnect detection (#5729)', () => {
+  it('stdout end + 无 exit → 确认窗后失联收口：pending 失败 + onDisconnect + isClosed', async () => {
+    const onDisconnect = vi.fn();
+    const { proc, child, onExit } = createProcess(onDisconnect);
+    const pending = proc.request({ type: 'ping' });
+    const assertion = expect(pending).rejects.toThrow(/disconnected.*stdout-ended/);
+    child.stdout.emit('end');
+    await vi.waitFor(() => expect(onDisconnect).toHaveBeenCalledWith('stdout-ended'), { timeout: 2_000 });
+    await assertion;
+    expect(proc.isClosed).toBe(true);
+    expect(onExit).not.toHaveBeenCalled(); // exit 路径留给后续真退出
+  });
+
+  it('确认窗内 exit 到达 → 走 exit 语义，onDisconnect 不触发', async () => {
+    const onDisconnect = vi.fn();
+    const { proc, child, onExit } = createProcess(onDisconnect);
+    child.stdout.emit('end');
+    // 正常退出顺序：stdout 先关，exit 随即到达（窗内）
+    child.emit('exit', 0, null);
+    await vi.waitFor(() => expect(onExit).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    expect(onDisconnect).not.toHaveBeenCalled();
+    expect(onExit).toHaveBeenCalledWith({ code: 0, signal: null });
+  });
+
+  it('stdin error（EPIPE）→ 失联收口且不炸主进程', async () => {
+    const onDisconnect = vi.fn();
+    const { proc, child } = createProcess(onDisconnect);
+    child.stdin.emit('error', new Error('write EPIPE'));
+    await vi.waitFor(() => expect(onDisconnect).toHaveBeenCalledWith('stdin-error'), { timeout: 2_000 });
+    expect(proc.isClosed).toBe(true);
+  });
+
+  it('失联后 request/send 按已关闭处理', async () => {
+    const { proc, child } = createProcess(vi.fn());
+    child.stdout.emit('close');
+    await vi.waitFor(() => expect(proc.isClosed).toBe(true), { timeout: 2_000 });
+    await expect(proc.request({ type: 'ping' })).rejects.toThrow(/disconnected/);
+    expect(() => proc.send({ type: 'x' })).not.toThrow();
+  });
+});

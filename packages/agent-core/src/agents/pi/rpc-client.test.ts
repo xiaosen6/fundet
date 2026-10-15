@@ -16,13 +16,13 @@ function makeChild(pid = 4321) {
     pid: number;
     stdout: EventEmitter;
     stderr: EventEmitter;
-    stdin: { write: ReturnType<typeof vi.fn> };
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
   };
   child.pid = pid;
   child.stdout = makeStream();
   child.stderr = makeStream();
-  child.stdin = { write: vi.fn() };
+  child.stdin = Object.assign(new EventEmitter(), { write: vi.fn() });
   child.kill = vi.fn();
   return child;
 }

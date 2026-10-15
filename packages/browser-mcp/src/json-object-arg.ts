@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 /**
  * string → JSON.parse 出的 object；非 string、或 parse 失败时原样返回，
- * 交给下游 record 校验报原本的错（不吞坏数据）。
+ * 交给下游 record 校验报原本的错（不吞坏数据）。null 归一 {}：无参工具省略/
+ * 传 null 不再 -32602（上游 #6025 同构）。
  */
 function coerceStringifiedJson(value: unknown): unknown {
+  if (value === null || value === undefined) return {};
   if (typeof value !== 'string') return value;
   try {
     return JSON.parse(value);

@@ -40,10 +40,19 @@ export interface PiRpcSpawnOptions {
   onEvent: (event: PiRpcEvent) => void;
   /** 进程退出回调(exit code / signal;正常 close() 也会触发)。 */
   onExit: (info: { code: number | null; signal: NodeJS.Signals | null }) => void;
+  /**
+   * RPC 管道失联回调（上游 #5729 同构）：stdout 先断/stdin 写失败而 exit 未确认
+   * （执行器卡死、管道半断）。250ms 确认窗内 exit 到达则不触发（正常退出常先关
+   * stdout）；触发时 pending 已全部失败，调用方应补 terminal 并主动 close() 击杀。
+   */
+  onDisconnect?: (reason: PiRpcDisconnectReason) => void;
   onStderrLine?: (line: string) => void;
   /** 本地进程生命周期观察器；返回值在该 spawn 的 error/close 时幂等调用。 */
   onProcessSpawned?: (pid: number) => void | (() => void);
 }
+
+/** RPC 失联原因：stdout 结束/关闭/出错，或 stdin 写失败（EPIPE 等） */
+export type PiRpcDisconnectReason = 'stdout-ended' | 'stdout-closed' | 'stdout-error' | 'stdin-error';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 3_000;
@@ -107,6 +116,8 @@ export class PiRpcProcess {
   private exitDrainTimer: NodeJS.Timeout | undefined;
   private exitNotified = false;
   private exitWaiters: Array<() => void> = [];
+  /** 失联确认窗计时器（250ms 内 exit 到达则改走 exit 语义，#5729 同构） */
+  private disconnectTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly opts: PiRpcSpawnOptions) {
     this.logger = opts.logger;
@@ -155,11 +166,28 @@ export class PiRpcProcess {
       this.logger.error('pi process error', { message: err.message });
       this.failAllPending(new Error(`pi process error: ${err.message}`));
     });
+    // #5729 失联检测：stdout 先断 / stdin 写失败而 exit 迟迟不到（执行器卡死、
+    // 管道半断）时，原实现只认 exit——pending 各等 30s 超时、流式轮永不 settle、
+    // UI 永久 running、对死管道写 abort 静默丢失。250ms 确认窗内 exit 到达仍走
+    // exit 语义（正常退出常先关 stdout），超窗才按失联收口。
+    this.child.stdout.on('end', () => this.handleTransportDisconnect('stdout-ended'));
+    this.child.stdout.on('close', () => this.handleTransportDisconnect('stdout-closed'));
+    this.child.stdout.on('error', () => this.handleTransportDisconnect('stdout-error'));
+    this.child.stdin.on('error', (err) => {
+      // stdin EPIPE 以 error 事件浮出，不监听就是主进程未捕获异常
+      this.logger.warn('pi rpc stdin error', { message: err.message });
+      this.handleTransportDisconnect('stdin-error');
+    });
     this.child.on('exit', (code, signal) => {
       // shell/build 后代可能继承管道:pi 自己退出后 Node 的 close 事件要等后代
       // 释放,可能无限期不触发 → 会话悬挂。exit 是执行器死亡的权威证据——等
       // 250ms 让已写入的 RPC 尾帧排走,再销毁自端管道并上报(不做进程树击杀)。
       if (this.exitNotified) return;
+      // exit 语义优先于失联语义：清掉可能已启动的失联确认窗（stdout 常先断于 exit）
+      if (this.disconnectTimer) {
+        clearTimeout(this.disconnectTimer);
+        this.disconnectTimer = undefined;
+      }
       const info = { code, signal };
       this.exitInfo = info;
       this.exitDrainTimer = setTimeout(() => {
@@ -181,6 +209,10 @@ export class PiRpcProcess {
   private finishExit(info: { code: number | null; signal: NodeJS.Signals | null }): void {
     if (this.exitNotified) return;
     this.exitNotified = true;
+    if (this.disconnectTimer) {
+      clearTimeout(this.disconnectTimer);
+      this.disconnectTimer = undefined;
+    }
     this.exitInfo = info;
     this.disposeRegistration();
     this.closed = true;
@@ -189,9 +221,30 @@ export class PiRpcProcess {
     try { this.child.stdin.destroy(); } catch { /* already gone */ }
     this.exitError = this.createExitError(`pi process exited (code=${info.code}, signal=${info.signal})`);
     this.startupStderr = '';
+    this.flushUnsettledFrameDiagnostics();
     this.failAllPending(this.exitError);
     this.opts.onExit({ code: info.code, signal: info.signal });
     for (const waiter of this.exitWaiters.splice(0)) waiter();
+  }
+
+  /** 失联收口（#5729）：250ms 确认窗内 exit 未确认才生效——窗内 exit 到达由
+   *  finishExit 清掉本计时器，exit 语义优先（保留 exit code 与 stderr）。 */
+  private handleTransportDisconnect(reason: PiRpcDisconnectReason): void {
+    if (this.exitNotified || this.closed || this.disconnectTimer) return;
+    this.disconnectTimer = setTimeout(() => {
+      this.disconnectTimer = undefined;
+      // exit 已到达（在排水尾帧）→ 让位 exit 路径；双计时器同刻时本回调先跑也得让
+      if (this.exitNotified || this.closed || this.exitInfo) return;
+      this.closed = true;
+      this.exitError = this.createExitError(
+        `pi RPC disconnected (${reason}); executor exit unconfirmed`,
+      );
+      this.startupStderr = '';
+      this.flushUnsettledFrameDiagnostics();
+      this.failAllPending(this.exitError);
+      this.opts.onDisconnect?.(reason);
+    }, EXIT_DRAIN_MS);
+    this.disconnectTimer.unref?.();
   }
 
   /** exit 错误带上启动期 stderr 摘要（脱敏+路径遮蔽）：code=1 的崩溃从此可排查 */
@@ -323,12 +376,7 @@ export class PiRpcProcess {
    */
   private recordEventFrameDiagnostics(event: PiRpcEvent): void {
     const type = sanitizeFrameLabel(event.type);
-    if (type === 'agent_start' && this.eventFrameCounts.size > 0) {
-      this.logger.info('pi rpc turn frame histogram (no agent_settled)', {
-        frames: Object.fromEntries(this.eventFrameCounts),
-      });
-      this.eventFrameCounts.clear();
-    }
+    if (type === 'agent_start') this.flushUnsettledFrameDiagnostics();
     this.eventFrameCounts.set(type, (this.eventFrameCounts.get(type) ?? 0) + 1);
     if (type === 'message_end') {
       const message = event.message as
@@ -369,6 +417,15 @@ export class PiRpcProcess {
       });
       this.eventFrameCounts.clear();
     }
+  }
+
+  /** 未收口的轮次帧计数冲刷：exit/失联/下一轮 agent_start 时调用，证据不丢。 */
+  private flushUnsettledFrameDiagnostics(): void {
+    if (this.eventFrameCounts.size === 0) return;
+    this.logger.info('pi rpc turn frame histogram (no agent_settled)', {
+      frames: Object.fromEntries(this.eventFrameCounts),
+    });
+    this.eventFrameCounts.clear();
   }
 
   /**

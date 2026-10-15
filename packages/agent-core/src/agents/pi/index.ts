@@ -1127,6 +1127,9 @@ export class PiAgent extends BaseAgent {
     let mutablePiProviderId = initialProvider;
     let mutableProviderId: string | null | undefined = opts.providerId ?? authProviderId;
     let activeEffortSnapshot = initialEffortSnapshot;
+    // 会话当前思考档位（启动档 + setEffort 更新）。pi 的 set_model 会把档位重置成
+    // 新模型自己的默认档（上游 #5733 转录实证）——切模后据此恢复，用户选的档不丢。
+    let currentEffort: Effort | null = startupEffort ?? null;
     let currentAutoReviewIntent = '';
     const autoReviewDecisionCache = new Map<string, Promise<AutoReviewDecision>>();
     const setAutoReviewIntent = (content: UserMessage['content']): void => {
@@ -1208,6 +1211,9 @@ export class PiAgent extends BaseAgent {
       return pending;
     };
     let closed = false;
+    /** RPC 管道失联（stdout 断/stdin 写失败但 exit 未确认，#5729 同构）：
+     *  onDisconnect 已补 terminal 并主动击杀；onExit 据此跳过重复 terminal。 */
+    let rpcDisconnected = false;
     // Cindy 侧对 pi plan 模式的镜像态;setPlanMode 经 /plan toggle 驱动,与 pi 内部
     // planModeEnabled 保持一致(RPC 下 Execute/Refine 选择框被 auto-cancel,pi 不会自行
     // 翻转,故镜像不漂移)。
@@ -1414,7 +1420,8 @@ export class PiAgent extends BaseAgent {
           runtimeCapabilityGeneration++;
           publishRuntimeCapabilities(undefined);
           runtimeCapabilityListeners.clear();
-          if (!closed) {
+          // rpcDisconnected 时已补过 terminal（onDisconnect），不重复发
+          if (!closed && !rpcDisconnected) {
             // 非用户 close 的进程死亡:terminal error + 收尾,避免 UI 永久 running。
             queue.push({
               type: 'error',
@@ -1436,6 +1443,25 @@ export class PiAgent extends BaseAgent {
           cleanupConfigHome();
           cleanupRuntimeFiles();
           queue.end();
+        },
+        onDisconnect: (reason) => {
+          // RPC 管道失联但 exit 未确认（执行器卡死/管道半断，上游 #5729 同构修复）：
+          // 未收口的轮补 terminal（防 UI 永久 running、Stop 意图丢失），随后主动
+          // 击杀存活状态不明的执行器（close 会经 exit 路径收口，onExit 不重复发）。
+          if (rpcDisconnected || closed) return;
+          rpcDisconnected = true;
+          deps.logger.warn('pi rpc disconnected, terminating executor', { reason });
+          if (ctx.isStreaming) {
+            queue.push({
+              type: 'error',
+              data: {
+                message: `pi 连接中断（${reason}）：执行器未确认退出，本轮结果未知。请重新发送；反复出现请反馈。`,
+                isTerminal: true,
+              },
+              source: 'pi',
+            });
+          }
+          void proc.close();
         },
       });
     } catch (err) {
@@ -1926,6 +1952,36 @@ export class PiAgent extends BaseAgent {
       autoReviewDecisionCache.clear();
       // 换模型 / 换路由可能正好修掉了审阅器不可用的原因;换完又不可用值得再提醒一次。
       autoReviewUnavailableNotice.reset();
+      // set_model 会把思考档位重置为新模型的默认档（上游 #5733）——切模成功后
+      // 重下目标档位（显式传入的 effort 优先，否则恢复会话当前档）。恢复失败只
+      // warn：切换本身已确认成功，不能被档位恢复的失败拖垮（会连带把已确认的
+      // 路由快照语义搅乱）；新模型不支持旧档位时静默保持 pi 默认。
+      const restoreEffort = setOpts?.effort ?? currentEffort;
+      const snapshotAllows =
+        !!restoreEffort &&
+        !!nextEffortSnapshot &&
+        (nextEffortSnapshot.length > 0 ? nextEffortSnapshot.includes(restoreEffort) : false);
+      if (snapshotAllows && restoreEffort) {
+        try {
+          const restore = await proc.request({
+            type: 'set_thinking_level',
+            level: effortToPiThinkingLevel(restoreEffort),
+          });
+          if (restore.success) {
+            currentEffort = restoreEffort;
+          } else {
+            deps.logger.warn('pi set_thinking_level restore after set_model rejected', {
+              effort: restoreEffort,
+              error: restore.error,
+            });
+          }
+        } catch (err) {
+          deps.logger.warn('pi set_thinking_level restore after set_model failed', {
+            effort: restoreEffort,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
       const data = (resp.data ?? {}) as { contextWindow?: number };
       if (typeof data.contextWindow === 'number' && data.contextWindow > 0) {
         ctx.contextWindow = data.contextWindow;
@@ -2121,6 +2177,7 @@ export class PiAgent extends BaseAgent {
           level: effortToPiThinkingLevel(effort),
         });
         if (!resp.success) throw new Error(`pi set_thinking_level failed: ${resp.error ?? 'unknown'}`);
+        currentEffort = effort;
       },
 
       async setPermissionMode(mode): Promise<void> {
