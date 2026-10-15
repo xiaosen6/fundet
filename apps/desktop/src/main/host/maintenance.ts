@@ -105,7 +105,12 @@ function cleanupSkillhubTmp(): void {
 
 /** 主入口：启动时调用一次（agent-home 清扫改异步，不阻塞事件循环） */
 export async function runMaintenanceCleanup(validSessionIds: Set<string>, workDirs: string[]): Promise<void> {
-  try { await cleanupAgentHome(); } catch { /* ignore */ }
+  try {
+    // resume 接线后（0.3.47）转录 GC 需要 DB 引用集：被 sdk_session_id 引用的保留
+    const referenced = (getSqlite().prepare('SELECT sdk_session_id FROM sessions WHERE sdk_session_id IS NOT NULL').all() as Array<{ sdk_session_id: string }>)
+      .map((r) => r.sdk_session_id);
+    await cleanupAgentHome({ referencedTranscripts: referenced });
+  } catch { /* ignore */ }
   cleanupUploadsDir(workDirs);
   checkpointWal();
   cleanupOrphanSettings(validSessionIds);

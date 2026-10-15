@@ -8,7 +8,6 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { app } from 'electron';
 import {
   Maker,
@@ -209,10 +208,12 @@ function isDwsCliInstalled(): boolean {
   return false;
 }
 
-/** 每会话隔离的 pi 配置目录（PI_CODING_AGENT_DIR 的宿主侧根） */
+/** pi 宿主侧根目录（PI_CODING_AGENT_DIR 前缀）：单一共享 userData/agent-home——
+ *  sessions/ 里的会话 JSONL 转录跨重启留存（resume 恢复上下文的载体，DB
+ *  sdk_session_id 指向它们）；run-tmp/<hex> 配置目录仍按 startSession 随机隔离
+ *  （防并发写 models.json，agent-core 内），close 即清。 */
 function resolvePiAgentHome(): string {
-  const dir = path.join(app.getPath('userData'), 'agent-home', randomBytes(8).toString('hex'));
-  return dir;
+  return path.join(app.getPath('userData'), 'agent-home');
 }
 
 export function getHost(): FundetHost {
