@@ -56,3 +56,22 @@ describe('createBrowserControlRuntime — request planning + dispatch', () => {
     expect(res).toHaveProperty('ok');
   });
 });
+
+describe('open 请求的 background 语义（#5834 移植）', () => {
+  it('agent 默认后台开页；host 显式标记用户发起才前台', () => {
+    expect(planDispatch({ action: 'open', url: 'https://example.com' }).body).toEqual({
+      url: 'https://example.com',
+      label: undefined,
+      background: true,
+    });
+    expect(planDispatch({
+      action: 'open',
+      url: 'about:blank',
+      background: false,
+    }).body).toEqual({
+      url: 'about:blank',
+      label: undefined,
+      background: false,
+    });
+  });
+});
