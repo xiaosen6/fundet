@@ -17,6 +17,7 @@ import { setupBundledGitFallback } from './host/git-bash.js';
 import { ensureBundledGitRuntime } from './host/git-runtime.js';
 import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
+import { disposeSkillScanHost } from './host/skill-scan-host.js';
 import { registerIpcHandlers } from './ipc/register.js';
 import { registerImIpc, startSavedImBots, stopAllImBots } from './im/host.ts';
 import { registerDwsIpc } from './host/dws.ts';
@@ -334,6 +335,8 @@ function bootstrap(): void {
     void stopAllImBots();
     stopDwsWidgets();
     stopAutomationScheduler();
+    // 回收技能扫描隔离子进程（在途扫描取消，幂等）
+    disposeSkillScanHost();
     // 关闭托管浏览器（用过才发 stop；没用过 stop 反而会拉起服务挂住退出）
     void disposeBrowserHost();
     // 关闭所有活跃会话，回收 pi 子进程

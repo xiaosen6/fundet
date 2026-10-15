@@ -8,9 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app } from 'electron';
-import { parseFrontmatter, scanPiCustomizations } from '@fundet/agent-core';
+import { parseFrontmatter } from '@fundet/agent-core';
 import { parseSkillMarkdown } from './skill-package.js';
 import { extractZip, findEntryInExtract } from './zip-extract.js';
+import { scanPiSkills } from './skill-scan-host.js';
 import { brand } from '../../shared/brand.js';
 
 /** 不用点开头：electron-builder extraResources 可能丢掉 dotfile */
@@ -105,7 +106,9 @@ function listBundledSkillViews(): SkillView[] {
 
 export async function listSkills(workDir?: string): Promise<SkillView[]> {
   const dirs = workDir && workDir.trim() ? [workDir.trim()] : [];
-  const { items } = await scanPiCustomizations({ workingDirs: dirs, kinds: ['skill'] });
+  // 扫描隔离执行（utilityProcess，Cindy #5858 同构）：同步原生 fs 遇网络盘/
+  // 杀软审批会无限挂起，绝不能再跑在主进程；超时/失败回落空列表（Cindy 同语义）
+  const { items } = await scanPiSkills({ workingDirs: dirs, kinds: ['skill'] });
   const scanned: SkillView[] = items
     .filter((it) => it.kind === 'skill')
     .map((it) => ({
