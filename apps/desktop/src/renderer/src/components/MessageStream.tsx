@@ -23,7 +23,7 @@
  *   ≥4 轮且左留白足够才出场；完整覆盖导航时抑制右上角「跳到上一条提问」chip。
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Info, Loader2, Pen, Quote } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Info, Loader2, Quote } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { getFocusedSessionId, type DisplayItem, type SessionSlice } from '../stores/sessionStore';
 import type { SessionAttachment } from '../../../shared/fundet-api.js';
