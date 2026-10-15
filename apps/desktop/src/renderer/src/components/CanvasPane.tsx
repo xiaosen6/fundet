@@ -1,6 +1,6 @@
 /**
  * CanvasPane —— 右侧产物预览面板（v2，2026-09-30 对齐 Cindy 体感）。
- * - 可拖宽（280px..窗宽 70%，localStorage 持久化）+ 一键撑满/还原
+ * - 可拖宽（280px..窗宽 70%，localStorage 持久化；4px 死区 + Esc 回滚 + 拖拽护盾防 iframe 吞指针）+ 一键撑满/还原
  * - 头部：标题 + 当前文件名 + 撑满/关闭按钮（v1 的 onClose 是死代码，已激活）
  * - 产物列表：横向 pill 行（替代 140px 竖列表），activePath 变化自动滚入视口
  * - text/html 源码 highlight.js 高亮；HTML 轮末自动刷新（turnActive 转折 bump key）
@@ -132,22 +132,43 @@ export function CanvasPane({
     el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }, [activePath, artifacts]);
 
+  // 拖拽期 resizing=true 会罩一层透明护盾盖住 iframe 预览（HTML/PDF）——指针滑进
+  // iframe 后 mousemove/mouseup 被吞、拖拽冻结的坑（对齐 CDS 分割条护盾方案）
+  const [resizing, setResizing] = useState(false);
   const startResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       const startX = e.clientX;
       const startW = width;
+      let dragging = false; // 4px 死区：微抖/单击不改宽度
+      const clampW = (clientX: number): number =>
+        Math.min(Math.max(MIN_WIDTH, startW + (startX - clientX)), Math.floor(window.innerWidth * 0.7));
       const onMove = (ev: MouseEvent): void => {
-        const w = Math.min(Math.max(MIN_WIDTH, startW + (startX - ev.clientX)), Math.floor(window.innerWidth * 0.7));
-        setWidth(w);
+        if (!dragging && Math.abs(ev.clientX - startX) < 4) return;
+        dragging = true;
+        setWidth(clampW(ev.clientX));
       };
       const onUp = (ev: MouseEvent): void => {
+        cleanup();
+        if (!dragging) return;
+        window.localStorage.setItem(WIDTH_KEY, String(Math.round(clampW(ev.clientX))));
+      };
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key !== 'Escape') return;
+        ev.preventDefault();
+        cleanup();
+        if (dragging) setWidth(startW); // Esc 回滚到拖拽前宽度，不落盘
+      };
+      const cleanup = (): void => {
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
-        window.localStorage.setItem(WIDTH_KEY, String(Math.round(Math.min(Math.max(MIN_WIDTH, startW + (startX - ev.clientX)), Math.floor(window.innerWidth * 0.7)))));
+        window.removeEventListener('keydown', onKey, true);
+        setResizing(false);
       };
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
+      window.addEventListener('keydown', onKey, true);
+      setResizing(true);
     },
     [width],
   );
@@ -162,10 +183,12 @@ export function CanvasPane({
         <div
           onMouseDown={startResize}
           onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
-          title="拖动调整宽度，双击复位"
+          title="拖动调整宽度，双击复位，Esc 取消"
           className="absolute top-0 bottom-0 -left-[3px] z-10 w-[6px] cursor-col-resize hover:bg-accent/30"
         />
       )}
+      {/* 拖拽护盾：盖住 iframe 预览防指针事件被吞（CDS 分割条方案） */}
+      {resizing && <div className="absolute inset-0 z-20 cursor-col-resize" />}
 
       {/* 头部：当前文件名 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识；
           右侧 pr 让出窗口控件区——撑满/关闭按钮不与 min/max/close 重叠） */}

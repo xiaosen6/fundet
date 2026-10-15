@@ -378,6 +378,18 @@ textarea:focus-visible {
   background: transparent;
   padding: 0;
 }
+/* 带头栏的代码块（MarkdownCodeBlock）：容器接管卡片底/描边/圆角，pre 退为纯内容区 */
+.md .md-codeblock {
+  background: var(--card);
+  border: 1px solid var(--board);
+  border-radius: var(--radius-container);
+  overflow: hidden;
+}
+.md .md-codeblock pre {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
 
 /* docx 预览（复用 .md 排版）：mammoth 内联 base64 图片不撑破容器 */
 .office-docx img {
@@ -767,6 +779,30 @@ a {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* 滚动边缘渐隐（CDS 7 档非线性遮罩，alpha 拟合 y≈x^1.5 幂律，消除高分屏色阶断层）。
+ * 边缘距离由 useScrollFade 写 --sf-top/--sf-bottom（0 或 28px），触顶/触底归零。 */
+.scroll-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #0000000d calc(var(--sf-top, 0px) * 0.15),
+    #00000026 calc(var(--sf-top, 0px) * 0.3),
+    #0000004d calc(var(--sf-top, 0px) * 0.45),
+    #00000080 calc(var(--sf-top, 0px) * 0.6),
+    #000000b3 calc(var(--sf-top, 0px) * 0.75),
+    #000000d9 calc(var(--sf-top, 0px) * 0.87),
+    #000 var(--sf-top, 0px),
+    #000 calc(100% - var(--sf-bottom, 0px)),
+    #000000d9 calc(100% - var(--sf-bottom, 0px) * 0.87),
+    #000000b3 calc(100% - var(--sf-bottom, 0px) * 0.75),
+    #00000080 calc(100% - var(--sf-bottom, 0px) * 0.6),
+    #0000004d calc(100% - var(--sf-bottom, 0px) * 0.45),
+    #00000026 calc(100% - var(--sf-bottom, 0px) * 0.3),
+    #0000000d calc(100% - var(--sf-bottom, 0px) * 0.15),
+    transparent
+  );
 }
 
 /* Tooltip 入场（120ms 淡入 + 微缩放；translateX(-50%) 与定位变换合并） */

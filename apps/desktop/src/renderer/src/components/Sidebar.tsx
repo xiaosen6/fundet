@@ -21,6 +21,7 @@ import { brand } from '../../../shared/brand.js';
 import { getProfile, subscribeProfile } from '../lib/profile';
 import { reorderSessions, setSessionPinned, useSessionAttentionMap } from '../stores/sessionStore';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { useScrollFade } from '../hooks/useScrollFade';
 import { BrandMark } from './BrandMark';
 import { SessionRenameInput } from './SessionRenameInput';
 import { Tooltip } from './ui/Tooltip';
@@ -448,6 +449,7 @@ export function Sidebar({
 
   // 会话列表窗口化：limit 随滚动单调增长；activeId 落到窗口外时扩到覆盖
   const listRef = useRef<HTMLDivElement | null>(null);
+  useScrollFade(listRef);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [limit, setLimit] = useState(LIST_INITIAL);
   const activeIndex = activeId ? ordered.findIndex((s) => s.id === activeId) : -1;
@@ -627,7 +629,7 @@ export function Sidebar({
       </div>
 
       {/* 会话区（对齐 Cindy 的「Chat」段标；有置顶段时拆成 置顶/会话 两段标） */}
-      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
+      <div ref={listRef} className="scroll-fade flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
         {trimmedQuery ? (
           <>
             <div className="px-3 pt-1 pb-1 text-13 text-muted select-none">

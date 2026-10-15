@@ -144,6 +144,8 @@ export function AskUserQuestionPrompt({
   // 按键不属于本卡，不能替用户选选项/跳题
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      // IME 组词中（自由输入框里打中文）的按键不触发卡片快捷键（Esc 只关候选窗）
+      if (e.isComposing || e.keyCode === 229) return;
       if (showCustomInput) {
         if (e.key === 'Escape') {
           e.preventDefault();

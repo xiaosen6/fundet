@@ -424,6 +424,9 @@ export function ChatInput({
             onAddFiles(files);
           }}
           onKeyDown={(e) => {
+            // IME 组词期间的按键（Enter 选词 / Esc 关候选窗 / 方向键翻候选）一律放行
+            // 给输入法，面板、发送、清空都不响应（CDS 双重互锁守卫，§14.3）
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
             // @ 引用面板开着：导航/回车/退出优先给面板（同 slash 语义）
             if (mention && mentionCtx) {
               if (e.key === 'ArrowDown') {
@@ -438,7 +441,7 @@ export function ChatInput({
                 );
                 return;
               }
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 const hit = mentionCandidates[Math.min(mentionActiveIndex, mentionCandidates.length - 1)];
                 if (hit) {
                   e.preventDefault();
@@ -464,7 +467,7 @@ export function ChatInput({
                 setActiveIndex((i) => (i - 1 + filtered.length) % filtered.length);
                 return;
               }
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 pick(filtered[Math.min(activeIndex, filtered.length - 1)]!);
                 return;
@@ -475,8 +478,8 @@ export function ChatInput({
                 return;
               }
             }
-            // Enter 发送 / Shift+Enter 换行；IME 组词期间的 Enter 不算发送（§14.3）
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            // Enter 发送 / Shift+Enter 换行
+            if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               if (canSend) {
                 onSend();

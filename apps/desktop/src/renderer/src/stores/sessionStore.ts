@@ -13,7 +13,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
-import { classifyRetryableError, retryDelayMs } from '../lib/errorRetry';
+import { classifyRetryableError, MAX_AUTO_RETRY_ATTEMPTS, retryDelayMs } from '../lib/errorRetry';
 import { playCompletionChime } from '../lib/chime';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
 import type {
@@ -254,7 +254,7 @@ function scheduleAutoRetry(sessionId: string, message: string): void {
   const seed = classifyRetryableError(message);
   if (!seed) return;
   const attempt = (retryAttempts.get(sessionId) ?? 0) + 1;
-  if (attempt > 2) return; // 两次之后交还手动重发
+  if (attempt > MAX_AUTO_RETRY_ATTEMPTS) return; // 3 次之后交还手动重发（CDS 熔断口径）
   retryAttempts.set(sessionId, attempt);
   const delayMs = retryDelayMs(seed, attempt);
   const noticeId = nextId('n');
@@ -262,14 +262,14 @@ function scheduleAutoRetry(sessionId: string, message: string): void {
   appendItem(sessionId, {
     kind: 'notice',
     id: noticeId,
-    text: `${seed.label}，${totalSec} 秒后自动重试（${attempt}/2）`,
+    text: `${seed.label}，${totalSec} 秒后自动重试（${attempt}/${MAX_AUTO_RETRY_ATTEMPTS}）`,
   });
   notifySlice(sessionId);
   let remain = totalSec;
   const ticker = setInterval(() => {
     remain -= 1;
     if (remain > 0) {
-      updateRetryNotice(sessionId, noticeId, `${seed.label}，${remain} 秒后自动重试（${attempt}/2）`);
+      updateRetryNotice(sessionId, noticeId, `${seed.label}，${remain} 秒后自动重试（${attempt}/${MAX_AUTO_RETRY_ATTEMPTS}）`);
     }
   }, 1000);
   const timer = setTimeout(() => performAutoRetry(sessionId), delayMs);

@@ -41,8 +41,19 @@ test('未识别错误不重试', () => {
   assert.equal(classifyRetryableError('something went wrong'), null);
 });
 
-test('线性退避：attempt 翻倍延迟', () => {
+test('截断指数退避 + Full Jitter（CDS 公式）：2 倍递增 / jitter 区间 / 封顶', () => {
   const seed = classifyRetryableError('HTTP 429')!;
-  assert.equal(retryDelayMs(seed, 1), 15_000);
-  assert.equal(retryDelayMs(seed, 2), 30_000);
+  // random=0.5 → jitter=1.0，纯指数：15s→30s→60s
+  assert.equal(retryDelayMs(seed, 1, () => 0.5), 15_000);
+  assert.equal(retryDelayMs(seed, 2, () => 0.5), 30_000);
+  assert.equal(retryDelayMs(seed, 3, () => 0.5), 60_000);
+  // jitter 边界 0.85 / 1.15（±15%）
+  assert.equal(retryDelayMs(seed, 1, () => 0), Math.round(15_000 * 0.85));
+  assert.equal(retryDelayMs(seed, 1, () => 1), Math.round(15_000 * 1.15));
+  // 封顶 10min
+  const huge = { kind: 'rate-limit' as const, label: '', delayMs: 500_000 };
+  assert.equal(retryDelayMs(huge, 3, () => 1), 600_000);
+  // base 地板 5s：更小的 seed 也按 5s 起
+  const tiny = { kind: 'network' as const, label: '', delayMs: 1_000 };
+  assert.equal(retryDelayMs(tiny, 1, () => 0.5), 5_000);
 });

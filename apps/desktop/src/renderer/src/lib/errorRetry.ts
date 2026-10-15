@@ -45,7 +45,14 @@ export function classifyRetryableError(message: string): RetryPlanSeed | null {
   return null;
 }
 
-/** 第 n 次重试的延迟（线性退避：15s→30s / 8s→16s / 5s→10s） */
-export function retryDelayMs(seed: RetryPlanSeed, attempt: number): number {
-  return seed.delayMs * attempt;
+/** 自动重试上限：超过后交还手动重发（CDS 熔断口径：3 次自动，第 4 次人工） */
+export const MAX_AUTO_RETRY_ATTEMPTS = 3;
+
+/** 第 n 次重试的延迟：截断指数退避 + Full Jitter（CDS 429/503 公式）。
+ *  delay = min(max(base, 5s) × 2^(n-1) × jitter, 10min)，jitter = 0.85 + random×0.3
+ *  （±15% 防多客户端羊群同步重试）。random 可注入，测试用确定性值。 */
+export function retryDelayMs(seed: RetryPlanSeed, attempt: number, random: () => number = Math.random): number {
+  const base = Math.max(seed.delayMs, 5_000);
+  const jitter = 0.85 + random() * 0.3;
+  return Math.min(Math.round(base * 2 ** (attempt - 1) * jitter), 600_000);
 }
