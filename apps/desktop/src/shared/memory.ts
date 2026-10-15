@@ -4,6 +4,16 @@
 
 export const MEMORY_ENABLED_SETTING = 'memory.enabled';
 
+/**
+ * 全局记忆仓 scope 键（两层模型：项目仓按工作目录 + 全局仓跨所有会话/目录共享）。
+ * 取 '_global'：agent-core 的 sanitizeWorkdir 对它恒等，且真实绝对路径必含
+ * 盘符冒号/分隔符，sanitize 后永远不会等于它——不与任何项目仓目录撞名。
+ */
+export const MEMORY_GLOBAL_SCOPE_KEY = '_global';
+
+/** 写入路由：这些类型默认进全局仓（用户偏好/反馈纠偏跨项目共享），其余进项目仓 */
+export const MEMORY_GLOBAL_TYPES: ReadonlySet<string> = new Set(['user', 'feedback']);
+
 export const MEMORY_MCP_SERVER_NAME = 'fundet-memory';
 
 /** 入口工具（渐进式发现，Cindy cindy_memory 同模式：常驻 prompt 只有这两个） */
