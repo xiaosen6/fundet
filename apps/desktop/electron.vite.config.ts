@@ -25,7 +25,12 @@ export default defineConfig({
       outDir: 'out/main',
       target: 'node22',
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') },
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // 技能扫描 utilityProcess 入口（独立自包含产物，与 index.js 同目录；
+          // skill-scan-host 按 import.meta.url 定位 fork）
+          skillScanProcess: resolve(__dirname, 'src/main/host/skill-scan-process.ts'),
+        },
         // browser-runtime 是编译到 dist 的 external 运行时依赖（打包时由
         // tools/pack-browser-deps.mjs 打平进 resources/node_modules），
         // 运行时从 resources/node_modules 解析；vite 只留裸引用不打包。
