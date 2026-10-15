@@ -110,6 +110,7 @@ import {
   setPrewarmDeps,
 } from '../host/session-prewarm.js';
 import type { PrewarmInput } from '../host/session-prewarm.js';
+import { deleteSessionTranscript } from '../host/agent-home-cleanup.js';
 import { createConsoleLogger } from '@fundet/agent-core';
 import { ensureBrowserRuntime, runExclusiveBrowserOp, stopManagedRuntime } from '../browser/host.js';
 import {
@@ -547,6 +548,15 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
       '工作目录不存在：' + create.workDir + '。可能已被移动或删除，请用输入框旁的文件夹按钮重新选择。',
     );
   }
+  // 重启/回收后重建：DB 已有 sdk_session_id 的会话带 resume 参数——pi 经
+  // switch_session 恢复原模型上下文（0.3.47 起转录跨启动保留在共享 agent-home）。
+  // 文件缺失/失效时 agent-core 走 onInvalidResumeSession（Maker 内部已接 CAS 清库）
+  // → fresh 起新上下文，UI 历史不受影响。
+  const persisted = getDb()
+    .select({ sdkSessionId: sessions.sdkSessionId })
+    .from(sessions)
+    .where(eq(sessions.id, input.sessionId))
+    .get();
   const session = await maker.createSession({
     agentKind: 'pi',
     id: create.sessionId ?? input.sessionId,
@@ -556,6 +566,7 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
     providerId: create.providerId,
     effort: create.effort,
     permissionMode: create.permissionMode,
+    ...(persisted?.sdkSessionId ? { resumeSessionId: persisted.sdkSessionId } : {}),
   });
   wireSession(session);
   return session;
@@ -820,6 +831,12 @@ export function registerIpcHandlers(): void {
     const { maker } = getHost();
     // DB 先删（毫秒级）立即返回；杀 pi 与删快照仓放后台——同步 rmSync 删大仓
     // 会冻结主进程事件循环，点删除整体卡顿（2026-10-07 用户实报根因）
+    // 删行前取转录路径：resume 转录（agent-home/sessions/*.jsonl）连带回收
+    const transcript = getDb()
+      .select({ sdkSessionId: sessions.sdkSessionId })
+      .from(sessions)
+      .where(eq(sessions.id, id))
+      .get()?.sdkSessionId;
     getDb().delete(sessions).where(eq(sessions.id, id)).run();
     turnArtifactSnapshots.delete(id);
     void (async () => {
@@ -828,6 +845,7 @@ export function registerIpcHandlers(): void {
       } catch {
         /* 回收失败不影响删除结果 */
       }
+      if (transcript) await deleteSessionTranscript(transcript);
       await deleteCheckpointsAsync(id);
     })();
   });
