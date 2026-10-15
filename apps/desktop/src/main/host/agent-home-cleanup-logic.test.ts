@@ -44,12 +44,9 @@ test('转录 GC：引用比较大小写不敏感（Windows）', () => {
 
 test('删除路径闸：只认共享 sessions 目录内的文件', () => {
   assert.ok(isTranscriptPathWithin(SESSIONS_DIR, path.join(SESSIONS_DIR, 'a.jsonl')));
-  if (process.platform === 'win32') {
-    // 大小写差异放行（Windows 文件系统不敏感；Linux 大小写敏感属正确拒绝）
-    assert.ok(isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + '\\a.jsonl'));
-  } else {
-    assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + '/a.jsonl'));
-  }
+  // 大小写变体放行是闸的刻意语义（两边 toLowerCase——Windows 文件系统不敏感；
+  // Linux 上 /tmp 与 /TMP 按同目录对待，删除仍用原始路径， containment 不破）
+  assert.ok(isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + path.sep + 'a.jsonl'));
   // 目录外/上级逃逸/无关绝对路径全拒
   assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, path.join(BASE, 'other', 'a.jsonl')));
   assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, path.join(SESSIONS_DIR, '..', 'runtime', 'perm.json')));
