@@ -18,7 +18,7 @@ Windows 开发机；仓库 `D:\Go\fundet-buddy`；远端 `github` = `xiaosen6/fu
 
 ```powershell
 pnpm typecheck            # apps/desktop 下
-pnpm test                 # 全量测试（node --test；当前项数见 memory.md 版本行）
+pnpm test:unit            # 全量测试（desktop=node --test 直跑 TS 源，packages/*=vitest run；当前项数见 memory.md 版本行）
 pnpm dev                  # 开发
 pnpm build && pnpm dist:win   # 打包（约 3 分钟；EBUSY 重跑即过）
 node ../../tools/check-ipc-channels.cjs   # IPC 通道审计，发版前必跑（在 apps/desktop 下执行）
