@@ -90,7 +90,9 @@ function registerCallToolEntry(server: McpServer, registry: BrowserToolRegistry)
     D_CALL_TOOL,
     {
       name: z.string().describe('工具名,从 list_tools 获取(如 browser)'),
-      args: jsonObjectArg('工具参数(JSON 对象)。不确定 schema 时可先传 {} 触发错误反馈。'),
+      // .optional()：无参工具省略 args 不再 -32602（上游 #6025 同构；null 由
+      // jsonObjectArg 的 preprocess 归一 {}，registry.call 侧 rawArgs ?? {} 兜底）
+      args: jsonObjectArg('工具参数(JSON 对象)。不确定 schema 时可先传 {} 触发错误反馈。').optional(),
     },
     async ({ name, args }) => registry.call(name, args),
   );

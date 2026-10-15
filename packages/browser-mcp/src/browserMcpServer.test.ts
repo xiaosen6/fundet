@@ -99,6 +99,22 @@ describe('createBrowserMcpServer', () => {
     await h.cleanup();
   });
 
+  it('call_tool args 可省略/为 null（上游 #6025）：入口不再 -32602，错误来自业务校验', async () => {
+    const h = await makeHarness();
+    const noArgs = await h.client.callTool({
+      name: 'call_tool',
+      arguments: { name: 'browser' },
+    });
+    // 不再抛 -32602：能正常进入 registry，拿回业务校验的文本（缺 action 等）
+    expect((noArgs.content as Array<{ type: string }>)[0]).toMatchObject({ type: 'text' });
+    const nullArgs = await h.client.callTool({
+      name: 'call_tool',
+      arguments: { name: 'browser', args: null } as unknown as Record<string, unknown>,
+    });
+    expect((nullArgs.content as Array<{ type: string }>)[0]).toMatchObject({ type: 'text' });
+    await h.cleanup();
+  });
+
   it('passes through the network actions (requests / responseBody)', async () => {
     const h = await makeHarness();
     await h.client.callTool({
