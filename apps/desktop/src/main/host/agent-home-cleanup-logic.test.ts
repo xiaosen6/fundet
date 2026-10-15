@@ -1,9 +1,11 @@
 /**
  * agent-home 启动清扫纯逻辑：根目录收窄（sessions 保留）+ 转录引用计数 GC +
- * 删除路径闸。node --test 直跑（无 Electron 依赖）。
+ * 删除路径闸。node --test 直跑（无 Electron 依赖）。路径用平台中立的绝对路径
+ * 构造（CI 在 Linux：C:/ 风格会被 path.resolve 当相对路径，0.3.25 同类教训）。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import path from 'node:path';
 import {
   planRootSweep,
@@ -11,7 +13,8 @@ import {
   isTranscriptPathWithin,
 } from './agent-home-cleanup-logic.ts';
 
-const SESSIONS_DIR = path.resolve('C:/Users/x/AppData/Roaming/Fundet/agent-home/sessions');
+const BASE = path.resolve(os.tmpdir(), 'fundet-agent-home-test');
+const SESSIONS_DIR = path.join(BASE, 'agent-home', 'sessions');
 
 test('根目录清扫：sessions 保留，run-tmp/runtime/旧随机目录全删', () => {
   const plan = planRootSweep(['sessions', 'run-tmp', 'runtime', 'ab12cd34ef56', 'note.txt']);
@@ -41,10 +44,14 @@ test('转录 GC：引用比较大小写不敏感（Windows）', () => {
 
 test('删除路径闸：只认共享 sessions 目录内的文件', () => {
   assert.ok(isTranscriptPathWithin(SESSIONS_DIR, path.join(SESSIONS_DIR, 'a.jsonl')));
-  // 大小写差异放行（Windows 不敏感）
-  assert.ok(isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + '\\a.jsonl'));
-  // 目录外/上级逃逸/其他盘全拒
-  assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, 'C:/Windows/system32/drivers/etc/hosts'));
+  if (process.platform === 'win32') {
+    // 大小写差异放行（Windows 文件系统不敏感；Linux 大小写敏感属正确拒绝）
+    assert.ok(isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + '\\a.jsonl'));
+  } else {
+    assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, SESSIONS_DIR.toUpperCase() + '/a.jsonl'));
+  }
+  // 目录外/上级逃逸/无关绝对路径全拒
+  assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, path.join(BASE, 'other', 'a.jsonl')));
   assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, path.join(SESSIONS_DIR, '..', 'runtime', 'perm.json')));
-  assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, 'D:/elsewhere/a.jsonl'));
+  assert.ok(!isTranscriptPathWithin(SESSIONS_DIR, path.resolve(os.tmpdir(), 'elsewhere-fundet', 'a.jsonl')));
 });

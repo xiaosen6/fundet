@@ -88,8 +88,9 @@ test('超时：返回 [pi] 前缀错误并 kill 一次（主进程计时器不�
   const child = new FakeScanner();
   const client = makeClient(() => child, { timeoutMs: 10 });
   const heartbeat = { n: 0 };
+  // 心跳保持 ref：client 的超时计时器是 unref 的（生产语义，不拖住退出），
+  // 测试进程若没有 ref 计时器，事件循环会在 10ms 计时器触发前排干、进程提前退出
   const ticker = setInterval(() => heartbeat.n++, 5);
-  ticker.unref?.();
   const result = await client.scan(OPTS);
   clearInterval(ticker);
   assert.ok(result.items.length === 0);
