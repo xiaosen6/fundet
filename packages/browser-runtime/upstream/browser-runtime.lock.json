@@ -11,7 +11,8 @@
     "Product-facing package and tool names remain neutral.",
     "Keep legal/source attribution in this metadata and third-party notices when runtime code is synced.",
     "Do not edit generated runtime sources directly (src/_generated/**); update sync.mjs or src/shim/* instead.",
-    "Full extraction live: core + leaf SSRF/security + net-policy + normalization-core + fs-safe dist, with hand-written src/shim/* for the plugin-sdk surface."
+    "Full extraction live: core + leaf SSRF/security + net-policy + normalization-core + fs-safe dist, with hand-written src/shim/* for the plugin-sdk surface.",
+    "2026-10-15: #5834 (keep agent-read pages in background, Cindy 37385a2b1) applied manually; contentHash not recomputed because sync.mjs lives upstream — recompute on the next full resync."
   ],
   "patches": [
     {
@@ -21,6 +22,30 @@
     {
       "file": "extension/src/browser/config.ts",
       "desc": "skip upstream auto-injected \"openclaw\"/\"user\" profiles when the host provides its own (avoids CDP port 18800 collision with the managed profile + never drives the user's Chrome)"
+    },
+    {
+      "file": "extension/src/browser/cdp.ts",
+      "desc": "background tab creation: Target.createTarget accepts a background flag and reuses the caller-provided navigation policy (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/chrome.ts",
+      "desc": "headed managed Chrome launches with --no-startup-window so background agent tabs do not flash a window (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/routes/tabs.ts",
+      "desc": "carry the background-open intent from the neutral runtime into tab creation (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/server-context.selection.ts",
+      "desc": "keep the implicit first tab used by agent navigation in the background (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/server-context.tab-ops.ts",
+      "desc": "propagate background tab creation to the managed Chrome CDP target; background failures surface instead of silently falling back (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/server-context.types.ts",
+      "desc": "type the host-only background option on profile tab operations (#5834 port)"
     }
   ],
   "fileCount": 335,
