@@ -6,7 +6,7 @@
  * - text/html 源码 highlight.js 高亮；HTML 轮末自动刷新（turnActive 转折 bump key）
  * - 空态设计化（图标 + 标题 + 描述）
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/common';

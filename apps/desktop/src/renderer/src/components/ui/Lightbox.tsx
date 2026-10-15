@@ -113,6 +113,8 @@ export function LightboxHost(): React.JSX.Element | null {
     tx: number;
     ty: number;
     bounds: Bounds;
+    /** 是否已越过 4px 死区（未越过不动视图，单击/手抖不触发平移——CDS 拖拽死区） */
+    engaged: boolean;
   } | null>(null);
 
   // ---- 标注模式状态（事件采集在此，几何/烧录纯函数在 lib/lightboxAnnotations） ----
@@ -329,16 +331,22 @@ export function LightboxHost(): React.JSX.Element | null {
       tx: view.tx,
       ty: view.ty,
       bounds: { width: el.clientWidth, height: el.clientHeight },
+      engaged: false,
     };
-    setDragging(true);
   };
 
   const onImagePointerMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
-    setView((v) =>
-      panView(v.scale, d.tx + (e.clientX - d.startX), d.ty + (e.clientY - d.startY), d.bounds),
-    );
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.engaged) {
+      // 4px 拖拽死区（CDS：hypot<4 判手抖）
+      if (Math.hypot(dx, dy) < 4) return;
+      d.engaged = true;
+      setDragging(true);
+    }
+    setView((v) => panView(v.scale, d.tx + dx, d.ty + dy, d.bounds));
   };
 
   const endImageDrag = (e: ReactPointerEvent<HTMLDivElement>): void => {

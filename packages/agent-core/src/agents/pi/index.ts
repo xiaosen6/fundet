@@ -1792,17 +1792,19 @@ export class PiAgent extends BaseAgent {
       // 配置后从中删/改了这个 model。两种都会让 resolveProviderForModel 静默回落 cindy 网关;
       // 若该 model id 也在网关目录里则 set_model “成功”、后续 prompt 发往网关而非用户选的
       // 本地/自定义端点(codex review P1)。先走一次懒同步(重写 models.json + 让运行中的
-      // pi 进程重读)给「启动后新增」的场景就地热切;仍不可解析才提示重启会话 ——
-      // 绝不静默换目的地。
+      // pi 进程重读)给「启动后新增」的场景就地热切;仍不可解析才抛错(文案引导先重试——
+      // 热刷后内存快照可能已覆盖,再失败才重启会话) —— 绝不静默换目的地。
       if (explicitByomUnresolvable(requestedProviderId, model)) {
         const lazilySynced = await hotReloadModelCatalog(
           requestedProviderId ? { provider: requestedProviderId, model } : undefined,
         );
         if (!lazilySynced || explicitByomUnresolvable(requestedProviderId, model)) {
           throw new Error(
-            `pi: BYOM provider '${requestedProviderId}' cannot serve model '${model}' in this session's ` +
-              'startup provider set (provider not present, or it no longer offers this model); restart the ' +
-              'session to use it (refusing to fall back to the Cindy gateway).',
+            `pi: BYOM provider '${requestedProviderId}' cannot serve model '${model}' after a catalog ` +
+              'hot-reload attempt (provider absent from the refreshed catalog, the model was removed, ' +
+              'or the post-reload verification RPC failed). Retry the switch once — the refreshed ' +
+              'in-memory catalog may already cover it; restart the session only if it keeps failing ' +
+              '(refusing to fall back to the Cindy gateway).',
           );
         }
       }

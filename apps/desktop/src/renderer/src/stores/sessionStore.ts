@@ -160,10 +160,18 @@ export function patchSessionInList(sessionId: string, patch: Partial<SessionList
 }
 
 /** 删除会话的乐观更新：立即从列表移除（主进程清 DB/杀进程/删快照仓均后台异步，
- *  不再等 invoke 返回——删除卡顿的渲染层半边，2026-10-07） */
+ *  不再等 invoke 返回——删除卡顿的渲染层半边，2026-10-07）。连带清会话级内存态
+ *  防有界泄漏；在飞的自动重试必须先取消（先取消再删 slice，倒计时 notice 清理要读它），
+ *  否则定时器触发会给已删会话重建孤儿 slice。 */
 export function removeSessionFromList(sessionId: string): void {
   sessionList = sessionList.filter((s) => s.id !== sessionId);
   if (drafts.has(sessionId)) drafts.delete(sessionId);
+  cancelAutoRetry(sessionId);
+  slices.delete(sessionId);
+  lastSendInputs.delete(sessionId);
+  retryAttempts.delete(sessionId);
+  autoAllowTools.delete(sessionId);
+  userAborts.delete(sessionId);
   rebuildCombinedList();
   notifyList();
 }
