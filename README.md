@@ -148,7 +148,7 @@ Fundet/
 
 ```powershell
 pnpm typecheck
-pnpm test        # node --test（desktop 侧在 apps/desktop/package.json 逐文件枚举）
+pnpm test:unit  # 全量测试（desktop=node --test，packages/*=vitest run）
 pnpm --filter @fundet/agent-core test
 ```
 

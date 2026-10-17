@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-10-17（交接状态：0.3.47 已发两日；pi #10645 维护者要真截图双模式实测+base64（可立即做）、Cindy 两天积压 764 提交——详见在途事项）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
+> 最后更新：2026-10-17（交接状态：0.3.47 已发两日；pi #10645 真截图双模式实测+精确 base64 已回评，问题收窄到 gray+alpha PNG；Cindy 待审窗口刷新为 809 提交、初筛进行中——详见在途事项）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
 > 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
@@ -32,7 +32,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 **Fundet** = 本地优先桌面 Agent：聊天/Agent + 技能 + BYOK + 浏览器自动化 + 电脑操作 + IM 机器人。模型请求走用户自己的 Key，不经过任何厂商云。
 
 - Electron 37 + electron-vite + React 19 + Tailwind 4。
-- Agent 底座只有 **Pi v0.83.0**（`earendil-works/pi`，bun 单二进制，`--mode rpc`）。
+- Agent 底座只有 **Pi v0.84.4**（`earendil-works/pi`，bun 单二进制，`--mode rpc`）。
 - UI 视觉对齐 Cindy（0.3.0 起亮色=Cindy Light 原值冷灰白、暗色=CINDY Dark 原值；新会话空消息态=Cindy 首页布局），品牌是小宇航员圆形 Logo + FunDet 斜体红字标，文案中文。自我介绍：**「你是 Fundet，一个运行在本地的 AI 助手」**。
 - **不要做成 Cindy fork。** 不搬：账号/OAuth、Ghost 插件、Office、设备互联、IM 云、语音、Claude Code/Codex harness。（原「不搬」清单里的定时任务、SkillHub 市场已在 0.3.0 按用户要求实现——自动化=宿主层调度非插件沙箱，技能集市=接 skillhub.cn 公共市场。）
 
@@ -210,7 +210,7 @@ Fundet/
 - **ask_user_question 问答卡（0.3.20，Cindy #5198 移植）**：模型追问时替换 composer 位——多题步进/上一题/跳过（Esc）/单选点击即进/多选 JSON 数组串/宿主自供自由输入行（模型自造「其他（回复说明）」式选项经 `shared/ask-options.ts` 剔除）/数字快捷键；IM 文本桥同口径过滤。**未移植** Cindy 的滑页动画/最小化/草稿持久化（切会话丢答题进度，v1 接受）。
 - 设置 → 通用「版本与更新」卡显示 **Agent 运行时（pi）版本 + 上游最新**（0.3.21；只读检测不热更，`host/pi-version.ts`）。
 - **记忆（2026-09-30 上线，用户拍板「开吧+IM 共享+管理面板」）**：Maker Memory 纯本地——`<userData>/maker-memory/<sanitized-workdir>/` 按工作目录分仓（.md 分片+MEMORY.md 索引+fts.db），4 类 curated（user/feedback/project/reference）+ digest（pi 压缩上下文自动沉淀，可检索不进索引）；**默认开**（`memory.enabled` 设置，记忆面板可关）；模型工具面=内置 `fundet-memory` MCP（**渐进式发现**：list_tools/call_tool 两入口，六内工具按需发现，省 system 上下文；auto-approve——只写 userData 内记忆文件）；pi 会话不注入 system prompt 记忆段（模型经 MCP 自学，Cindy pi 同路径）；**IM 会话共享主目录记忆仓**（createSession 传 `memoryScopeDir: os.homedir()`）；侧栏「记忆」能力面板=MemoryPanel（hero 统计+开关+打开文件夹、按目录分仓 chips、类型过滤、FTS 搜索、新建/编辑/删除弹层、digest 只读）；`memory_review` 未暴露（PiAgent 无 oneShot）。
-- MCP 桥：主进程注入 search/browser/computer 三个内置 MCP + 用户自配 MCP 服务器（`mcp-bridge.ts`，stdio 经 StdioMcpHttpProxy、http 描述符直通）；用户面在设置 → MCP 服务器（§1 边界表），带连通性状态点（设置页对启用中的 server 跑一次 initialize 握手，绿=通/红=失败，可手动重测；stdio 探测自起自杀不占会话）。
+- MCP 桥：主进程按会话装配内置 search/browser/computer/knowledge/memory/imagegen MCP + 用户自配 MCP 服务器（`mcp-bridge.ts`，stdio 经 StdioMcpHttpProxy、http 描述符直通；browser/computer 受自动操作开关控制，knowledge 按会话绑定挂载，memory/imagegen 默认开）；用户自配面在设置 → MCP 服务器（§1 边界表），带连通性状态点（设置页对启用中的 server 跑一次 initialize 握手，绿=通/红=失败，可手动重测；stdio 探测自起自杀不占会话）。
 - 技能启停：设置 → 技能每项有开关；停用 = 目录从 `skills/` 同级挪进 `skills.disabled/`（pi 只扫 `skills/`，挪出即对新会话隐形，scope 天然保持），卸载对停用目录同样有效。新增语义色 `--color-success`（绿，状态点用）。
 - 死会话容错：401/欠费后 set-model 等只落库，下次发送 lazy-create。
 
@@ -260,7 +260,7 @@ Fundet/
 ### 4.10 语音与网关服务（0.3.14）
 - **统一服务网关** `host/service-gateway.ts`：自建 nginx 网关（内网 10.7.0.95 / 公网 111.34.136.32，同源）：ASR（SenseVoice，免鉴权，≤30s 单段无 VAD）/ TTS（CosyVoice2，wav 24kHz，支持参考音色克隆）/ 嵌入（Qwen3-Embedding-4B，2560 维，**不支持 dimensions 参数**，查询侧要加指令前缀）；地址存 settings `service.gatewayUrl`（无 UI，改默认值找开发）；网关上还有生图 Qwen-Image-2.1（未接，记档）。
 - **语音输入**：输入框麦克风按钮（**Cindy 原版形态**：右侧工具组发送键左侧 30px 描边圆钮常驻；录音红点呼吸+tabular-nums 计时+220ms 胶囊宽度形变；转写 spinner）。点击开关录音、**25s 自动停**（ASR 30s 上限余量）、Esc 取消、转写文本插光标处；**常显无开关**（曾设开关被用户误拨藏了按钮，09-25 拍板删设置区）。前端 `lib/wav-encode.ts` webm→16kHz mono PCM16 WAV（SenseVoice 不收 webm）；权限处理器放行 media。
-- **TTS 朗读**：assistant 消息操作栏 Volume2 三态钮（合成 spinner/播放可停），2000 字上限。
+- **TTS 朗读已于 0.3.29 移除**（用户拍板；语音输入 ASR 与嵌入不受影响）。
 - 只信库值：预设标注 + 编辑对话框「视觉」勾选（save/回填/扫描三处都要透传 input/maxTokens）。改完新会话即生效。
 - glm-4.5/5.x 无视觉（bigmodel 1210）；`friendly-error.ts` 把供应商错误转中文指引。
 
@@ -555,7 +555,7 @@ pnpm -r --if-present run test
 | **Cindy**（github.com/makecindy/cindy，XD Inc.，Apache-2.0） | 桌面 Agent 产品。UI 视觉、交互形态与多功能的对标/移植来源 | **GitLab 仓不含 Cindy 源码**（zip 打包时排除了 `cindy/`）。完整只读克隆在初始开发机 `D:\AI\Fundet\cindy`（blobless，08-29 @ a971f9e）；内网跟进方式见 §9.5。已移植：浏览器自动化（browser-control-runtime 整包 + browser-mcp 门面）、电脑操作形态、用量历史页、登录态拷贝、视觉勾选、错误重发。**禁止修改/fork 进本仓**；不搬 Ghost/账号云/Office/官方 IM Hook |
 | **openclaw**（github.com/openclaw/openclaw，MIT） | browser-runtime 的更上游 vendored 浏览器内核 | `packages/browser-runtime/upstream/browser-runtime.lock.json` 钉 commit |
 | **trycua/cua**（MIT） | cua-driver Rust 二进制（电脑操作引擎，stdio MCP） | `tools/cua-driver/update.mjs` 现下；注意其删 release 留 tag 的前科 |
-| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 0.83.0；AVX2 硬要求 |
+| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 0.84.4；AVX2 硬要求 |
 | **Tencent openclaw-weixin**（MIT） | 微信 iLink 协议工具 | `apps/desktop/src/main/im/wechat-ilink/` |
 | **Auriti-Labs/geo-optimizer-skill**（MIT） | GEO 技能封装的 CLI 上游 | 不 vendor，运行时 `uvx` |
 
@@ -638,6 +638,8 @@ pnpm -r --if-present run test
 
 > **在途事项（2026-10-10 下午，轮末改动条对齐 Cindy TurnChangesCard 卡片形态+撤销，已实现待用户实测）**：v1 单行条重写为 Cindy 卡片。①**形态**（`components/TurnChangesBar.tsx` 重写）——头部：h-9 w-9 圆角图标盒（bg-chip+FileDiff 18）+「已更改 N 个文件」text-14 medium + `+a/-d` mono tabular-nums（diff 四色）+ 黄色提示行（AlertTriangle 12 + text-11 text-warning「仅撤销或重新应用已精确记录的变更；未记录的改动不会由此操作处理」——对 Fundet 快照体系同样为真：排除清单内路径不入快照、回滚不触碰）；文件列表常显 3 条 + 「再显示 N 个文件 ▾」/「收起 ▴」（Cindy 式，替代 v1 头部整行点按开合；新一轮仍自动复位收起）；文件行 FileText 15（弃 v1 per-kind 图标）+ **完整相对路径**（弃 basename）+ 右侧 +/- 仅 >0 显示 + hover bg-hover，点击仍开 Canvas 预览。②**撤销/重新应用**——复用 `checkpoint:rewind`：主进程 `turn:changes` payload 增 `baseSha`（轮前快照 HEAD；null=无可回滚基准→隐藏撤销按钮，防首轮空仓误删全目录）；撤销=rewindTo(baseSha)，成功后按钮翻转「重新应用」=rewindTo(preRollbackSha)（undo 前自动落的快照即本轮改动后态，双向可逆）；两向均先 `confirmDialog`（执行前自动快照可反悔的语义写进文案）再执行，失败 toast.error；新轮 push 复位翻转态。③**token 映射**：Cindy --border-default→border-board、--surface-elevated→bg-card(+fundet-surface 材质)、--surface-chip→bg-chip、--text-*→text-primary/secondary、--warning-fg→text-warning、--surface-hover→hover:bg-hover、rounded-xl/lg→rounded-container/inner、animate-spin→animate-fundet-spin（Loader2）。**未移植**（有意）：「审查」按钮——Cindy 走 openTurnReview 右侧栏审查面板体系（reviewer/成果快照/Finding 协议），Fundet 无此体系；Cindy partial 态分支（opaque-tool/敏感文件等 incompleteReasons）——Fundet 快照 diff 无部分记录概念，黄色提示行常显。改动面：TurnChangesBar.tsx 重写 / ChatPage（state {files,baseSha}+传 sessionId）/ register.ts（push baseSha）/ fundet-api.ts 类型；IPC 通道数不变（145 INVOKE/17 PUSH）。验证：typecheck ✓/desktop **411**/411/IPC 145+0/build ✓。**待用户实测**：跑一轮改文件任务→卡片头部「已更改 N 个文件」+±统计+黄行+撤销钮；点撤销→确认框→文件回到轮前态+按钮变「重新应用」→再点恢复；点文件行开 Canvas。
 
+> **在途事项（2026-10-17 晚，pi #10645 真截图双模式实测已回评 + Cindy 窗口增至 809）**：**①pi 双模式矩阵完成并已发评**（[comment](https://github.com/earendil-works/pi/issues/10645#issuecomment-6232382108)）。探针=`C:\temp\pi-10645-probe\probe.mjs`，最终结果=`run-2026-10-17T09-36-04-827Z\results.json`；全部请求只进 loopback Anthropic Messages 假网关，真实截图=本机 primary screen 1707×1067、8-bit RGBA、150543B。判据=网关请求内有图片块且原图 SHA-256 全等， omission=出现 `[Image omitted: could not be resized…]` 且无图片块。**v1.2.0：真实截图 RPC/-p 均成功；另做 1×1 RGBA 对照也均成功；只有原集成测试 1×1 8-bit gray+alpha PNG 两模式均 omission。0.84.4 对照：真实截图/RGBA 均成功；gray+alpha RPC 成功但 -p 已失败（说明该格式问题部分是存量，RPC 在 0.87+ 新图片处理链才暴露）。**精确 base64 已随评论附上。**结论纠偏：此前「所有图片全灭」与 worker-null 3 行候选修不再成立为通用根因/修复，不提 PR，等维护者下一轮；当前 pin 仍 0.84.4。**探针自身两坑已修：协议须对齐集成测试 anthropic-messages；`-p` 管道 stdin 必须 EOF 否则等输入。②Cindy 只读参考仓已 fetch，`origin/main=aca5fbdea`，待审窗 `d1fc07e23..aca5fbdea` 从 764 增至 **809**，初筛进行中，**同步点仍 d1fc07e23 未推进**。③全仓基线复验：typecheck ✓/desktop 461/agent-core 899/browser-mcp 92/shared 48/browser-runtime 48+1 skipped 全绿。顺手更正本文两处旧 pin 0.83.0、内置 MCP 清单与已移除 TTS 的漂移，README 全量测试命令改 `pnpm test:unit`。
+>
 > **在途事项（2026-10-17 交接状态）**：**0.3.47 已发两天**（工作树净、CI 双绿、账目两清）。**两条新动静（10-17 查）**：①**pi issue #10645 维护者 davidbrai 又回了**，两个可立即执行的要求——用**真截图**（非 1×1 测试图）测 RPC 模式 + `pi.exe -p @screenshot.png "describe this image"` 两种形态（`-p` 单发模式正好无头验证非 RPC 路径），并把我们测试用的**精确 base64 PNG** 附上（集成测试那张 1×1：`iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC`——他可能用真图测、我们门禁用 1×1，或为差异点）；跑完实测回评；**拿到 lgtm 前不得开 PR**（pi 贡献门槛，防主账号被 auto-close/封禁）。②**Cindy 上游两天又攒 764 提交**（d1fc07e23..dec935545）——周同步窗口（10-20/发版前）未到但积压大，可提前开（流程照 §9.5：分桶划红线→短名单→深挖→移植）。其余待办不变：CDS P2 四件待拍板（thinking 强制展开/暗色字重/token 预估/提示音开关）、GitLab 镜像再同步（主仓比 10-14 快照多 ~14 提交，**须用户确认才动**）、resumeSessionId 完整版 P2、tok/s 兜底小修、Cindy 运维层三件、Mac 公证/真 Key 冒烟/TipTap/Goal/Ollama。仓外资源（C:\temp，可清）：open-claude-ui（CDS 逆向手册）、pi-src（pi 源码克隆，提 PR 用）、pi-120（v1.2.0 二进制）、iso-run-0347（冒烟产物）。
 
 > **在途事项（2026-10-15 八批，挂账三件全清：skill 扫描隔离 + pi 追评 + #5834 移植，已随 0.3.47 发布）**：**①skill 扫描 utilityProcess 隔离**（Cindy #5858 同构，治「网络盘/杀软审批下 SKILLS_LIST 同步 I/O 卡死主进程」）：新四件套 `host/skill-scan-{protocol,client,process,host}.ts`——client 纯逻辑零 Electron（UUID 配对/同参数去重各拿 structuredClone 副本/15s 超时 kill/并发上限 6 且 kill 失败槽位保留到 exit/dispose 幂等，node --test 假子进程 7 用例）；process 为一次性 worker 入口（错误全转 `{items:[],errors}` 正常响应，agent-core 新窄出口 `@fundet/agent-core/customization-scanner` 防拖入 pi/index 全图）；host 为唯一 Electron 绑定点（utilityProcess.fork + env 白名单凭证不进子进程 + cwd=tmpdir + stdio ignore）；`skills.ts` 的 listSkills 改走隔离子进程（超时/失败回落空列表）；electron.vite main 多入口 `skillScanProcess`（dev/build 均产出到 out/main，import.meta.url 定位）；before-quit 挂 disposeSkillScanHost。**②pi issue #10645 追评已发**：v1.2.0 复测仍 100% 复现（CINDY_TEST_PI_BINARY 指向全新解压目录+wasm 在场+全新隔离配置，两图片用例占位符一字不差）+ 根因定位（Bun 分支把 worker 的 `{result:null}` 当成功 return，两级回退不可达）+ 3 行修复 diff + 按贡献门槛（未获 lgtm 不得开 PR，防主账号被 auto-close/封禁）请求 lgtm；**拿到 lgtm 后再提 PR**。**③#5834 agent 读页保持后台移植**（Cindy 37385a2b1，本地补丁非上游重同步——两边 lock 同钉 b972feb3）：`open` 动作默认 `background:true` 后台建页（host 可显式 false 前台），CDP `Target.createTarget` 带 background 标志、导航策略透传不重算、隐式首标签页后台建、background 失败上抛不再静默回落 /json/new；有头托管 Chrome 启动加 `--no-startup-window`（后台页不闪窗）；browser-workflow 规则加「open 默认后台，登录/验证码/用户要求才 focus」；lock patches +6 条、contentHash 未复算（sync.mjs 在上游仓）已记 notes；测试移植 background-open(-policy) 两文件（profile 名改 Fundet；代理 HTTPS 断言适配本仓更严的 fake-IP 补丁）+ runtime.test background 语义用例。**agent 浏览行为变化**：开页不再抢前台，登录场景靠规则引导 focus。验证：typecheck 全仓 ✓/desktop **461**/461（+7）/browser-runtime **48**/48（+8，compile ✓）/IPC 146/0/build ✓（out/main/skillScanProcess.js 产出确认）。**待用户实测**：①进聊天页/切目录技能列表正常、任务管理器可见 fundet-skill-scan 进程出现即退；②浏览器自动化跑一轮——agent 开页不再弹到前台，登录页需 focus 才可见。
