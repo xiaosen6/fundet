@@ -136,6 +136,11 @@ const MAX_OUTPUT_CHARS = 16000;
 const MAX_TOTAL_OUTPUT_CHARS = 32000;
 // 兜底超时:卡死的子代理不能把父 turn 永久挂住。
 const TASK_TIMEOUT_MS = 10 * 60 * 1000;
+// Spawn 命令行预算(Cindy #5968 移植,主会话同值):Windows CreateProcess 上限 32767 个
+// UTF-16 字符、POSIX ARG_MAX 按字节。现状 PROFILES 提示词是硬编码短串(整条 ~1k),
+// 但 task.task 是**模型原始输出且无长度上限**,超限时只会炸出 spawn 层原生错误
+// (ENAMETOOLONG/EINVAL)——按可读状态 fail-closed,不 spawn。
+const SPAWN_ARGV_BUDGET = process.platform === 'win32' ? 30000 : 128000;
 
 // 只读画像。tools 同时是 --tools 白名单:非只读工具在 ask 档会被 bridge fail-closed
 // 拒掉(headless 子进程没有确认 UI),所以第一期只给只读能力。
@@ -377,6 +382,26 @@ function runTask(binary, task, runtime, signal, onProgress) {
     delete childEnv[MCP_BRIDGE_ENV];
 
     let child;
+    // argv 预算预检(Cindy #5968):两种口径不能统一 —— Windows 按字符数(按 UTF-8 字节
+    // 会把中文任务放大三倍误拒),POSIX 按字节(按字符数会漏检中文长任务)。每参数 +3
+    // 近似 NUL/引号开销。
+    const argvUnits = args.reduce(function (total, arg) {
+      const value = String(arg);
+      return total
+        + (process.platform === 'win32' ? value.length : Buffer.byteLength(value, 'utf8'))
+        + 3;
+    }, 0);
+    if (argvUnits > SPAWN_ARGV_BUDGET) {
+      resolve({
+        text: 'subagent task description exceeds the platform spawn budget (' + argvUnits + ' > '
+          + SPAWN_ARGV_BUDGET + ' units). Shorten the task description.',
+        isError: true,
+        toolUses: 0,
+        tokens: 0,
+        usage: emptyUsage(),
+      });
+      return;
+    }
     try {
       child = spawn(binary, args, { cwd: process.cwd(), env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (err) {

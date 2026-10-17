@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Lightbulb, Loader2, Mic, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { markComposerTypingActivity } from '../lib/composerTypingActivity';
 import { brand } from '../../../shared/brand.js';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { toast } from './ui/toast';
@@ -393,6 +394,9 @@ export function ChatInput({
           disabled={disabled}
           placeholder={placeholder}
           onChange={(e) => {
+            // 打字活动开窗（lib/composerTypingActivity）：用户输入期间流式合帧
+            // 拉长到 250ms，键盘响应优先于后台会话的刷新粒度（Cindy #5a5004446）
+            markComposerTypingActivity();
             onChange(e.target.value);
             setActiveIndex(0);
             detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length);

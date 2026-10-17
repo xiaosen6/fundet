@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
 import { classifyRetryableError, MAX_AUTO_RETRY_ATTEMPTS, retryDelayMs } from '../lib/errorRetry';
+import { isComposerTypingRecently } from '../lib/composerTypingActivity';
 import { playCompletionChime } from '../lib/chime';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
 import type {
@@ -306,9 +307,17 @@ function notifyAny(): void {
     if (s.isRunning) nextRunning.add(id);
     if (s.attention) nextAttention.set(id, s.attention);
   }
-  runningSnapshot = nextRunning;
-  attentionSnapshot = nextAttention;
-  window.fundet?.setRunningBadge?.(nextRunning.size);
+  // 成员不变时保留旧快照对象：useSyncExternalStore 按对象身份比较，后台会话的
+  // 32ms 合帧每次换新 Set/Map 会把 ChatPage/Sidebar 全量重渲染（多会话并流时的
+  // 打字卡顿放大器，Cindy #5a5004446 同病）。徽章 IPC 同只在真正变化时发送。
+  const sameRunning =
+    runningSnapshot.size === nextRunning.size && [...nextRunning].every((id) => runningSnapshot.has(id));
+  const sameAttention =
+    attentionSnapshot.size === nextAttention.size &&
+    [...nextAttention].every(([id, v]) => attentionSnapshot.get(id) === v);
+  if (!sameRunning) runningSnapshot = nextRunning;
+  if (!sameAttention) attentionSnapshot = nextAttention;
+  if (!sameRunning) window.fundet?.setRunningBadge?.(nextRunning.size);
   for (const l of anyListeners) l();
 }
 
@@ -336,16 +345,22 @@ function updateItem(sessionId: string, id: string, patch: Partial<DisplayItem>):
 const pendingFlush = new Set<string>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_MS = 32;
+// 打字优先（Cindy #5a5004446）：用户输入期间合帧拉长，键盘响应优先于流式刷新粒度。
+// 延迟在定时器装填时决定：打字窗口内的后续 tick 最多再等 250ms，窗口过期后恢复 32ms。
+const TYPING_FLUSH_MS = 250;
 
 function scheduleFlush(sessionId: string): void {
   pendingFlush.add(sessionId);
   if (flushTimer) return;
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    const targets = [...pendingFlush];
-    pendingFlush.clear();
-    for (const id of targets) notifySlice(id);
-  }, FLUSH_MS);
+  flushTimer = setTimeout(
+    () => {
+      flushTimer = null;
+      const targets = [...pendingFlush];
+      pendingFlush.clear();
+      for (const id of targets) notifySlice(id);
+    },
+    isComposerTypingRecently() ? TYPING_FLUSH_MS : FLUSH_MS,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -505,6 +520,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
 
     case 'status': {
       const data = event.data as Partial<UsageSnapshot> & { status?: string; isRunning?: boolean };
+      const wasRunning = s.isRunning;
       patchSlice(sessionId, {
         statusText: data.status ?? s.statusText,
         isRunning: data.isRunning ?? s.isRunning,
@@ -519,6 +535,11 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
           generationTimingReliable: data.generationTimingReliable ?? s.usage.generationTimingReliable,
         },
       });
+      // 运行中的心跳刷新帧（isRunning true→true，携带 usage/TPS）走合帧队列：
+      // pi 心跳采样会连续发这类帧，即时通知等于绕过 32ms 合帧白做（Cindy
+      // #5a5004446 同构）。轮次起落（false→true / true→false）保持即时——
+      // 运行态切换的 UI 反馈不能等。
+      if (data.isRunning === true && wasRunning === true) return 'throttled';
       return 'immediate';
     }
 

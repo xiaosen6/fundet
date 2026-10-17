@@ -243,6 +243,9 @@ export function ChatPage(): React.JSX.Element {
     setRenamingHeader(false);
     headerRenameCommitted.current = false;
     setPastedTexts([]);
+    // 排队消息属视图级状态（Cindy 队列在会话侧）：切会话即清，防 A 会话的
+    // 排队文本经 dispatch effect（按 activeId 发送）误发进 B 会话
+    setQueuedTexts([]);
     // 切进即视为已看：清侧栏关注点，此后该会话完成不再打未读标
     markSessionSeen(activeId);
   }, [activeId]);
@@ -1229,7 +1232,13 @@ export function ChatPage(): React.JSX.Element {
                 ) : pendingAsk ? (
                   <AskUserQuestionPrompt
                     request={pendingAsk}
-                    onAnswer={(requestId, answers) => void resolveAskUser(activeId, pendingAsk, answers)}
+                    onAnswer={(requestId, answers) => {
+                      // 失败要如实反馈（会话已关/超时 deny 等）：卡片保留、输入不清，
+                      // 用户可改可重提——不再静默吞错（Cindy #1a50e8fe3 同语义）
+                      resolveAskUser(activeId, pendingAsk, answers).catch((err: unknown) => {
+                        toast.error(`回答提交失败：${err instanceof Error ? err.message : String(err)}`);
+                      });
+                    }}
                   />
                 ) : (
                   <>
