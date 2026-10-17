@@ -836,3 +836,41 @@ describe('语料回归 — 命中率下限(总量护栏)', () => {
     expect(failures, `这些只读语料被误伤:\n${failures.join('\n')}`).toEqual([]);
   });
 });
+
+describe('gh auth 令牌 flag 线性扫描器(Cindy 465fec92d 移植回归)', () => {
+  // 原正则从每个 `gh auth` 命令位起惰性回溯,超长输入二次方烧线程;扫描器必须
+  // 线性且**不放宽/不收紧**命中面 —— 这里同时钉住性能与行为边界。
+  it('超长 gh auth 命令头序列保持线性(改前 16k 字符即秒级)', () => {
+    for (const count of [800, 3200, 6400, 24000]) {
+      const command = 'gh auth a '.repeat(count);
+      const started = performance.now();
+      expect(classifyShellCommand(command, roots, opts)).not.toBe('prompt-each-time');
+      expect(performance.now() - started, `count=${count}`).toBeLessThan(2000);
+    }
+  });
+  it('巨型短选项簇不烧线程且不误命中(改前 16k 簇实测 11.3s)', () => {
+    const command = `gh auth status -${'t'.repeat(24000)}-`;
+    const started = performance.now();
+    expect(classifyShellCommand(command, roots, opts)).not.toBe('prompt-each-time');
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+  it('超长命令尾部的真实令牌 flag 仍命中(线性化不能丢尾部证据)', () => {
+    for (const flag of ['--show-token', '--show-token=true', '-t', '-wt=true', '-tw']) {
+      const command = `${'gh auth a '.repeat(24000)}gh auth status ${flag}`;
+      expect(classifyShellCommand(command, roots, opts), flag).toBe('prompt-each-time');
+    }
+  });
+  it('边界行为与原正则一致', () => {
+    // 命中:段内命令位 + 令牌 flag
+    expect(classifyShellCommand('gh auth status --show-token', roots, opts)).toBe('prompt-each-time');
+    expect(classifyShellCommand('/usr/bin/gh auth status --hostname github.com -wt', roots, opts)).toBe('prompt-each-time');
+    expect(classifyShellCommand('./gh auth status --show-token', roots, opts)).toBe('prompt-each-time');
+    // 命令头与子命令跨换行仍属同一段(heads 允许空白含换行)
+    expect(classifyShellCommand('gh auth a gh auth\nstatus -t', roots, opts)).toBe('prompt-each-time');
+    expect(classifyShellCommand('gh auth gh auth\nstatus --show-token', roots, opts)).toBe('prompt-each-time');
+    // 不命中:flag 在别的命令位/词中
+    expect(classifyShellCommand('gh auth status;echo --show-token', roots, opts)).not.toBe('prompt-each-time');
+    expect(classifyShellCommand('notgh auth status --show-token', roots, opts)).not.toBe('prompt-each-time');
+    expect(classifyShellCommand('gh auth status', roots, opts)).not.toBe('prompt-each-time');
+  });
+});

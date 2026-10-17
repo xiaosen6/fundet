@@ -97,3 +97,18 @@ export const KNOWN_MODEL_CATALOG: Record<string, KnownModelInfo> = {
 export function lookupKnownModel(id: string): KnownModelInfo {
   return KNOWN_MODEL_CATALOG[id] ?? {};
 }
+
+/**
+ * 输入模态优先级（Cindy #5d5e7470d 优先级规格）：DB 显式 input 权威——含「取消
+ * 视觉勾选」写入的 ['text']。显式 text-only 必须覆盖目录的视觉标注，否则
+ * glm-4.6v 等已知视觉模型取消勾选后会被目录静默重新打开，端到端重新放行发图
+ * （违反「只信库值」）。目录只给未声明模型补视觉；两边都没说则不带该字段
+ * （pi 侧按 text-only 收口）。
+ */
+export function resolveModelInputModality(
+  explicit: Array<'text' | 'image'> | undefined,
+  known: KnownModelInfo | undefined,
+): Array<'text' | 'image'> | undefined {
+  if (explicit !== undefined) return explicit;
+  return known?.input?.includes('image') ? known.input : undefined;
+}

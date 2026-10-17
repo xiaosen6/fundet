@@ -552,11 +552,20 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
   // switch_session 恢复原模型上下文（0.3.47 起转录跨启动保留在共享 agent-home）。
   // 文件缺失/失效时 agent-core 走 onInvalidResumeSession（Maker 内部已接 CAS 清库）
   // → fresh 起新上下文，UI 历史不受影响。
+  // 权限档对齐 DB（Cindy #2ca7f8499 同构）：create.permissionMode 可能是过期快照
+  // （auto-retry 的 lastSendInputs 原样重放、重启后渲染层从旧列表行重建），用户
+  // 之后在档位 chip 改的档只落 DB——不对齐的话降档后重试轮仍按旧档免确认。
   const persisted = getDb()
-    .select({ sdkSessionId: sessions.sdkSessionId })
+    .select({ sdkSessionId: sessions.sdkSessionId, permissionMode: sessions.permissionMode })
     .from(sessions)
     .where(eq(sessions.id, input.sessionId))
     .get();
+  // DB 列是 text:按合法档位窄化,脏值回落调用方参数(fail-open 到现状行为)
+  const persistedMode = persisted?.permissionMode;
+  const effectivePermissionMode: PermissionMode | undefined =
+    persistedMode === 'ask' || persistedMode === 'auto' || persistedMode === 'bypassPermissions' || persistedMode === 'plan'
+      ? persistedMode
+      : create.permissionMode;
   const session = await maker.createSession({
     agentKind: 'pi',
     id: create.sessionId ?? input.sessionId,
@@ -565,7 +574,7 @@ async function ensureSession(input: SessionSendInput): Promise<Session> {
     model: create.model,
     providerId: create.providerId,
     effort: create.effort,
-    permissionMode: create.permissionMode,
+    permissionMode: effectivePermissionMode,
     ...(persisted?.sdkSessionId ? { resumeSessionId: persisted.sdkSessionId } : {}),
   });
   wireSession(session);

@@ -130,14 +130,18 @@ export function AskUserQuestionPrompt({
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
-  /** 单选自由输入提交 */
+  /** 单选自由输入提交。末题不清空输入——宿主确认并移除卡片才是真正的清空点
+   * （Cindy #1a50e8fe3 同语义）：resolve 失败/超时时答案留在框里可改可重提，
+   * 不会静默丢失；非末题步进后由 selectionFor 恢复下一题状态。 */
   const handleCustomSubmit = useCallback((): void => {
     const trimmed = customInput.trim();
     if (!trimmed || isMultiSelect) return;
     advance(trimmed);
-    setCustomInput('');
-    setShowCustomInput(false);
-  }, [customInput, isMultiSelect, advance]);
+    if (!isLast) {
+      setCustomInput('');
+      setShowCustomInput(false);
+    }
+  }, [customInput, isMultiSelect, isLast, advance]);
 
   // 快捷键：数字选项 / N+1 自由输入 / Esc 跳过；自由输入展开时 Esc 只收起输入。
   // 让位判据（Cindy #5256）：侧栏搜索等别处输入框里打数字、卡片外浮层/控件上的

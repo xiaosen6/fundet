@@ -289,4 +289,26 @@ describe('cindy-subagent extension source', () => {
     expect(CINDY_SUBAGENT_EXTENSION_SOURCE).not.toContain("process.on('SIGTERM'");
     expect(CINDY_SUBAGENT_EXTENSION_SOURCE).not.toContain("process.on('SIGINT'");
   });
+
+  it('fails closed on argv budget before spawning (Cindy #5968)', () => {
+    // task.task 是模型原始输出且无长度上限,超限炸出的是 spawn 层原生错误
+    // (ENAMETOOLONG/EINVAL)—— 必须在 spawn 之前按可读状态 fail-closed。
+    const source = CINDY_SUBAGENT_EXTENSION_SOURCE;
+    const runTaskAt = source.indexOf('function runTask(');
+    const budget = source.indexOf('if (argvUnits > SPAWN_ARGV_BUDGET)', runTaskAt);
+    const spawnAt = source.indexOf('child = spawn(binary, args', runTaskAt);
+    expect(budget).toBeGreaterThan(runTaskAt);
+    expect(budget).toBeLessThan(spawnAt);
+    // 预算口径按平台分:Windows 用 UTF-16 字符数(CreateProcess 32767 上限,按字节会把
+    // 中文任务放大三倍误拒),POSIX 用字节(按字符数会漏检中文长任务)。
+    const reduceAt = source.indexOf('const argvUnits = args.reduce', runTaskAt);
+    const reduceBody = source.slice(reduceAt, budget);
+    expect(reduceBody).toContain("process.platform === 'win32' ? value.length : Buffer.byteLength(value, 'utf8')");
+    // 预算值与主会话同值(win32 30k / 其它 128k)。
+    expect(source).toContain('const SPAWN_ARGV_BUDGET = process.platform === \'win32\' ? 30000 : 128000;');
+    // 拒绝路径要带 isError 让模型知道缩短重试,且不 spawn。
+    const rejectBody = source.slice(budget, spawnAt);
+    expect(rejectBody).toContain('isError: true');
+    expect(rejectBody).not.toContain('spawn(');
+  });
 });

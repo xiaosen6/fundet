@@ -667,34 +667,57 @@ function stripDataLiterals(command: string): string {
     );
 }
 
-const ALWAYS_ASK_PATTERNS: readonly RegExp[] = [
+/** 模式表条目:正则或函数式扫描器共用 `.test` 接口(线性扫描器替代二次方正则)。 */
+type CommandScanPattern = Pick<RegExp, 'test'>;
+
+/**
+ * `gh auth` 令牌 flag 的线性扫描器(Cindy 465fec92d 移植):原两条正则的
+ * `[^|;&\n]*?\s` 从每个 `gh auth` 命令位起惰性回溯,超长命令(数千个命令头或
+ * 巨型 `-t` 簇)下同步烧线程数十秒(本机实证 16k 字符簇 11.3s)。改为逐命令位
+ * 定点扫描:heads 找命令位、sticky flags 只扫该段后缀、boundary 记录已扫边界,
+ * 复杂度线性化(同输入实测毫秒级);行为边界与原正则一致(含 `/usr/bin/gh`
+ * 路径形态、`--show-token[=v]`、`-t/-wt/-tw[=v]` 簇写、段内换行)。
+ */
+function ghAuthShowsToken(command: string): boolean {
+  // A slash also establishes a command boundary for /usr/bin/gh and ./gh.
+  // Avoid rescanning an arbitrary path prefix from every shell separator.
+  const heads = /(?:^|[\s|&;(\/])gh\s+auth\s+[a-z][\w-]*/g;
+  const boundary = /[|;&\n]/g;
+  // Sticky: scan the suffix only from the first auth head in each segment.
+  // Keep --show-token[=value], -t/-wt/-tw[=value] and separator boundaries.
+  // The lookahead makes the short-option letter run linear even for a long
+  // cluster containing many t's followed by an invalid trailing '-'.
+  const flags = /[^|;&\n]*?\s(?:--show-token(?:$|[\s=|&;)])|-(?=[a-zA-Z]*t)[a-zA-Z]+(?:=[^\s|;&]*)?(?![\w-]))/y;
+  let scannedUntil = -1;
+  let head: RegExpExecArray | null;
+  while ((head = heads.exec(command))) {
+    const argsStart = heads.lastIndex;
+    // Preserve overlapping heads and heads whose whitespace spans a newline.
+    // Only a head ending beyond the already-scanned segment needs another scan.
+    heads.lastIndex = head.index + 1;
+    if (argsStart <= scannedUntil) continue;
+    flags.lastIndex = argsStart;
+    if (flags.test(command)) return true;
+    boundary.lastIndex = argsStart;
+    scannedUntil = boundary.exec(command)?.index ?? command.length;
+  }
+  return false;
+}
+
+const ALWAYS_ASK_PATTERNS: readonly CommandScanPattern[] = [
   /\b(?:sudo|doas|runuser)\b/,                           // 提权(runuser 名字独特,直接词界)
-  // `--show-token` = 把**可复用的凭证**打进 stdout,从而进模型上下文与会话记录。等同于
-  // 读凭证文件,按凭证同级作**确定性必问** —— 只把它挡在 gh 只读白名单外还不够:落灰区
-  // 意味着可能被轻量审阅器静默放行(`gh auth status` 看起来就是一条状态查询)。
-  // 覆盖 `--show-token` / `--show-token=true` 两种形态(review 二轮 P1)。
-  // **必须限定在 `gh auth` 命令位**:这个字符串出现在别处只是普通文本或参数,
-  // `echo --show-token`、`grep -rn -- --show-token src` 原本是直接放行的,不限定就被打成
-  // 硬弹窗 —— 正是本 PR 要消灭的那类误报(review 报)。命令位写法与下面的短选项一致。
-  // 首尾边界要**对称**:命令位允许分隔符开头(`ls;gh auth …`),flag 后面同样可以紧跟
-  // `;` `|` `&` `)` 而不带空格 —— 只补开头是把同一条边界修了一半(review 报)。
-  /(?:^|[\s|&;(])(?:\S*\/)?gh\s+auth\s+[a-z][\w-]*[^|;&\n]*?\s--show-token(?:$|[\s=|&;)])/,
-  // 短选项形态:`gh auth status -t` 与含 `t` 的簇写(`-wt`/`-tw`)是同一个 flag,只把它挡在
-  // gh 只读白名单外不够 —— 落灰区就可能被轻量审阅器静默放行(review 三轮 P1)。`-t` 本身
-  // 在别的命令里含义完全不同(`docker -t`、`tar -t`),所以**限定在 `gh auth` 命令位**上匹配。
-  // `(?:\S*\/)?` 让绝对/相对路径调用同样命中(`/usr/bin/gh auth status -t`,review 四轮 P1)——
-  // 只匹配裸 `gh` 等于给一个换写法就绕过的口子。
-  // 子命令与 `-t` 之间允许**任意**中间参数:`gh auth status --hostname github.com -t` 是
-  // 合法组合,原来只允许非选项 token 会漏(review 报)。用 `[^|;&\n]*?` 限定在同一段内。
-  // 结尾的 `(?:=[^\s|;&]*)?` 覆盖 `-t=true` 这类**带等号的 truthy 布尔值** —— gh 照常接受,
-  // 而原来的 `(?![\w=-])` 把等号形态排除在外,令牌仍会被打进模型上下文(review 报)。
-  // 命令位判据用 `(?:^|[\s|&;(])` 而不是 `(?:^|\s)`:分隔符后可以不带空格
-  // (`ls;gh auth token`、`ls&&gh auth token`、`(gh auth token)`),而分段之后不会再重扫
-  // 确定性红线 —— 只认空白等于给一个删空格就绕过的口子(review 报)。与本表里 `su`
-  // 那条的边界写法一致。
-  /(?:^|[\s|&;(])(?:\S*\/)?gh\s+auth\s+[a-z][\w-]*[^|;&\n]*?\s-[a-zA-Z]*t[a-zA-Z]*(?:=[^\s|;&]*)?(?![\w-])/,
+  // `--show-token` / 短选项 `-t`(含簇写与 =值 形态)= 把**可复用的凭证**打进 stdout,
+  // 从而进模型上下文与会话记录,等同读凭证文件,按凭证同级作**确定性必问**。
+  // 只把它挡在 gh 只读白名单外不够:落灰区意味着可能被轻量审阅器静默放行
+  // (`gh auth status` 看起来就是一条状态查询)。**必须限定在 `gh auth` 命令位**:
+  // 这个字符串出现在别处只是普通文本或参数,`echo --show-token`、`grep -rn --
+  // --show-token src`、`docker -t` 原本是直接放行的,不限定就被打成硬弹窗。
+  // 首尾边界对称:命令位允许分隔符开头(`ls;gh auth …`),flag 后面同样可以紧跟
+  // `;` `|` `&` `)` 而不带空格。扫描器形态见上方 ghAuthShowsToken。
+  { test: ghAuthShowsToken },
   // `gh auth token` 直接把令牌打到 stdout,与 `--show-token` 同级(同族一次收完)。
-  /(?:^|[\s|&;(])(?:\S*\/)?gh\s+auth\s+token\b/,
+  // 边界含 `/` 与扫描器的命令位口径一致(`/usr/bin/gh auth token`)。
+  /(?:^|[\s|&;(\/])gh\s+auth\s+token\b/,
   // 裸 `su`(切换到其它用户/root)同属提权,但 "su" 常出现在无关文本里 → 只在命令位(段首/分隔符后,或
   // 已知启动器后)匹配,避免 `git commit -m "su"` 之类误升(自审补:sudo/doas 已红线,漏了同级的 su)。
   /(?:^|[\n|&;(]\s*|\b(?:sudo|doas|xargs|nohup|setsid|env|command|exec|time|timeout|nice|ionice|stdbuf|chrt|builtin|watch|flock)\s+(?:-\S+\s+)*)su\b(?![\w.-])/,

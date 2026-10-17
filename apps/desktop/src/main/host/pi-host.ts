@@ -26,7 +26,7 @@ import { readProviderKey } from './secrets.js';
 import { resolvePiBinaryPath, resolveRipgrepPath } from './pi-binary.js';
 import { createFundetMemoryManager } from './memory.js';
 import { getBoolSetting } from '../db/settings.js';
-import { lookupKnownModel } from './pi-model-catalog.ts';
+import { lookupKnownModel, resolveModelInputModality } from './pi-model-catalog.ts';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
 import { IMAGEGEN_MCP_SERVER_NAME } from '../../shared/imagegen.ts';
@@ -79,6 +79,7 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
         // 时，zai 系推理端点（open.bigmodel.cn）收不到 thinking 参数直接 1210。
         // 用户显式配置优先，目录只补缺失字段。
         const known = lookupKnownModel(m.id);
+        const input = resolveModelInputModality(m.input, known);
         return {
           id: m.id,
           ...(m.reasoning !== undefined
@@ -101,13 +102,10 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
             : known.maxTokens !== undefined
               ? { maxTokens: known.maxTokens }
               : {}),
-          // 输入模态：只信库值（预设标注 / 编辑对话框勾选，对齐 Cindy 方案）。
-          // 没有该标记发图会被 PiAgent 拒发（PiImageInputUnsupportedError）
-          ...(m.input && m.input.includes('image')
-            ? { input: m.input }
-            : known.input && known.input.includes('image')
-              ? { input: known.input }
-              : {}),
+          // 输入模态：显式 input（含取消视觉勾选的 ['text']）权威优先于内置目录，
+          // 目录只给未声明模型补视觉（resolveModelInputModality，Cindy #5d5e7470d
+          // 优先级规格）。没有 image 标记发图会被 PiAgent 拒发（PiImageInputUnsupportedError）
+          ...(input ? { input } : {}),
           // 未知自定义 Chat Completions 端点保守回落（上游 #3832）：pi 的
           // detectCompat 对陌生端点默认 supportsDeveloperRole=true，火山引擎等
           // OpenAI 兼容网关只收 system/assistant/user/tool，role=developer 直接
