@@ -85,6 +85,7 @@ export const FUNDET_INVOKE = {
   FS_STAGE_BYTES: 'fs:stage-bytes',
   FS_READ_TEXT: 'fs:read-text',
   FS_READ_DATA_URL: 'fs:read-data-url',
+  FS_CREATE_PREVIEW_URL: 'fs:create-preview-url',
   FS_LIST_DIR: 'fs:list-dir',
   FS_OPEN_PATH: 'fs:open-path',
   WINDOW_MINIMIZE: 'window:minimize',

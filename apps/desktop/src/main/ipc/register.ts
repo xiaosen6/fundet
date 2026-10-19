@@ -173,6 +173,7 @@ import { resolveUnderWorkDir, stageBytesIntoWorkDir, stageFileIntoWorkDir } from
 import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../memory/service.js';
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
+import { issuePreviewUrl } from '../file-protocol.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
 import type {
@@ -1486,6 +1487,19 @@ ${input.text}`;
     const mime = mimeFromExt(resolved);
     return `data:${mime};base64,${buf.toString('base64')}`;
   });
+
+  // 预览能力签发：longma-file URL 只能由主进程 token 化签发（HTML=文档目录根、
+  // 其余=单文件）；旧「URL 内嵌 workDir」形态已废止。校验 sender 是主 frame，
+  // 防未来配置变化后不可信子 frame 借此铸造能力。
+  ipcMain.handle(
+    FUNDET_INVOKE.FS_CREATE_PREVIEW_URL,
+    async (e, filePath: string, workDir?: string) => {
+      if (e.senderFrame && e.senderFrame.parent) {
+        throw new Error('仅顶层窗口可签发预览地址');
+      }
+      return issuePreviewUrl(String(filePath ?? ''), typeof workDir === 'string' ? workDir : undefined);
+    },
+  );
 
   // 目录清单（composer @ 文件引用）：deny-list 同预览；跳隐藏/node_modules，上限 500
   ipcMain.handle(FUNDET_INVOKE.FS_LIST_DIR, async (_e, dir: string) => {

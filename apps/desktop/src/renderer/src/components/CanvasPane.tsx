@@ -26,7 +26,7 @@ import { cn } from '../lib/cn';
 import { basename, type Artifact, type ArtifactKind } from '../lib/artifacts';
 import { fileKind } from '../../../shared/file-kind.ts';
 import { LocalImagePreview } from './LocalImagePreview';
-import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
+import { useFilePreviewUrl } from '../hooks/useFilePreviewUrl';
 
 
 const WIDTH_KEY = 'fundet.canvas.width';
@@ -271,7 +271,9 @@ function Preview({
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [htmlMode, setHtmlMode] = useState<'preview' | 'source'>('preview');
-  const mediaUrl = buildFilePreviewUrl(workDir, artifact.path);
+  // 能力 URL 由主进程签发（deny-list 拒绝时 denied，不再显示媒体/iframe）
+  const preview = useFilePreviewUrl(artifact.path, workDir || undefined);
+  const mediaUrl = preview.status === 'ready' ? preview.url : null;
 
   const needsText =
     artifact.kind === 'text' ||
@@ -360,7 +362,7 @@ function Preview({
           key={`${mediaUrl}#${htmlReloadKey}`}
           title={basename(artifact.path)}
           className="min-h-[240px] w-full flex-1 rounded-inner border border-board bg-white"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          sandbox="allow-scripts allow-forms allow-modals"
           src={mediaUrl}
         />
       )}

@@ -239,6 +239,8 @@ const api: FundetApi = {
     invoke(FUNDET_INVOKE.FS_READ_TEXT, filePath, workDir),
   readFileDataUrl: (filePath, workDir) =>
     invoke(FUNDET_INVOKE.FS_READ_DATA_URL, filePath, workDir),
+  createPreviewUrl: (filePath, workDir) =>
+    invoke(FUNDET_INVOKE.FS_CREATE_PREVIEW_URL, filePath, workDir),
   listDir: (dir) => invoke(FUNDET_INVOKE.FS_LIST_DIR, dir),
   openPath: (filePath, workDir) => invoke(FUNDET_INVOKE.FS_OPEN_PATH, filePath, workDir),
   platform: process.platform,

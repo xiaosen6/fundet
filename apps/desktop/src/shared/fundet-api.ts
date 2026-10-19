@@ -600,6 +600,11 @@ export interface FundetApi {
   getPathForFile(file: Blob): string;
   readTextFile(filePath: string, workDir: string): Promise<string>;
   readFileDataUrl(filePath: string, workDir: string): Promise<string>;
+  /**
+   * 签发 longma-file 预览能力 URL（HTML 文档=目录根授权、其余=单文件授权）。
+   * deny-list 拒绝时抛错；渲染层不得自行拼造 longma-file URL（协议只认主进程 token）。
+   */
+  createPreviewUrl(filePath: string, workDir?: string): Promise<string>;
   /** 列目录（deny-list 策略同预览；跳隐藏/node_modules；上限 500 条） */
   listDir(dir: string): Promise<DirEntry[]>;
   openPath(filePath: string, workDir?: string): Promise<void>;

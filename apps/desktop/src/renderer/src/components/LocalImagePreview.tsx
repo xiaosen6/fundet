@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { basename, isImagePath } from '../lib/artifacts';
 import { cn } from '../lib/cn';
-import { buildFilePreviewUrl } from '../../../shared/file-preview-url.ts';
+import { useFilePreviewUrl } from '../hooks/useFilePreviewUrl';
 import { showLightbox } from './ui/Lightbox';
 import { useHoverPreview } from './ui/HoverImgPreview';
 
@@ -33,24 +33,25 @@ export function LocalImagePreview({
   alt,
   maxHeight = '360px',
 }: LocalImagePreviewProps): React.JSX.Element {
-  const protocolUrl = buildFilePreviewUrl(workDir, path);
-  const [url, setUrl] = useState<string | null>(protocolUrl);
+  // 能力 URL 由主进程签发；denied（deny-list/读取失败）时回落 data URL
+  const preview = useFilePreviewUrl(path, workDir);
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [usedFallback, setUsedFallback] = useState(false);
 
   useEffect(() => {
     setError('');
     setUsedFallback(false);
-    if (protocolUrl) {
-      setUrl(protocolUrl);
-      return;
+    setFallbackUrl(null);
+    if (preview.status === 'denied') {
+      void window.fundet
+        .readFileDataUrl(path, workDir)
+        .then((next) => setFallbackUrl(next))
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
     }
-    setUrl(null);
-    void window.fundet
-      .readFileDataUrl(path, workDir)
-      .then((next) => setUrl(next))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, [protocolUrl, path, workDir]);
+  }, [preview.status, path, workDir]);
+
+  const url = preview.status === 'ready' ? preview.url : fallbackUrl;
 
   const fallbackToDataUrl = (): void => {
     if (usedFallback) {
@@ -60,7 +61,7 @@ export function LocalImagePreview({
     setUsedFallback(true);
     void window.fundet
       .readFileDataUrl(path, workDir)
-      .then((next) => setUrl(next))
+      .then((next) => setFallbackUrl(next))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
 
