@@ -99,23 +99,8 @@ function tick(now: number): void {
       rot = 1.5 * Math.sin((now / 2600) * Math.PI * 2);
     }
   }
-  // 输出量化（内存批 P2）：translate/scale/rotate 取整到视觉不可分辨的精度，
-  // 值未变时跳过 style 写——透明置顶窗的 DWM 合成每次 style 变更都要重栅格化，
-  // 此前 60Hz 恒写（即使数值只有浮点尾差）让低配 CPU 常驻燃烧
-  const tx = Math.round(floatY * 8) / 8;
-  const tsx = Math.round(sx * 2000) / 2000;
-  const tsy = Math.round(sy * 2000) / 2000;
-  const trot = Math.round(rot * 16) / 16;
-  if (tx !== lastTx || tsx !== lastSx || tsy !== lastSy || trot !== lastRot || facing !== lastFacing) {
-    lastTx = tx; lastSx = tsx; lastSy = tsy; lastRot = trot; lastFacing = facing;
-    root.style.transform = `translateY(${tx}px) rotate(${trot}deg) scale(${tsx * facing}, ${tsy})`;
-  }
+  root.style.transform = `translateY(${floatY}px) rotate(${rot}deg) scale(${sx * facing}, ${sy})`;
 }
-let lastTx = NaN;
-let lastSx = NaN;
-let lastSy = NaN;
-let lastRot = NaN;
-let lastFacing = NaN;
 
 // ---------- 待机偶发动作：随机眨眼 / 随机跳跃（生命感来源） ----------
 function randMs([lo, hi]: [number, number]): number {

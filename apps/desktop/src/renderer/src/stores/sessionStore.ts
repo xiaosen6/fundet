@@ -161,12 +161,6 @@ export function patchSessionInList(sessionId: string, patch: Partial<SessionList
   notifyList();
 }
 
-/** 会话删除时清 ChatPage 的轮末产物路径集合（跨模块清理钩，ChatPage 挂载时注册） */
-let turnArtifactPathsCleanup: ((sessionId: string) => void) | null = null;
-export function registerTurnArtifactPathsCleanup(fn: ((sessionId: string) => void) | null): void {
-  turnArtifactPathsCleanup = fn;
-}
-
 /** 删除会话的乐观更新：立即从列表移除（主进程清 DB/杀进程/删快照仓均后台异步，
  *  不再等 invoke 返回——删除卡顿的渲染层半边，2026-10-07）。连带清会话级内存态
  *  防有界泄漏。 */
@@ -177,10 +171,6 @@ export function removeSessionFromList(sessionId: string): void {
   outboxBySession.delete(sessionId);
   autoAllowTools.delete(sessionId);
   userAborts.delete(sessionId);
-  sessionLastTouched.delete(sessionId);
-  textDeltaBuffers.delete(sessionId);
-  thinkingDeltaBuffers.delete(sessionId);
-  turnArtifactPathsCleanup?.(sessionId);
   rebuildCombinedList();
   notifyList();
 }
@@ -285,11 +275,7 @@ function notifySlice(sessionId: string): void {
   notifyAny();
 }
 
-/** 重算运行中集合与关注态快照并通知跨会话视图。
- *  广播短路（内存批 P1）：快照成员未变时不重赋值、不广播 anyListeners、
- *  不发 badge IPC——此前每次通知（多会话并流时 ~30/s）都重建 Set/Map 并唤醒
- *  所有跨会话订阅者做无效的引用比较。 */
-let lastAnyKey = '';
+/** 重算运行中集合与关注态快照并通知跨会话视图 */
 function notifyAny(): void {
   const nextRunning = new Set<string>();
   const nextAttention = new Map<string, 'done' | 'error'>();
@@ -297,12 +283,17 @@ function notifyAny(): void {
     if (s.isRunning) nextRunning.add(id);
     if (s.attention) nextAttention.set(id, s.attention);
   }
-  const key = `${[...nextRunning].sort().join(',')}|${[...nextAttention.entries()].sort().map(([k, v]) => `${k}:${v}`).join(',')}`;
-  if (key === lastAnyKey) return;
-  lastAnyKey = key;
-  runningSnapshot = nextRunning;
-  attentionSnapshot = nextAttention;
-  window.fundet?.setRunningBadge?.(nextRunning.size);
+  // 成员不变时保留旧快照对象：useSyncExternalStore 按对象身份比较，后台会话的
+  // 32ms 合帧每次换新 Set/Map 会把 ChatPage/Sidebar 全量重渲染（多会话并流时的
+  // 打字卡顿放大器，Cindy #5a5004446 同病）。徽章 IPC 同只在真正变化时发送。
+  const sameRunning =
+    runningSnapshot.size === nextRunning.size && [...nextRunning].every((id) => runningSnapshot.has(id));
+  const sameAttention =
+    attentionSnapshot.size === nextAttention.size &&
+    [...nextAttention].every(([id, v]) => attentionSnapshot.get(id) === v);
+  if (!sameRunning) runningSnapshot = nextRunning;
+  if (!sameAttention) attentionSnapshot = nextAttention;
+  if (!sameRunning) window.fundet?.setRunningBadge?.(nextRunning.size);
   for (const l of anyListeners) l();
 }
 
@@ -334,77 +325,6 @@ const FLUSH_MS = 32;
 // 延迟在定时器装填时决定：打字窗口内的后续 tick 最多再等 250ms，窗口过期后恢复 32ms。
 const TYPING_FLUSH_MS = 250;
 
-// ---------------------------------------------------------------------------
-// delta 缓冲（内存批 P1）：text/thinking delta 攒数组，flush 时一次 join——
-// 消除「每个 delta 全量拷贝目标串/整个 items 数组」的 GC churn（闪烁根因之一）。
-// ---------------------------------------------------------------------------
-const textDeltaBuffers = new Map<string, string[]>();
-/** sessionId → blockId → 待拼接 delta（needCreate=delta 先于 start 到达） */
-const thinkingDeltaBuffers = new Map<string, Map<string, { parts: string[]; needCreate: boolean }>>();
-
-function pushTextDelta(sessionId: string, delta: string): void {
-  let buf = textDeltaBuffers.get(sessionId);
-  if (!buf) {
-    buf = [];
-    textDeltaBuffers.set(sessionId, buf);
-  }
-  buf.push(delta);
-}
-
-function pushThinkingDelta(sessionId: string, blockId: string, delta: string, needCreate: boolean): void {
-  let byBlock = thinkingDeltaBuffers.get(sessionId);
-  if (!byBlock) {
-    byBlock = new Map();
-    thinkingDeltaBuffers.set(sessionId, byBlock);
-  }
-  let entry = byBlock.get(blockId);
-  if (!entry) {
-    entry = { parts: [], needCreate };
-    byBlock.set(blockId, entry);
-  }
-  entry.parts.push(delta);
-  entry.needCreate = entry.needCreate || needCreate;
-}
-
-/** flush 前排干 delta 缓冲：把攒下的增量一次性写进 slice（每会话每帧一次 O(1) 追加）。 */
-function drainDeltaBuffers(sessionId: string): void {
-  const textBuf = textDeltaBuffers.get(sessionId);
-  if (textBuf && textBuf.length > 0) {
-    textDeltaBuffers.delete(sessionId);
-    const joined = textBuf.join('');
-    const s = getSlice(sessionId);
-    patchSlice(sessionId, { streamingText: s.streamingText + joined });
-  }
-  const byBlock = thinkingDeltaBuffers.get(sessionId);
-  if (byBlock && byBlock.size > 0) {
-    thinkingDeltaBuffers.delete(sessionId);
-    const s = getSlice(sessionId);
-    let items = s.items;
-    for (const [blockId, entry] of byBlock) {
-      const joined = entry.parts.join('');
-      const idx = items.findIndex((it) => it.kind === 'thinking' && it.id === blockId);
-      if (idx >= 0) {
-        const it = items[idx];
-        if (it.kind === 'thinking') {
-          items = items.map((x, i) => (i === idx ? { ...it, text: it.text + joined } : x));
-        }
-      } else if (entry.needCreate || joined) {
-        items = [
-          ...items,
-          { kind: 'thinking' as const, id: blockId, text: joined, running: true, createdAt: Date.now() },
-        ];
-      }
-    }
-    patchSlice(sessionId, { items });
-  }
-}
-
-/** 会话终态/清空时丢缓冲（isFinal/final 校准行已带全文，缓冲作废）。 */
-function discardDeltaBuffers(sessionId: string): void {
-  textDeltaBuffers.delete(sessionId);
-  thinkingDeltaBuffers.delete(sessionId);
-}
-
 function scheduleFlush(sessionId: string): void {
   pendingFlush.add(sessionId);
   if (flushTimer) return;
@@ -413,10 +333,7 @@ function scheduleFlush(sessionId: string): void {
       flushTimer = null;
       const targets = [...pendingFlush];
       pendingFlush.clear();
-      for (const id of targets) {
-        drainDeltaBuffers(id);
-        notifySlice(id);
-      }
+      for (const id of targets) notifySlice(id);
     },
     isComposerTypingRecently() ? TYPING_FLUSH_MS : FLUSH_MS,
   );
@@ -435,8 +352,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
     case 'text': {
       const data = event.data as { text?: string; isFinal?: boolean };
       if (data.isFinal) {
-        // 整条消息全文校准：封口成 assistant 项，清空流式缓冲（delta 缓冲一并作废）
-        discardDeltaBuffers(sessionId);
+        // 整条消息全文校准：封口成 assistant 项，清空流式缓冲
         const items = data.text
           ? [
               ...s.items,
@@ -452,10 +368,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         return 'immediate';
       }
       if (data.text) {
-        // delta 缓冲（内存批 P1）：每 delta 全串拷贝 streamingText 在长回复下
-        // 瞬时分配几十 MB 字符串（20KB 回答×2000 delta ≈ 40MB churn → GC 停顿
-        // = 闪烁）。攒进缓冲，flush（≤32ms 后）一次 join。
-        pushTextDelta(sessionId, data.text);
+        patchSlice(sessionId, { streamingText: s.streamingText + data.text });
         return 'throttled';
       }
       return 'throttled';
@@ -477,14 +390,14 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         return 'immediate';
       }
       if (data.stage === 'delta' && data.text) {
-        // 同上：thinking delta 缓冲（此前每个 delta 一次 O(n) find + 全 items.map 拷贝）
-        pushThinkingDelta(sessionId, blockId, data.text, existing === undefined);
+        if (existing && existing.kind === 'thinking') {
+          updateItem(sessionId, blockId, { text: existing.text + data.text });
+        } else {
+          appendItem(sessionId, { kind: 'thinking', id: blockId, text: data.text, running: true, createdAt: Date.now() });
+        }
         return 'throttled';
       }
       if (data.stage === 'final') {
-        // 全文校准：该块的 delta 缓冲作废
-        const byBlock = thinkingDeltaBuffers.get(sessionId);
-        byBlock?.delete(blockId);
         if (existing) {
           updateItem(sessionId, blockId, {
             text: data.text ?? (existing.kind === 'thinking' ? existing.text : ''),
@@ -607,8 +520,6 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
     }
 
     case 'done': {
-      // 终态：delta 缓冲作废（isFinal 已封口；兜底封口用 streamingText 现值）
-      discardDeltaBuffers(sessionId);
       // 兜底：万一有没有 final 校准的残留流式文本，封口别丢
       let items = s.streamingText
         ? [
@@ -656,7 +567,6 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
       const data = event.data as { message?: string; isTerminal?: boolean; willRetry?: boolean };
       const terminal = data.isTerminal ?? data.willRetry !== true;
       const message = friendlyProviderError(data.message || '未知错误');
-      if (terminal) discardDeltaBuffers(sessionId);
       // 用户主动停止后的 abort 类「错误」是正常中断：中性提示、不打错误卡、
       // 不自动重试、不标未读 error（2026-10-09 用户实报对齐 Cindy）
       if (terminal && userAborts.delete(sessionId) && isAbortLike(message)) {
@@ -714,15 +624,9 @@ export function initGlobalListeners(): void {
   listenersInstalled = true;
 
   window.fundet.onAgentEvent(({ sessionId, event }) => {
-    // auto- 隔离会话零 UI：不建 slice、不通知（此前 immediate 分支照样打
-    // notifySlice→notifyAny，自动化任务刷事件时白白重算跨会话快照）
-    if (sessionId.startsWith('auto-')) return;
     const mode = applyEvent(sessionId, event);
     if (mode === 'immediate') {
       pendingFlush.delete(sessionId);
-      // 先排干 delta 缓冲再通知：immediate 事件（工具/终态）与在途 delta 的
-      // 显示顺序才不乱；终态事件已在 applyEvent 内 discard（无残留可排）
-      drainDeltaBuffers(sessionId);
       notifySlice(sessionId);
     } else {
       scheduleFlush(sessionId);
@@ -844,42 +748,10 @@ export function useSessionAttentionMap(): ReadonlyMap<string, 'done' | 'error'> 
 export function markSessionSeen(sessionId: string | null): void {
   focusedSessionId = sessionId;
   if (!sessionId) return;
-  sessionLastTouched.set(sessionId, Date.now());
   const s = slices.get(sessionId);
   if (s?.attention) {
     patchSlice(sessionId, { attention: null });
     notifyAny();
-  }
-  evictIdleSlices(sessionId);
-}
-
-// ---------------------------------------------------------------------------
-// slices LRU（内存批 P1）：打开过的会话 items（含 write/edit 文件全文、工具
-// 结果全文）此前永久驻留——50 轮会话 ≈2.5-15MB×N。保留最近 5 个非运行切片，
-// 超额淘汰（重进时 ensureHistory 重新拉取，历史在 DB 不丢）。
-// ---------------------------------------------------------------------------
-const SLICE_LRU_KEEP = 5;
-const sessionLastTouched = new Map<string, number>();
-
-function evictIdleSlices(keepId: string): void {
-  const candidates = [...slices.entries()]
-    .filter(
-      ([id, s]) =>
-        id !== keepId &&
-        id !== focusedSessionId &&
-        !s.isRunning &&
-        !s.pendingInteraction &&
-        !drafts.has(id) &&
-        !outboxBySession.has(id),
-    )
-    .sort((a, b) => (sessionLastTouched.get(b[0]) ?? 0) - (sessionLastTouched.get(a[0]) ?? 0));
-  for (const [id] of candidates.slice(SLICE_LRU_KEEP)) {
-    slices.delete(id);
-    sessionLastTouched.delete(id);
-    textDeltaBuffers.delete(id);
-    thinkingDeltaBuffers.delete(id);
-    const listeners = sliceListeners.get(id);
-    if (listeners && listeners.size === 0) sliceListeners.delete(id);
   }
 }
 
@@ -924,12 +796,7 @@ export async function ensureHistory(sessionId: string): Promise<void> {
     const current = getSlice(sessionId);
     // 等待期间已有直播事件进来（流式/审批中），跳过重建以免覆盖
     if (current.items.length > 0 || current.isRunning) return;
-    const items = rebuildItems(detail.messages);
-    // 历史窗口截断提示（内存批 P1）：更早消息可经会话搜索到达
-    if (detail.truncated) {
-      items.unshift({ kind: 'notice', id: nextId('n'), text: '已显示最近 300 条消息，更早内容可用会话搜索找到。' });
-    }
-    patchSlice(sessionId, { items });
+    patchSlice(sessionId, { items: rebuildItems(detail.messages) });
     notifySlice(sessionId);
   } catch {
     // 拉取失败：保持空，下次切回重试

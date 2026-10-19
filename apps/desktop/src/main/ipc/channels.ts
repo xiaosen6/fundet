@@ -33,8 +33,6 @@ export const FUNDET_INVOKE = {
   SESSION_SEARCH_CONTENT: 'session:search-content',
   SESSION_EXPORT_HTML: 'session:export-html',
   SESSION_OPEN_POPOUT: 'session:open-popout',
-  PERF_IDLE_RECYCLE_GET: 'perf:idle-recycle-get',
-  PERF_IDLE_RECYCLE_SET: 'perf:idle-recycle-set',
   SESSION_GET_PLAN: 'session:get-plan',
   CHECKPOINT_LIST: 'checkpoint:list',
   CHECKPOINT_PREVIEW: 'checkpoint:preview',
