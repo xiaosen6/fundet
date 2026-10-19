@@ -14,6 +14,11 @@ export const FUNDET_INVOKE = {
   SESSION_PREWARM: 'session:prewarm',
   SESSION_PREWARM_DISCARD: 'session:prewarm-discard',
   SESSION_SEND: 'session:send',
+  SESSION_OUTBOX_ENQUEUE: 'session:outbox-enqueue',
+  SESSION_OUTBOX_LIST: 'session:outbox-list',
+  SESSION_OUTBOX_RETRY: 'session:outbox-retry',
+  SESSION_OUTBOX_REMOVE: 'session:outbox-remove',
+  SESSION_OUTBOX_CANCEL_ALL: 'session:outbox-cancel-all',
   SESSION_ABORT: 'session:abort',
   SESSION_CLOSE: 'session:close',
   SESSION_DELETE_TURN: 'session:delete-turn',
@@ -168,6 +173,8 @@ export const FUNDET_PUSH = {
   /** 审批已收敛（被本端或其它端解决）：payload { sessionId, requestId, reason } */
   INTERACTION_DISMISSED: 'interaction:dismissed',
   SESSION_LIST_CHANGED: 'session:list-changed',
+  /** 会话待发队列快照（outbox）：payload { sessionId, items } */
+  SESSION_OUTBOX_CHANGED: 'session:outbox-changed',
   /** 轮末改动文件统计（对齐 Cindy TurnChangesCard 数据面 v1）：payload { sessionId, files: [{path, additions, deletions}] } */
   TURN_CHANGES: 'turn:changes',
   /** 轮末产物扫描（bash/python 等脚本生成的文件进 Canvas 产物列表）：payload { sessionId, paths } */

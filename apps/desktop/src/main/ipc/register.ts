@@ -174,6 +174,12 @@ import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../m
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { issuePreviewUrl } from '../file-protocol.js';
+import { createSessionOutboxStore } from '../db/session-outbox.js';
+import {
+  createOutboxService,
+  outboxItemView,
+} from '../host/session-outbox.js';
+import { insertUserMessageWithId } from '../db/messages.js';
 import { documentExtractSupport, extractDocumentText } from '../doc-text.js';
 import { mimeFromExt } from '../../shared/file-kind.ts';
 import type {
@@ -341,6 +347,9 @@ interface PendingInteraction {
 const pendingInteractions = new Map<string, PendingInteraction>();
 /** 已接线（事件/审批监听）的 sessionId */
 const wiredSessions = new Set<string>();
+
+/** 会话待发队列服务（registerIpcHandlers 里装配；wireSession 终态收口用） */
+let outboxService: ReturnType<typeof createOutboxService> | null = null;
 /** 轮末产物扫描基线：sessionId → 轮前文件快照（只随 SESSION_SEND 更新，轮末 diff 后不回写） */
 const turnArtifactSnapshots = new Map<string, TurnArtifactSnapshot>();
 
@@ -453,6 +462,8 @@ export function wireSession(session: Session): void {
         (event.data as { isTerminal?: boolean; willRetry?: boolean } | undefined)?.isTerminal !== false &&
         (event.data as { willRetry?: boolean } | undefined)?.willRetry !== true)
     ) {
+      // outbox 派发收口（done 成功删行 / 终态 error 按可重试性重排或 failed）
+      outboxService?.onTerminalEvent(session.id, event);
       void captureAndPushTurnChanges(session.id);
       // 轮末产物扫描：脚本生成的文件（pptx/png/...）进 Canvas 产物列表
       void captureAndPushTurnArtifacts(session.id);
@@ -493,9 +504,27 @@ export function wireSession(session: Session): void {
   });
 }
 
+/**
+ * 轮前基线（SESSION_SEND 与 outbox 泵共用）：快照回滚锚点（后台串行零等待，
+ * 0.2.28 教训）+ 轮末产物扫描基线（失败静默=轮末无 diff 不推送）。
+ */
+function prepareTurnBaseline(
+  sessionId: string,
+  create: SessionCreateInput | undefined,
+  text: string,
+): void {
+  const workDir =
+    create?.workDir ??
+    getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, sessionId)).get()?.workDir;
+  if (!workDir) return;
+  if (isCheckpointAvailable()) enqueueSnapshot(sessionId, workDir, text);
+  void scanArtifactSnapshot(workDir)
+    .then((snap) => turnArtifactSnapshots.set(sessionId, snap))
+    .catch(() => undefined);
+}
+
 /** 取内存中的会话；不存在时按 create 参数或 DB 记录 lazy-create */
-async function ensureSession(input: SessionSendInput): Promise<Session> {
-  const { maker } = getHost();
+async function ensureSession(input: SessionSendInput): Promise<Session> {  const { maker } = getHost();
   const alive = maker.getSession(input.sessionId);
   if (alive) {
     // 草稿预热接驳：指纹漂移/超时清障后走重建；接上时模型有变就地热切
@@ -839,6 +868,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_DELETE, async (_e, id: string) => {
     const { maker } = getHost();
+    // 先取消 outbox 未发送条目（级联删行会带走，但先取消防在飞泵重建/误派）
+    outboxService?.cancelAll(id);
     // DB 先删（毫秒级）立即返回；杀 pi 与删快照仓放后台——同步 rmSync 删大仓
     // 会冻结主进程事件循环，点删除整体卡顿（2026-10-07 用户实报根因）
     // 删行前取转录路径：resume 转录（agent-home/sessions/*.jsonl）连带回收
@@ -864,28 +895,8 @@ export function registerIpcHandlers(): void {
     FUNDET_INVOKE.SESSION_SEND,
     async (_e, input: SessionSendInput): Promise<SendResult> => {
       const session = await ensureSession(input);
+      prepareTurnBaseline(session.id, input.create, input.text);
       const attachments = input.attachments ?? [];
-      // 每轮发送前快照工作目录（回滚锚点）。后台串行、零等待——曾几何时这里是
-      // await，workDir 大时 git add 全量扫描把首条消息卡 20s+（0.2.28 修复）。
-      if (input.retry !== true && isCheckpointAvailable()) {
-        const workDir = input.create?.workDir
-          ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
-        if (workDir) {
-          enqueueSnapshot(session.id, workDir, input.text);
-        }
-      }
-      // 轮末产物扫描基线（与 checkpoint 可用性无关，独立拍）：fire-and-forget——
-      // 目录扫描毫秒级，远快于模型首响，轮内产物不会错拍进基线；失败静默
-      // （无基线=轮末无 diff=不推送）
-      if (input.retry !== true) {
-        const workDir = input.create?.workDir
-          ?? getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, session.id)).get()?.workDir;
-        if (workDir) {
-          void scanArtifactSnapshot(workDir)
-            .then((snap) => turnArtifactSnapshots.set(session.id, snap))
-            .catch(() => undefined);
-        }
-      }
       // 自动重试重发：user 消息与标题已落库，跳过重复插入
       if (input.retry !== true) {
         insertMessage(session.id, 'user', {
@@ -1935,4 +1946,86 @@ ${input.text}`;
   ipcMain.handle(FUNDET_INVOKE.FIND_STOP, async (e) => {
     e.sender.stopFindInPage('clearSelection');
   });
+
+  // ---------- 会话待发队列（durable outbox：排队/自动重试全在主进程，CDS 批二） ----------
+  const outboxStore = createSessionOutboxStore(getSqlite());
+  const pushOutbox = (sessionId: string): void => {
+    broadcast(FUNDET_PUSH.SESSION_OUTBOX_CHANGED, {
+      sessionId,
+      items: outboxStore.listBySession(sessionId).map(outboxItemView),
+    });
+  };
+  outboxService = createOutboxService({
+    store: outboxStore,
+    ensureSession: (input) => ensureSession(input as SessionSendInput),
+    prepareTurn: (sessionId, create, text) =>
+      prepareTurnBaseline(sessionId, create as SessionCreateInput | undefined, text),
+    applyAutoRag: async (sessionId, text) => {
+      const binding = getSessionKnowledgeBinding(sessionId);
+      if (!binding.auto || binding.ids.length === 0 || !text.trim()) return text;
+      try {
+        const hits = await searchKnowledgeChunks(binding.ids, text, resolveDefaultTopK(binding.ids));
+        if (hits.length === 0) return text;
+        return `${formatKnowledgeContextBlock(hits)}\n\n${text}`;
+      } catch {
+        return text; // 检索失败 ≠ 发送失败
+      }
+    },
+    persistAcceptedMessage: (row) => {
+      const payload = JSON.parse(row.payloadJson) as {
+        text: string;
+        attachments?: SessionAttachment[];
+      };
+      const inserted = insertUserMessageWithId(
+        row.sessionId,
+        row.userMessageId,
+        {
+          text: payload.text,
+          ...(payload.attachments?.length ? { attachments: payload.attachments } : {}),
+        },
+        row.userMessageCreatedAt ?? Date.now(),
+      );
+      if (inserted) {
+        autoTitleFromFirstMessage(
+          row.sessionId,
+          payload.text.trim() || (payload.attachments ?? []).map((a) => a.name).join(' ') || '',
+        );
+        promotePrewarm(row.sessionId);
+      }
+      return inserted;
+    },
+    buildUserMessage,
+    now: () => Date.now(),
+    scheduleTimer: () => undefined,
+    onChanged: pushOutbox,
+    log: (...args: unknown[]) => console.log('[fundet:outbox]', ...args),
+  });
+  ipcMain.handle(
+    FUNDET_INVOKE.SESSION_OUTBOX_ENQUEUE,
+    async (_e, input: SessionSendInput & { userMessageId: string }) => {
+      return outboxService!.enqueue({
+        userMessageId: String(input.userMessageId ?? ''),
+        sessionId: input.sessionId,
+        text: input.text,
+        attachments: input.attachments,
+        create: input.create as Record<string, unknown> | undefined,
+      });
+    },
+  );
+  ipcMain.handle(FUNDET_INVOKE.SESSION_OUTBOX_LIST, async (_e, sessionId?: string) =>
+    outboxService!.list(sessionId ? String(sessionId) : undefined),
+  );
+  ipcMain.handle(
+    FUNDET_INVOKE.SESSION_OUTBOX_RETRY,
+    async (_e, sessionId: string, id: string) => outboxService!.retry(String(sessionId), String(id)),
+  );
+  ipcMain.handle(
+    FUNDET_INVOKE.SESSION_OUTBOX_REMOVE,
+    async (_e, sessionId: string, id: string) => outboxService!.remove(String(sessionId), String(id)),
+  );
+  ipcMain.handle(FUNDET_INVOKE.SESSION_OUTBOX_CANCEL_ALL, async (_e, sessionId: string) =>
+    outboxService!.cancelAll(String(sessionId)),
+  );
+  // 启动恢复：崩溃遗留的 sending 转 outcome_unknown（绝不自动重放），到期的 queued 续派
+  outboxService.recoverAndResume();
 }

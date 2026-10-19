@@ -14,6 +14,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './schema.js';
 import { ensurePromptTemplatesTable } from './prompt-templates.ts';
+import { ensureSessionOutboxTable } from './session-outbox.ts';
 
 export type FundetDb = BetterSQLite3Database<typeof schema>;
 
@@ -103,6 +104,8 @@ export function initDatabase(): FundetDb {
   }
   // 幂等建表（提示词模板：常用提示词）
   ensurePromptTemplatesTable(native);
+  // 幂等建表（会话待发队列 outbox：排队/重试的持久化，2026-10 CDS 批二）
+  ensureSessionOutboxTable(native);
   console.log('[fundet:db] migrations applied');
   return db;
 }

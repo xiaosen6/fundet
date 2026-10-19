@@ -14,9 +14,25 @@ import { cleanupAgentHome } from './agent-home-cleanup.js';
 const UPLOADS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const UPLOADS_DIR_MAX_BYTES = 512 * 1024 * 1024; // 512MB 总量上限
 
-/** P1-3: .fundet-uploads/ 清理——7 天前的删 + 总量超 512MB 时 LRU 删 */
+/** P1-3: .fundet-uploads/ 清理——7 天前的删 + 总量超 512MB 时 LRU 删。
+ *  outbox 未终态行引用的附件跳过（排队消息重启后还要发，附件不能被清走）。 */
 function cleanupUploadsDir(workDirs: string[]): void {
   const now = Date.now();
+  // 受保护路径：durable outbox 未终态行的载荷附件（路径归一化比较）
+  let protectedPaths: Set<string> | null = null;
+  try {
+    protectedPaths = new Set(
+      (getSqlite().prepare(
+        `SELECT DISTINCT je.value AS p FROM session_outbox,
+         json_each(json_extract(session_outbox.payload_json, '$.attachments')) je
+         WHERE session_outbox.state IN ('queued','sending','failed','outcome_unknown')`,
+      ).all() as Array<{ p: string }>).map((r) => r.p.replace(/[\\/]+/g, '/').toLowerCase()),
+    );
+  } catch {
+    /* 无 outbox 表/脏载荷：按无保护清理 */
+  }
+  const isProtected = (p: string): boolean =>
+    protectedPaths != null && protectedPaths.has(p.replace(/[\\/]+/g, '/').toLowerCase());
   let totalCleaned = 0;
   for (const workDir of workDirs) {
     const uploadsDir = path.join(workDir, '.fundet-uploads');
@@ -36,7 +52,7 @@ function cleanupUploadsDir(workDirs: string[]): void {
         .filter(Boolean) as Array<{ p: string; stat: fs.Stats; mtime: number }>;
       // TTL 删
       for (const f of files) {
-        if (now - f.mtime > UPLOADS_TTL_MS) {
+        if (now - f.mtime > UPLOADS_TTL_MS && !isProtected(f.p)) {
           try {
             fs.rmSync(f.p, { force: true });
             totalCleaned++;
@@ -47,11 +63,12 @@ function cleanupUploadsDir(workDirs: string[]): void {
       const remaining = files.filter((f) => fs.existsSync(f.p));
       const totalSize = remaining.reduce((n, f) => n + f.stat.size, 0);
       if (totalSize > UPLOADS_DIR_MAX_BYTES) {
-        // LRU 删最旧的直到低于上限
+        // LRU 删最旧的直到低于上限（受保护的跳过）
         remaining.sort((a, b) => a.mtime - b.mtime);
         let size = totalSize;
         for (const f of remaining) {
           if (size <= UPLOADS_DIR_MAX_BYTES) break;
+          if (isProtected(f.p)) continue;
           try {
             fs.rmSync(f.p, { force: true });
             size -= f.stat.size;

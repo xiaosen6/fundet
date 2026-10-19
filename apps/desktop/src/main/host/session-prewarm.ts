@@ -176,14 +176,17 @@ function ensureSweep(): void {
 /**
  * 启动清理：上次运行残留的「占位标题 + 零消息」预热行（异常退出没走到
  * discard）。真实会话必有消息（首拍即写 user 行）；auto-/IM 同样首拍写消息，
- * 不会被误删。
+ * 不会被误删。outbox 未终态行引用的会话除外——排队首条还没派发时消息数为 0，
+ * 但队列还在等派发（durable outbox，2026-10 CDS 批二）。
  */
 export function cleanupOrphanPrewarmRows(): number {
   const placeholders = PREWARM_PLACEHOLDER_TITLES.map(() => '?').join(',');
   const result = getSqlite()
     .prepare(
       `DELETE FROM sessions WHERE title IN (${placeholders})` +
-        ' AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.session_id = sessions.id)',
+        ' AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.session_id = sessions.id)' +
+        " AND NOT EXISTS (SELECT 1 FROM session_outbox WHERE session_outbox.session_id = sessions.id" +
+        "   AND session_outbox.state IN ('queued','sending','failed','outcome_unknown'))",
     )
     .run(...PREWARM_PLACEHOLDER_TITLES);
   return result.changes;

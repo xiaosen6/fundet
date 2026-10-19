@@ -274,6 +274,28 @@ export interface SendResult {
   reason?: string;
 }
 
+/** 会话待发队列条目（主进程 outbox 快照推送/查询）。 */
+export interface SessionOutboxItem {
+  id: string;
+  sessionId: string;
+  seq: number;
+  /** queued / sending / failed / outcome_unknown / cancelled */
+  state: string;
+  text: string;
+  attachmentNames: string[];
+  attempt: number;
+  autoRetryCount: number;
+  nextAttemptAt: number | null;
+  lastError: string | null;
+  userMessageCreatedAt: number | null;
+  createdAt: number;
+}
+
+export interface SessionOutboxChangedPayload {
+  sessionId: string;
+  items: SessionOutboxItem[];
+}
+
 /** 知识库导入进度（kb:import-progress push） */
 export interface KbImportProgress {
   kbId: string;
@@ -435,6 +457,19 @@ export interface FundetApi {
   compactSession(id: string): Promise<{ noop?: boolean; tokensBefore?: number; estimatedTokensAfter?: number } | null>;
   deleteSession(id: string): Promise<void>;
   sendMessage(input: SessionSendInput): Promise<SendResult>;
+  /**
+   * 入待发队列（持久 outbox）：排队/自动重试全部主进程持有；userMessageId 由
+   * 渲染层预生成（乐观气泡与历史按它去重），重复入队幂等。
+   */
+  enqueueOutbox(input: Omit<SessionSendInput, 'retry'> & { userMessageId: string }): Promise<SessionOutboxItem>;
+  /** 队列快照；不带 sessionId = 全部会话的未终态行（重启恢复后台队列） */
+  listOutbox(sessionId?: string): Promise<SessionOutboxItem[]>;
+  /** 手动重试 failed/outcome_unknown 队首（outcome_unknown 由 UI 先确认） */
+  retryOutbox(sessionId: string, id: string): Promise<SessionOutboxItem[]>;
+  /** 移除未发送条目（sending 不可移除，须 abort） */
+  removeOutbox(sessionId: string, id: string): Promise<SessionOutboxItem[]>;
+  /** 取消全部未发送条目（sending 行仅打取消标记，随 abort 终态收口） */
+  cancelAllOutbox(sessionId: string): Promise<SessionOutboxItem[]>;
   abortSession(id: string): Promise<void>;
   closeSession(id: string): Promise<void>;
   sessionClose(id: string): Promise<void>;
@@ -625,6 +660,8 @@ export interface FundetApi {
   onInteractionRequest(cb: (payload: InteractionRequestPayload) => void): () => void;
   onInteractionDismissed(cb: (payload: InteractionDismissedPayload) => void): () => void;
   onSessionListChanged(cb: () => void): () => void;
+  /** 会话待发队列快照变化（outbox push）：payload 含该会话全量未终态条目 */
+  onOutboxChanged(cb: (payload: SessionOutboxChangedPayload) => void): () => void;
   /** 完成提醒：点击系统通知 → 切到该会话（主进程已聚焦主窗） */
   onNotifyOpenSession(cb: (payload: { sessionId: string }) => void): () => void;
   /** 完成提醒提示音（渲染层 WebAudio 播放） */

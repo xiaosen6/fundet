@@ -34,6 +34,41 @@ export function insertMessage(sessionId: string, role: string, content: unknown)
   if (row) upsertMessageFts(db, row.rowid, contentJson);
 }
 
+/**
+ * 幂等落用户消息（outbox onAccepted 用）：预生成 id 事务插入，重放不重复落行。
+ * 返回是否为新插入；已存在时校验同会话同内容（不一致=异常，上抛）。
+ */
+export function insertUserMessageWithId(
+  sessionId: string,
+  id: string,
+  content: unknown,
+  createdAt: number,
+): boolean {
+  const contentJson = JSON.stringify(content ?? null);
+  const db = getSqlite();
+  const existing = db
+    .prepare('SELECT session_id, content FROM messages WHERE id = ?')
+    .get(id) as { session_id: string; content: string } | undefined;
+  if (existing) {
+    if (existing.session_id !== sessionId || existing.content !== contentJson) {
+      throw new Error(`消息 id 冲突：${id}`);
+    }
+    return false;
+  }
+  const insert = db.transaction((): void => {
+    getDb()
+      .insert(messages)
+      .values({ id, sessionId, role: 'user', content: contentJson, createdAt })
+      .run();
+    const rowid = db.prepare('SELECT rowid FROM messages WHERE id = ?').get(id) as
+      | { rowid: number }
+      | undefined;
+    if (rowid) upsertMessageFts(db, rowid.rowid, contentJson);
+  });
+  insert();
+  return true;
+}
+
 export function deleteMessagesInRange(sessionId: string, afterCreatedAt: number, untilCreatedAt: number): void {
   getDb()
     .delete(messages)

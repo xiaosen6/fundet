@@ -13,10 +13,11 @@
  */
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
-import { classifyRetryableError, MAX_AUTO_RETRY_ATTEMPTS, retryDelayMs } from '../lib/errorRetry';
 import { isComposerTypingRecently } from '../lib/composerTypingActivity';
+import { toast } from '../components/ui/toast';
 import { playCompletionChime } from '../lib/chime';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
+import type { SessionOutboxItem } from '../../../shared/fundet-api.ts';
 import type {
   MessageView,
   SessionAttachment,
@@ -162,15 +163,12 @@ export function patchSessionInList(sessionId: string, patch: Partial<SessionList
 
 /** 删除会话的乐观更新：立即从列表移除（主进程清 DB/杀进程/删快照仓均后台异步，
  *  不再等 invoke 返回——删除卡顿的渲染层半边，2026-10-07）。连带清会话级内存态
- *  防有界泄漏；在飞的自动重试必须先取消（先取消再删 slice，倒计时 notice 清理要读它），
- *  否则定时器触发会给已删会话重建孤儿 slice。 */
+ *  防有界泄漏。 */
 export function removeSessionFromList(sessionId: string): void {
   sessionList = sessionList.filter((s) => s.id !== sessionId);
   if (drafts.has(sessionId)) drafts.delete(sessionId);
-  cancelAutoRetry(sessionId);
   slices.delete(sessionId);
-  lastSendInputs.delete(sessionId);
-  retryAttempts.delete(sessionId);
+  outboxBySession.delete(sessionId);
   autoAllowTools.delete(sessionId);
   userAborts.delete(sessionId);
   rebuildCombinedList();
@@ -191,98 +189,73 @@ let focusedSessionId: string | null = null;
 const autoAllowTools = new Map<string, Set<string>>();
 
 // ---------------------------------------------------------------------------
-// 错误分类自动重试（限流/过载/网络瞬断，最多 2 次，倒计时可被任何新动作打断）
+// 会话待发队列（durable outbox）：排队/自动重试全在主进程（SQLite 持久），
+// 渲染层只持快照视图（onOutboxChanged push + 初载），不拥有定时器。
 // ---------------------------------------------------------------------------
 
-/** sessionId → 最近一次被 main 接受的发送参数（重发用，retry 标记覆写） */
-const lastSendInputs = new Map<string, SessionSendInput>();
-/** sessionId → 已自动重试次数（done 清零） */
-const retryAttempts = new Map<string, number>();
-interface ActiveRetry {
-  timer: ReturnType<typeof setTimeout>;
-  ticker: ReturnType<typeof setInterval> | null;
-  noticeId: string;
-}
-const activeRetries = new Map<string, ActiveRetry>();
+/** sessionId → 未终态 outbox 条目快照（cancelled/succeeded 不展示） */
+const outboxBySession = new Map<string, SessionOutboxItem[]>();
 
-function cancelAutoRetry(sessionId: string): void {
-  const plan = activeRetries.get(sessionId);
-  if (!plan) return;
-  activeRetries.delete(sessionId);
-  clearTimeout(plan.timer);
-  if (plan.ticker) clearInterval(plan.ticker);
-  // 倒计时 notice 就地移除（不打扰其它条目）
-  const s = getSlice(sessionId);
-  if (s.items.some((it) => it.id === plan.noticeId)) {
-    patchSlice(sessionId, { items: s.items.filter((it) => it.id !== plan.noticeId) });
-    notifySlice(sessionId);
+export function getOutboxItems(sessionId: string): SessionOutboxItem[] {
+  return outboxBySession.get(sessionId) ?? [];
+}
+
+export function useSessionOutbox(sessionId: string | null): SessionOutboxItem[] {
+  return useSyncExternalStore(
+    (cb) => {
+      if (!sessionId) return () => undefined;
+      let set = sliceListeners.get(sessionId);
+      if (!set) {
+        set = new Set();
+        sliceListeners.set(sessionId, set);
+      }
+      set.add(cb);
+      return () => {
+        set.delete(cb);
+      };
+    },
+    () => (sessionId ? getOutboxItems(sessionId) : EMPTY_OUTBOX),
+  );
+}
+const EMPTY_OUTBOX: SessionOutboxItem[] = [];
+
+function setOutboxItems(sessionId: string, items: SessionOutboxItem[]): void {
+  const visible = items.filter((i) => i.state !== 'cancelled');
+  outboxBySession.set(sessionId, visible);
+  notifySlice(sessionId);
+}
+
+/** 手动重试 failed/outcome_unknown 队首；outcome_unknown 由调用方先确认。 */
+export async function retryOutboxItem(sessionId: string, id: string): Promise<void> {
+  try {
+    setOutboxItems(sessionId, await window.fundet.retryOutbox(sessionId, id));
+  } catch (err) {
+    toast.error(`重试失败：${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-function updateRetryNotice(sessionId: string, noticeId: string, text: string): void {
-  const s = getSlice(sessionId);
-  patchSlice(sessionId, {
-    items: s.items.map((it) => (it.id === noticeId && it.kind === 'notice' ? { ...it, text } : it)),
-  });
-  notifySlice(sessionId);
+/** 移除未发送条目（队列 chip 的 ×）。 */
+export async function removeOutboxItem(sessionId: string, id: string): Promise<void> {
+  try {
+    setOutboxItems(sessionId, await window.fundet.removeOutbox(sessionId, id));
+  } catch (err) {
+    toast.error(`移除失败：${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
-function performAutoRetry(sessionId: string): void {
-  const plan = activeRetries.get(sessionId);
-  activeRetries.delete(sessionId);
-  if (plan?.ticker) clearInterval(plan.ticker);
-  const input = lastSendInputs.get(sessionId);
-  if (!input) return;
-  patchSlice(sessionId, { isRunning: true, statusText: '自动重试中…' });
-  notifySlice(sessionId);
-  void window.fundet
-    .sendMessage({ ...input, retry: true })
-    .then((result) => {
-      if (!result.accepted) {
-        appendItem(sessionId, {
-          kind: 'error',
-          id: nextId('e'),
-          message: `自动重试未接受：${result.reason ?? '未知原因'}`,
-        });
-        patchSlice(sessionId, { isRunning: false });
-        notifySlice(sessionId);
-      }
-    })
-    .catch((err: unknown) => {
-      appendItem(sessionId, {
-        kind: 'error',
-        id: nextId('e'),
-        message: `自动重试失败：${err instanceof Error ? err.message : String(err)}`,
-      });
-      patchSlice(sessionId, { isRunning: false });
-      notifySlice(sessionId);
-    });
-}
-
-function scheduleAutoRetry(sessionId: string, message: string): void {
-  const seed = classifyRetryableError(message);
-  if (!seed) return;
-  const attempt = (retryAttempts.get(sessionId) ?? 0) + 1;
-  if (attempt > MAX_AUTO_RETRY_ATTEMPTS) return; // 3 次之后交还手动重发（CDS 熔断口径）
-  retryAttempts.set(sessionId, attempt);
-  const delayMs = retryDelayMs(seed, attempt);
-  const noticeId = nextId('n');
-  const totalSec = Math.round(delayMs / 1000);
-  appendItem(sessionId, {
-    kind: 'notice',
-    id: noticeId,
-    text: `${seed.label}，${totalSec} 秒后自动重试（${attempt}/${MAX_AUTO_RETRY_ATTEMPTS}）`,
-  });
-  notifySlice(sessionId);
-  let remain = totalSec;
-  const ticker = setInterval(() => {
-    remain -= 1;
-    if (remain > 0) {
-      updateRetryNotice(sessionId, noticeId, `${seed.label}，${remain} 秒后自动重试（${attempt}/${MAX_AUTO_RETRY_ATTEMPTS}）`);
+async function loadAllOutbox(): Promise<void> {
+  try {
+    const items = await window.fundet.listOutbox();
+    const bySession = new Map<string, SessionOutboxItem[]>();
+    for (const item of items) {
+      const list = bySession.get(item.sessionId) ?? [];
+      list.push(item);
+      bySession.set(item.sessionId, list);
     }
-  }, 1000);
-  const timer = setTimeout(() => performAutoRetry(sessionId), delayMs);
-  activeRetries.set(sessionId, { timer, ticker, noticeId });
+    for (const [sessionId, list] of bySession) setOutboxItems(sessionId, list);
+  } catch {
+    /* outbox 不可用时静默退化为无队列视图 */
+  }
 }
 
 let idSeq = 0;
@@ -583,8 +556,6 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         attention: sessionId === focusedSessionId ? null : 'done',
       });
       userAborts.delete(sessionId);
-      retryAttempts.delete(sessionId);
-      cancelAutoRetry(sessionId);
       void refreshSessionList();
       return 'immediate';
     }
@@ -613,8 +584,8 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
           appendItem(sessionId, { kind: 'error', id: nextId('e'), message });
           patchSlice(sessionId, { isRunning: false, streamingText: '', attention: 'error' });
         }
-        // 限流/过载/网络瞬断：自动重试（带倒计时；最多 2 次）
-        scheduleAutoRetry(sessionId, message);
+        // 自动重试已由主进程 outbox 接管（带 nextAttemptAt 快照 + 3 次封顶）；
+        // 渲染层只保留终态错误卡作轮记录，重试入口在队列 chip。
       } else {
         // 瞬时重试提示原地更新（1/3 → 2/3 不堆多条）
         const last = s0.items[s0.items.length - 1];
@@ -663,8 +634,6 @@ export function initGlobalListeners(): void {
   // 不订阅这个事件的话 isRunning 恒 true：停止按钮点了没反应、UI 永久转圈。
   window.fundet.onStatusChanged(({ sessionId, status }) => {
     if (status !== 'closed' && status !== 'error') return;
-    cancelAutoRetry(sessionId);
-    retryAttempts.delete(sessionId);
     const s = getSlice(sessionId);
     if (!s.isRunning && !s.pendingInteraction) return;
     patchSlice(sessionId, {
@@ -682,6 +651,12 @@ export function initGlobalListeners(): void {
     notifySlice(sessionId);
     void refreshSessionList();
   });
+
+  // 主进程 outbox 快照：队列 chip / 自动重试倒计时 / failed·outcome_unknown 重试入口
+  window.fundet.onOutboxChanged(({ sessionId, items }) => {
+    setOutboxItems(sessionId, items);
+  });
+  void loadAllOutbox();
 
   window.fundet.onInteractionRequest(({ sessionId, request }) => {
     // 「本会话总允许」命中：直接自动放行，不弹卡
@@ -932,21 +907,27 @@ function rebuildItems(messages: MessageView[]): DisplayItem[] {
   return items;
 }
 
-/** 发送消息：本地先插用户气泡，再走 IPC */
+/**
+ * 发送消息：走主进程 durable outbox（排队/自动重试持久化）。
+ * 乐观气泡用预生成 userMessageId 作 id——与主进程幂等落库的 user 行同 id，
+ * 历史重建（rebuildItems 按 m.id）天然去重。返回 false = 入队失败（调用方
+ * 应恢复 composer 草稿），错误详情已就地展示。
+ */
 export async function sendMessage(
   sessionId: string,
   text: string,
   create?: SessionCreateInput,
   attachments?: SessionAttachment[],
-): Promise<void> {
+): Promise<boolean> {
+  const userMessageId = crypto.randomUUID();
   appendItem(sessionId, {
     kind: 'user',
-    id: nextId('u'),
+    id: userMessageId,
     text,
     createdAt: Date.now(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   });
-  // 用户正在与会话交互：清关注态
+  // 用户正在与会话交互：清关注态（空闲首发立即派发；忙时排队等轮末）
   patchSlice(sessionId, { isRunning: true, statusText: 'Working…', attention: null });
   notifySlice(sessionId);
   if (drafts.has(sessionId)) {
@@ -954,30 +935,25 @@ export async function sendMessage(
     notifyList();
   }
   try {
-    const result = await window.fundet.sendMessage({ sessionId, text, create, attachments });
-    if (result.accepted) {
-      // 记住本次发送参数（自动重试用），并取消任何挂起的自动重试
-      lastSendInputs.set(sessionId, { sessionId, text, create, attachments });
-      cancelAutoRetry(sessionId);
-      // 草稿首条消息已被 main 接受（lazy-create 落 DB）：摘掉草稿标记，
-      // 后续走正式会话路径；随即刷新 sidebar 拿到 DB 行（含自动标题）。
-      if (drafts.delete(sessionId)) rebuildCombinedList();
-      // 首条消息可能触发 main 侧自动标题，立即刷新 sidebar
-      void refreshSessionList();
-    } else {
-      appendItem(sessionId, {
-        kind: 'error',
-        id: nextId('e'),
-        message: `发送未接受：${result.reason ?? '未知原因'}`,
-      });
-      patchSlice(sessionId, { isRunning: false });
-      notifySlice(sessionId);
-      if (drafts.has(sessionId)) {
-        rebuildCombinedList();
-        notifyList();
-      }
-    }
+    const item = await window.fundet.enqueueOutbox({
+      sessionId,
+      text,
+      create,
+      attachments,
+      userMessageId,
+    });
+    setOutboxItems(sessionId, [
+      ...getOutboxItems(sessionId).filter((i) => i.id !== item.id),
+      item,
+    ]);
+    return true;
   } catch (err) {
+    // 入队失败：摘乐观气泡（错误卡自带原文可查），交还草稿
+    const s = getSlice(sessionId);
+    patchSlice(sessionId, {
+      items: s.items.filter((it) => it.id !== userMessageId),
+      isRunning: s.items.some((it) => it.id === userMessageId) ? false : s.isRunning,
+    });
     appendItem(sessionId, {
       kind: 'error',
       id: nextId('e'),
@@ -989,13 +965,13 @@ export async function sendMessage(
       rebuildCombinedList();
       notifyList();
     }
+    return false;
   }
 }
 
 /**
- * 终态错误卡「重新发送」：原文已在 items 里，不重插用户气泡，只重走 IPC。
- * 与 sendMessage 同样记录 lastSendInputs——此前 ChatPage 直连 IPC 绕过了它，
- * 手动重发后再遇限流/网络错误不会触发自动重试。
+ * 终态错误卡「重新发送」（旧版错误/非 outbox 轮的兜底通道）：原文已在库里，
+ * 不重插用户气泡，retry:true 跳过重复插入。新发送的自动/手动重试由 outbox 承担。
  */
 export async function resendTurn(
   sessionId: string,
@@ -1006,10 +982,8 @@ export async function resendTurn(
   patchSlice(sessionId, { isRunning: true, statusText: 'Working…', attention: null });
   notifySlice(sessionId);
   try {
-    const result = await window.fundet.sendMessage({ sessionId, text, create, attachments });
+    const result = await window.fundet.sendMessage({ sessionId, text, create, attachments, retry: true });
     if (result.accepted) {
-      lastSendInputs.set(sessionId, { sessionId, text, create, attachments });
-      cancelAutoRetry(sessionId);
       void refreshSessionList();
     } else {
       appendItem(sessionId, {
@@ -1037,12 +1011,15 @@ const isAbortLike = (message: string): boolean => /abort/i.test(message);
 
 export async function abortSession(sessionId: string): Promise<void> {
   // 即时反馈：pi 侧若卡死，abort RPC 要等主进程复核兜底（约 15s）才真正收口，
-  // 期间不能让「正在中断」看起来像没点到。
-  cancelAutoRetry(sessionId);
-  retryAttempts.delete(sessionId);
+  // 期间不能让「正在中断」看起来像没点到。停止同时取消未发送的排队条目
+  //（sending 行打取消标记，随 abort 终态在 outbox 收口）。
   userAborts.add(sessionId);
   patchSlice(sessionId, { statusText: '正在中断…' });
   notifySlice(sessionId);
+  void window.fundet
+    .cancelAllOutbox(sessionId)
+    .then((items) => setOutboxItems(sessionId, items))
+    .catch(() => undefined);
   await window.fundet.abortSession(sessionId);
 }
 

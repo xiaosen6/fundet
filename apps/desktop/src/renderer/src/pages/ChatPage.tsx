@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight as ChevronRightIcon, Clock, FileDown, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Effort, PermissionMode } from '@fundet/agent-core';
-import type { ProviderView, SessionAttachment, SkillView } from '../../../shared/fundet-api.ts';
+import type { ProviderView, SessionAttachment, SessionOutboxItem, SkillView } from '../../../shared/fundet-api.ts';
 import type { SlashItem } from '../components/SlashPalette';
 import {
   abortSession,
@@ -29,8 +29,10 @@ import {
   refreshSessionList,
   patchSessionInList,
   removeSessionFromList,
+  removeOutboxItem,
   renameSession,
   resendTurn,
+  retryOutboxItem,
   resolveAskUser,
   setSessionEffortLevel,
   resolvePermission,
@@ -39,6 +41,7 @@ import {
   updateDraftSession,
   useRunningIds,
   useSessionList,
+  useSessionOutbox,
   useSessionSlice,
 } from '../stores/sessionStore';
 import {
@@ -211,6 +214,37 @@ export function ChatPage(): React.JSX.Element {
   const dragCountRef = useRef(0);
 
   const slice = useSessionSlice(activeId);
+  // durable outbox 队列快照（排队/自动重试/失败重试都在主进程，渲染层只展示）
+  const outboxItems = useSessionOutbox(activeId);
+
+  const outboxStateLabel = (item: SessionOutboxItem): string => {
+    switch (item.state) {
+      case 'sending': return '发送中';
+      case 'failed': return `发送失败${item.lastError ? `（${item.lastError.slice(0, 40)}）` : ''}`;
+      case 'outcome_unknown': return '结果未知（可能已执行，重试需谨慎）';
+      case 'queued':
+        if (item.nextAttemptAt != null) {
+          const remain = Math.max(0, Math.round((item.nextAttemptAt - Date.now()) / 1000));
+          return `自动重试（${remain} 秒后，第 ${item.autoRetryCount}/3 次）`;
+        }
+        return `排队 ${item.seq}`;
+      default: return item.state;
+    }
+  };
+
+  const handleOutboxRetry = async (item: SessionOutboxItem): Promise<void> => {
+    if (!activeId) return;
+    if (item.state === 'outcome_unknown') {
+      const ok = await confirmDialog({
+        title: '重试这条发送？',
+        description: '应用退出时这条消息可能已经发出。重试有概率重复执行同一任务（如重复写文件/重复下单类操作）。确认继续？',
+        confirmText: '仍然重试',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    await retryOutboxItem(activeId, item.id);
+  };
 
   // Ctrl+F 页内搜索（仅会话页生效；FindBar 内部处理 Esc/清高亮）
   const [findOpen, setFindOpen] = useState(false);
@@ -220,13 +254,6 @@ export function ChatPage(): React.JSX.Element {
   // 粘贴长文本 chip：发送时按序展开为原文追加
   const [pastedTexts, setPastedTexts] = useState<Array<{ id: number; text: string; lines: number }>>([]);
   const [rewindOpen, setRewindOpen] = useState(false);
-  // 消息排队：运行中 Enter 入队，本轮结束后自动按序发送（Cindy PendingQueue 简化版）
-  const [queuedTexts, setQueuedTexts] = useState<string[]>([]);
-  const queueDispatching = useRef(false);
-  const queueText = useCallback((t: string): void => {
-    setQueuedTexts((q) => [...q, t]);
-    setInput('');
-  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
@@ -243,9 +270,6 @@ export function ChatPage(): React.JSX.Element {
     setRenamingHeader(false);
     headerRenameCommitted.current = false;
     setPastedTexts([]);
-    // 排队消息属视图级状态（Cindy 队列在会话侧）：切会话即清，防 A 会话的
-    // 排队文本经 dispatch effect（按 activeId 发送）误发进 B 会话
-    setQueuedTexts([]);
     // 切进即视为已看：清侧栏关注点，此后该会话完成不再打未读标
     markSessionSeen(activeId);
   }, [activeId]);
@@ -677,18 +701,6 @@ export function ChatPage(): React.JSX.Element {
     }
   }, [activeId, slice.isRunning, slice.usage.contextTokens, shownWindow]);
 
-  // 队列派发：本轮空闲（非运行/无审批）且队列有货 → 按序发下一条
-  useEffect(() => {
-    if (slice.isRunning || slice.pendingInteraction || queueDispatching.current) return;
-    if (queuedTexts.length === 0 || !activeId) return;
-    queueDispatching.current = true;
-    const [first, ...rest] = queuedTexts;
-    setQueuedTexts(rest);
-    void sendMessage(activeId, first ?? '', buildCreateParam(), undefined).finally(() => {
-      queueDispatching.current = false;
-    });
-  }, [slice.isRunning, slice.pendingInteraction, queuedTexts, activeId, buildCreateParam]);
-
   // 终态错误卡的「重新发送」：重发本轮最后一条用户消息（含附件路径引用）。
   // 走 store 的 resendTurn（记录重试参数，限流/网络错误仍可自动重试）。
   const resendLast = useCallback((): void => {
@@ -730,7 +742,8 @@ export function ChatPage(): React.JSX.Element {
         }
       }
       truncateItemsFrom(activeId, createdAt);
-      setQueuedTexts([]);
+      // 编辑=截断重发：连带取消该会话未发送的排队条目（语义同删除该轮）
+      void window.fundet.cancelAllOutbox(activeId).catch(() => undefined);
       await sendMessage(activeId, text, buildCreateParam(), attachments && attachments.length > 0 ? attachments : undefined);
     },
     [activeId, slice.isRunning, buildCreateParam],
@@ -786,7 +799,13 @@ export function ChatPage(): React.JSX.Element {
     }
     // 重启后旧会话 / 本地草稿都不在 main 内存：带 create 让 main lazy-create。
     const create = buildCreateParam();
-    await sendMessage(activeId, fullText, create, pending.length > 0 ? pending : undefined);
+    const ok = await sendMessage(activeId, fullText, create, pending.length > 0 ? pending : undefined);
+    if (!ok) {
+      // 入队失败：草稿交还（错误详情 store 已就地展示）
+      setInput(text);
+      setAttachments(pending);
+      if (pastedTexts.length > 0) setPastedTexts(pastedTexts);
+    }
   }, [activeId, attachments, buildCreateParam, input, pastedTexts]);
 
   const abort = useCallback(async (): Promise<void> => {
@@ -1242,27 +1261,48 @@ export function ChatPage(): React.JSX.Element {
                   />
                 ) : (
                   <>
-                    {queuedTexts.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {queuedTexts.map((t, i) => (
-                          <span
-                            key={`${i}-${t.slice(0, 8)}`}
-                            className="inline-flex max-w-full items-center gap-1.5 rounded-xl border border-board bg-card py-1 pl-2.5 pr-1.5 text-12 text-secondary"
-                            title={t.slice(0, 200)}
+                    {outboxItems.length > 0 && (
+                      <div className="mb-2 flex flex-col gap-1.5">
+                        {outboxItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="inline-flex max-w-full flex-wrap items-center gap-1.5 self-start rounded-xl border border-board bg-card py-1 pl-2.5 pr-1.5 text-12 text-secondary"
+                            title={item.lastError ?? item.text.slice(0, 200)}
                           >
-                            <Clock size={12} className="shrink-0 text-muted" aria-hidden />
+                            {item.state === 'failed' || item.state === 'outcome_unknown' ? (
+                              <span
+                                className={item.state === 'failed' ? 'text-error' : 'text-warning'}
+                                aria-hidden
+                              >
+                                !
+                              </span>
+                            ) : (
+                              <Clock size={12} className="shrink-0 text-muted" aria-hidden />
+                            )}
                             <span className="min-w-0 max-w-[280px] truncate">
-                              排队 {i + 1}：{t.replace(/\s+/g, ' ').slice(0, 30) || '（空）'}
+                              {outboxStateLabel(item)}：{item.text.replace(/\s+/g, ' ').slice(0, 30) || '（空）'}
+                              {item.attachmentNames.length > 0 ? ` +${item.attachmentNames.length} 附件` : ''}
                             </span>
-                            <button
-                              type="button"
-                              title="移除"
-                              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-hover hover:text-primary"
-                              onClick={() => setQueuedTexts((q) => q.filter((_, j) => j !== i))}
-                            >
-                              <X size={10} />
-                            </button>
-                          </span>
+                            {(item.state === 'failed' || item.state === 'outcome_unknown') && (
+                              <button
+                                type="button"
+                                className="rounded-full px-1.5 text-12 font-medium text-accent hover:underline"
+                                onClick={() => void handleOutboxRetry(item)}
+                              >
+                                重试
+                              </button>
+                            )}
+                            {item.state !== 'sending' && (
+                              <button
+                                type="button"
+                                title="移除"
+                                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-hover hover:text-primary"
+                                onClick={() => void removeOutboxItem(activeId, item.id)}
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -1301,7 +1341,6 @@ export function ChatPage(): React.JSX.Element {
                       onRemovePastedText={removePastedText}
                       workDir={sessionWorkDir}
                       onStagePaths={(paths) => void stagePaths(paths)}
-                      onQueue={queueText}
                       leadingControls={
                         <>
                           <KnowledgeChip sessionId={activeId} />

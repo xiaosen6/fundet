@@ -14,6 +14,7 @@ import type {
   InteractionDismissedPayload,
   InteractionRequestPayload,
   KbImportProgress,
+  SessionOutboxChangedPayload,
   StatusChangedPayload,
 } from '../shared/fundet-api.js';
 
@@ -70,6 +71,11 @@ const api: FundetApi = {
   compactSession: (id) => invoke(FUNDET_INVOKE.SESSION_COMPACT, id),
   deleteSession: (id) => invoke(FUNDET_INVOKE.SESSION_DELETE, id),
   sendMessage: (input) => invoke(FUNDET_INVOKE.SESSION_SEND, input),
+  enqueueOutbox: (input) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_ENQUEUE, input),
+  listOutbox: (sessionId) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_LIST, sessionId),
+  retryOutbox: (sessionId, id) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_RETRY, sessionId, id),
+  removeOutbox: (sessionId, id) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_REMOVE, sessionId, id),
+  cancelAllOutbox: (sessionId) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_CANCEL_ALL, sessionId),
   abortSession: (id) => invoke(FUNDET_INVOKE.SESSION_ABORT, id),
   closeSession: (id) => invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
   sessionClose: (id) => invoke(FUNDET_INVOKE.SESSION_CLOSE, id),
@@ -259,6 +265,7 @@ const api: FundetApi = {
   onInteractionDismissed: (cb) =>
     subscribe<InteractionDismissedPayload>(FUNDET_PUSH.INTERACTION_DISMISSED, cb),
   onSessionListChanged: (cb) => subscribe(FUNDET_PUSH.SESSION_LIST_CHANGED, cb),
+  onOutboxChanged: (cb) => subscribe<SessionOutboxChangedPayload>(FUNDET_PUSH.SESSION_OUTBOX_CHANGED, cb),
   onNotifyOpenSession: (cb) => subscribe(FUNDET_PUSH.NOTIFY_OPEN_SESSION, cb),
   onNotifyChime: (cb) => subscribe(FUNDET_PUSH.NOTIFY_CHIME, cb),
   onTurnChanges: (cb) => subscribe(FUNDET_PUSH.TURN_CHANGES, cb),

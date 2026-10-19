@@ -61,8 +61,6 @@ interface ChatInputProps {
   /** @ 文件引用：工作目录 + 选中路径的 stage 回调（两者都给才启用） */
   workDir?: string;
   onStagePaths?: (paths: string[]) => void;
-  /** 运行中按 Enter：把纯文本排队（本轮结束后自动发送）；带附件时不排队 */
-  onQueue?: (text: string) => void;
   /** 高体量（Cindy 首页空态 150px 多行卡）；对话态缺省为扁输入框（~86px，打字长高） */
   tall?: boolean;
 }
@@ -89,7 +87,6 @@ export function ChatInput({
   onRemovePastedText,
   workDir,
   onStagePaths,
-  onQueue,
   tall = false,
 }: ChatInputProps): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -155,11 +152,12 @@ export function ChatInput({
     autoResize();
   }, [value]);
 
+  // 有内容即可发：空闲=直接发；运行中=进 durable outbox 排队（主进程轮末自动派发，
+  // 附件/粘贴 chip 同样可排队——比旧「仅纯文本本地队列」强，重启不丢）
   const canSend =
     (value.trim().length > 0 || attachments.length > 0 || pastedTexts.length > 0) &&
     !disabled &&
-    !sendDisabled &&
-    !isRunning;
+    !sendDisabled;
 
   const slashQuery = useMemo(() => {
     const t = value;
@@ -482,24 +480,12 @@ export function ChatInput({
                 return;
               }
             }
-            // Enter 发送 / Shift+Enter 换行
+            // Enter 发送 / Shift+Enter 换行（运行中同样可发：入 outbox 排队）
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               if (canSend) {
                 onSend();
                 return;
-              }
-              // 运行中：纯文本排队（本轮结束后自动发送）；附件/粘贴场景维持原状
-              if (
-                isRunning
-                && onQueue
-                && value.trim()
-                && attachments.length === 0
-                && pastedTexts.length === 0
-                && !sendDisabled
-                && !disabled
-              ) {
-                onQueue(value.trim());
               }
             }
           }}
