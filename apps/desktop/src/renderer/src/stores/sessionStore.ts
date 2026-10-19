@@ -205,9 +205,12 @@ const autoAllowTools = new Map<string, Set<string>>();
 
 /** sessionId → 未终态 outbox 条目快照（cancelled/succeeded 不展示） */
 const outboxBySession = new Map<string, SessionOutboxItem[]>();
+const EMPTY_OUTBOX_ITEMS: SessionOutboxItem[] = [];
 
 export function getOutboxItems(sessionId: string): SessionOutboxItem[] {
-  return outboxBySession.get(sessionId) ?? [];
+  // 引用稳定（内存批回归热修）：空队列必须返回同一个空数组——useSyncExternalStore
+  // 按对象身份判变化，每次新建 [] 会被判定永变 → Maximum update depth exceeded
+  return outboxBySession.get(sessionId) ?? EMPTY_OUTBOX_ITEMS;
 }
 
 export function useSessionOutbox(sessionId: string | null): SessionOutboxItem[] {
