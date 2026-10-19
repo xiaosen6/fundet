@@ -32,6 +32,7 @@ export const FUNDET_INVOKE = {
   SESSION_SEARCH: 'session:search',
   SESSION_SEARCH_CONTENT: 'session:search-content',
   SESSION_EXPORT_HTML: 'session:export-html',
+  SESSION_OPEN_POPOUT: 'session:open-popout',
   SESSION_GET_PLAN: 'session:get-plan',
   CHECKPOINT_LIST: 'checkpoint:list',
   CHECKPOINT_PREVIEW: 'checkpoint:preview',

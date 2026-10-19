@@ -457,6 +457,8 @@ export interface FundetApi {
   compactSession(id: string): Promise<{ noop?: boolean; tokensBefore?: number; estimatedTokensAfter?: number } | null>;
   deleteSession(id: string): Promise<void>;
   sendMessage(input: SessionSendInput): Promise<SendResult>;
+  /** 在独立窗口打开会话只读/搜索视图（静态全量转录，原生 findInPage 全文可达） */
+  openSessionPopout(sessionId: string): Promise<void>;
   /**
    * 入待发队列（持久 outbox）：排队/自动重试全部主进程持有；userMessageId 由
    * 渲染层预生成（乐观气泡与历史按它去重），重复入队幂等。

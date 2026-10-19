@@ -23,6 +23,7 @@ for (const [oldKey, newKey] of [
 applyFonts();
 import { ChatPage } from './pages/ChatPage';import { SettingsPage } from './pages/SettingsPage';
 import { DebugPage } from './pages/DebugPage';
+import { SessionPopoutPage } from './pages/SessionPopoutPage';
 import { WindowControls } from './components/WindowControls';
 import { ToastContainer } from './components/ui/toast';
 import { ConfirmDialogHost } from './components/ui/ConfirmDialog';
@@ -52,6 +53,8 @@ const router = createHashRouter([
       { path: '/settings', element: <SettingsPage /> },
       // 调试台保留：E2E 复验与原始事件流排查用
       { path: '/debug', element: <DebugPage /> },
+      // 会话只读弹窗（独立 BrowserWindow 加载此 hash 路由；静态全量转录可全文搜索）
+      { path: '/session-popout/:sessionId', element: <SessionPopoutPage /> },
     ],
   },
 ]);

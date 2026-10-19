@@ -9,6 +9,7 @@ import { BrowserWindow, screen, ipcMain, desktopCapturer, app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { FUNDET_INVOKE, FUNDET_PUSH } from '../ipc/channels.js';
+import { getMainWindow } from '../window-registry.js';
 import { setBoolSetting } from '../db/settings.js';
 
 export const PET_STATE = 'pet:state';
@@ -125,9 +126,10 @@ export function createPetWindow(): void {
   }
 }
 
-/** 单击 → 新对话（打开主窗口+通知渲染层新建会话） */
+/** 单击 → 新对话（打开主窗口+通知渲染层新建会话）；主窗走注册表显式身份
+ *（会话弹窗出现后 getAllWindows 首个非 pet 窗可能是弹窗） */
 async function petNewChat(): Promise<void> {
-  const main = BrowserWindow.getAllWindows().find((w) => w !== petWindow);
+  const main = getMainWindow();
   if (main) {
     main.show();
     main.focus();
@@ -161,8 +163,8 @@ async function petScreenshot(): Promise<void> {
     // 恢复桌宠
     petWindow?.show();
 
-    // 打开主窗口并注入截图
-    const main = BrowserWindow.getAllWindows().find((w) => w !== petWindow);
+    // 打开主窗口并注入截图（注册表显式身份）
+    const main = getMainWindow();
     if (main) {
       main.show();
       main.focus();

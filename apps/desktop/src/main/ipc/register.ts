@@ -174,6 +174,7 @@ import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../m
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { issuePreviewUrl } from '../file-protocol.js';
+import { getMainWindow, openSessionPopoutWindow } from '../window-registry.js';
 import { createSessionOutboxStore } from '../db/session-outbox.js';
 import {
   createOutboxService,
@@ -1945,6 +1946,18 @@ ${input.text}`;
 
   ipcMain.handle(FUNDET_INVOKE.FIND_STOP, async (e) => {
     e.sender.stopFindInPage('clearSelection');
+  });
+
+  ipcMain.handle(FUNDET_INVOKE.SESSION_OPEN_POPOUT, async (e, sessionId: string) => {
+    const id = String(sessionId ?? '');
+    // 仅主窗可开弹窗（弹窗自身/未来子 frame 不允许再繁殖）；会话必须真实存在
+    const main = getMainWindow();
+    if (!main || e.sender.id !== main.webContents.id) {
+      throw new Error('仅主窗口可打开会话弹窗');
+    }
+    const row = getDb().select({ id: sessions.id }).from(sessions).where(eq(sessions.id, id)).get();
+    if (!row) throw new Error('会话不存在');
+    openSessionPopoutWindow(id);
   });
 
   // ---------- 会话待发队列（durable outbox：排队/自动重试全在主进程，CDS 批二） ----------

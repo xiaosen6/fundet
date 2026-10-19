@@ -9,7 +9,7 @@
  * model 在 providers 里反查 providerId，带 create 参数重发让 main lazy-create。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight as ChevronRightIcon, Clock, FileDown, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
+import { ChevronRight as ChevronRightIcon, Clock, ExternalLink, FileDown, KeyRound, PanelRight, Pencil, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Effort, PermissionMode } from '@fundet/agent-core';
 import type { ProviderView, SessionAttachment, SessionOutboxItem, SkillView } from '../../../shared/fundet-api.ts';
@@ -1143,6 +1143,21 @@ export function ChatPage(): React.JSX.Element {
                         onClick={() => void exportHtml()}
                       >
                         <FileDown size={13} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="在独立窗口打开（只读，可全文搜索）">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 hover:bg-hover hover:text-primary group-hover/title:opacity-100 focus-visible:opacity-100"
+                        onClick={() => {
+                          if (activeId && !isDraftSession(activeId)) {
+                            void window.fundet.openSessionPopout(activeId).catch((err: unknown) => {
+                              toast.error(`打开弹窗失败：${err instanceof Error ? err.message : String(err)}`);
+                            });
+                          }
+                        }}
+                      >
+                        <ExternalLink size={13} />
                       </button>
                     </Tooltip>
                     {activeMeta?.workDir ? (

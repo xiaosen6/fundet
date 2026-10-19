@@ -144,8 +144,10 @@ function revealWindow(win: BrowserWindow): void {
   win.focus();
 }
 
-/** 主窗显式引用（托盘点击/二次启动唤起用；createWindow 赋值、closed 清空） */
+/** 主窗显式引用（托盘点击/二次启动唤起用；createWindow 赋值、closed 清空）
+ * ——经 window-registry 共享给通知/桌宠/弹窗等主窗语义消费方 */
 let mainWindow: BrowserWindow | null = null;
+import { setMainWindow as setRegisteredMainWindow } from './window-registry.js';
 
 function createWindow(): void {
   const chrome =
@@ -184,8 +186,12 @@ function createWindow(): void {
   win.setMenuBarVisibility(false);
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   mainWindow = win;
+  setRegisteredMainWindow(win);
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null;
+    if (mainWindow === win) {
+      mainWindow = null;
+      setRegisteredMainWindow(null);
+    }
   });
 
   // 最大化不缩放（2026-09-30 用户拍板对齐 Cindy：0.3.11 的「最大化等比放大」

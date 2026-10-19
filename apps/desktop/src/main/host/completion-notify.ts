@@ -5,19 +5,21 @@
  * 开关存 settings `pet.notify`（用户口径「桌宠提醒」，放桌宠设置区），默认开。
  * 注视判定见 completion-notify-logic.ts（最小化的窗口即使 isFocused 仍 true 也不算注视）。
  */
-import { BrowserWindow, Notification } from 'electron';
+import { Notification, type BrowserWindow } from 'electron';
 import { brand } from '../../shared/brand.ts';
 import { getBoolSetting } from '../db/settings.js';
 import { FUNDET_PUSH } from '../ipc/channels.js';
 import { isWindowWatching, shouldNotifyCompletion } from './completion-notify-logic.js';
+import { getMainWindow } from '../window-registry.js';
 
 export const COMPLETION_NOTIFY_SETTING = 'pet.notify';
 const CHIME_THROTTLE_MS = 3000;
 let lastChimeAt = 0;
 
+/** 主窗显式引用（窗口注册表）：会话弹窗出现后「第一个非 pet 窗口」推断会把
+ * 弹窗误当主窗（chime/通知点击打到弹窗上）。 */
 function mainWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && !w.webContents.getURL().endsWith('pet.html'));
-  return win ?? null;
+  return getMainWindow();
 }
 
 export function notifyTurnFinished(sessionId: string, title: string, summary: string): void {

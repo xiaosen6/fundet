@@ -71,6 +71,7 @@ const api: FundetApi = {
   compactSession: (id) => invoke(FUNDET_INVOKE.SESSION_COMPACT, id),
   deleteSession: (id) => invoke(FUNDET_INVOKE.SESSION_DELETE, id),
   sendMessage: (input) => invoke(FUNDET_INVOKE.SESSION_SEND, input),
+  openSessionPopout: (sessionId) => invoke(FUNDET_INVOKE.SESSION_OPEN_POPOUT, sessionId),
   enqueueOutbox: (input) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_ENQUEUE, input),
   listOutbox: (sessionId) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_LIST, sessionId),
   retryOutbox: (sessionId, id) => invoke(FUNDET_INVOKE.SESSION_OUTBOX_RETRY, sessionId, id),
