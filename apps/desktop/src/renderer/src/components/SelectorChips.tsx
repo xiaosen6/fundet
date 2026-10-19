@@ -74,8 +74,8 @@ function ChipShell({
         toneClass,
       )}
     >
-      {icon}
-      <span className="min-w-0 truncate text-13 font-normal text-current">{label}</span>
+      <span data-cq-icon aria-hidden className="shrink-0">{icon}</span>
+      <span data-cq-label className="min-w-0 truncate text-13 font-normal text-current">{label}</span>
       {suffixIcon}
       <ChevronDown size={14} className="shrink-0 pt-[2px] text-current" />
     </button>
@@ -117,11 +117,12 @@ function OptionRow({
       role="option"
       aria-selected={selected}
       data-morph-autofocus={selected ? '' : undefined}
+      tabIndex={-1}
       onClick={onSelect}
       className={cn(
         'flex w-full items-center gap-3 rounded-inner px-3 py-2',
         'text-left transition-colors select-none',
-        'hover:bg-menu-item-hover',
+        'hover:bg-menu-item-hover focus-visible:bg-menu-item-hover focus-visible:outline-none',
         selected && 'bg-menu-item-hover',
         toneClass,
       )}
@@ -138,6 +139,44 @@ function OptionRow({
       </span>
       {selected && <Check size={13} className={cn('shrink-0', toneClass ? 'text-current' : 'text-primary')} />}
     </button>
+  );
+}
+
+/**
+ * 键盘漫游 listbox（WAI-ARIA menu 形态）：选项全部 tabIndex=-1（弹层自动聚焦
+ * 选中项），↑/↓ 按实际 DOM 序移动焦点（跳过禁用），Home/End 跳边界；Tab 自然
+ * 离开。不依赖 React 索引簿记——增删分组/选项零维护。
+ */
+function RovingListbox({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const delta = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    const home = e.key === 'Home';
+    const end = e.key === 'End';
+    if (!delta && !home && !end) return;
+    const items = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]:not(:disabled)'),
+    );
+    if (items.length === 0) return;
+    e.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let target: number;
+    if (home) target = 0;
+    else if (end) target = items.length - 1;
+    else if (current < 0) target = delta > 0 ? 0 : items.length - 1;
+    else target = Math.min(items.length - 1, Math.max(0, current + delta));
+    items[target]?.focus({ preventScroll: true });
+  };
+  return (
+    <div role="listbox" aria-label={label} onKeyDown={onKeyDown} className="flex flex-col gap-0.5">
+      {children}
+    </div>
   );
 }
 
@@ -217,7 +256,7 @@ export function ModelSelector({
       open={open}
       onOpenChange={setOpen}
     >
-      <div role="listbox" aria-label="选择模型" className="flex flex-col gap-0.5">
+      <RovingListbox label="选择模型">
         {providers.map((p) => {
           const visible = p.models.filter((m) => m.enabled !== false);
           if (visible.length === 0) return null;
@@ -261,7 +300,7 @@ export function ModelSelector({
           </div>
           );
         })}
-      </div>
+      </RovingListbox>
     </ChipShell>
   );
 }
@@ -310,7 +349,7 @@ export function PermissionSelector({
       open={open}
       onOpenChange={setOpen}
     >
-      <div role="listbox" aria-label="选择权限模式" className="flex flex-col gap-0.5">
+      <RovingListbox label="选择权限模式">
         {PERMISSION_OPTIONS.map((o) => (
           <OptionRow
             key={o.mode}
@@ -324,7 +363,7 @@ export function PermissionSelector({
             }}
           />
         ))}
-      </div>
+      </RovingListbox>
     </ChipShell>
   );
 }
@@ -372,7 +411,7 @@ export function EffortSelector({
       open={open}
       onOpenChange={setOpen}
     >
-      <div role="listbox" aria-label="选择思考档位" className="flex flex-col gap-0.5">
+      <RovingListbox label="选择思考档位">
         <OptionRow
           selected={current == null}
           label="默认"
@@ -392,7 +431,7 @@ export function EffortSelector({
             }}
           />
         ))}
-      </div>
+      </RovingListbox>
     </ChipShell>
   );
 }

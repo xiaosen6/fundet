@@ -136,6 +136,8 @@ interface SessionRowProps {
   onRename: (id: string, title: string) => Promise<void>;
   /** 置顶/取消置顶（草稿不显示入口） */
   onSetPinned?: (pinned: boolean) => void;
+  /** 键盘换位（Alt+↑/↓，仅置顶行；无障碍通道复用拖拽排序持久化） */
+  onKeyboardMove?: (delta: -1 | 1) => void;
 }
 
 const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionRow(
@@ -153,6 +155,7 @@ const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionR
     onDelete,
     onRename,
     onSetPinned,
+    onKeyboardMove,
   },
   ref,
 ): React.JSX.Element {
@@ -216,6 +219,11 @@ const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionR
         if (!editing && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
           onSelect(session.id);
+        }
+        // Alt+↑/↓ 键盘换位（置顶段；编辑中不响应）
+        if (!editing && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onKeyboardMove) {
+          e.preventDefault();
+          onKeyboardMove(e.key === 'ArrowUp' ? -1 : 1);
         }
       }}
       className={cn(
@@ -532,6 +540,23 @@ export function Sidebar({
     if (order && order.length > 1) void reorderSessions(order);
   }, [pinnedOrder]);
 
+  // ---- 键盘换位（无障碍通道，CDS DraggableSessionList 同款）：聚焦置顶行上
+  // Alt+↑/↓ 移动一位；复用拖拽的本地覆盖 + FLIP + reorderSessions 持久化。
+  // 边界不动；自动重复（按住）靠每次 keydown 读最新序，天然无竞态。
+  const movePinnedByKeyboard = useCallback(
+    (id: string, delta: -1 | 1): void => {
+      const pinnedIds = ordered.filter((s) => s.pinned).map((s) => s.id);
+      const from = pinnedIds.indexOf(id);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= pinnedIds.length) return;
+      const next = [...pinnedIds];
+      next.splice(to, 0, next.splice(from, 1)[0]!);
+      setPinnedOrder(next);
+      void reorderSessions(next);
+    },
+    [ordered],
+  );
+
   return (
     <aside
       className="relative z-20 flex h-full shrink-0 flex-col border-r border-board bg-surface"
@@ -701,6 +726,7 @@ export function Sidebar({
                   attention={attentionMap.get(s.id) ?? null}
                   isDragging={dragId === s.id}
                   draggable={Boolean(s.pinned)}
+                  onKeyboardMove={s.pinned ? (delta) => movePinnedByKeyboard(s.id, delta) : undefined}
                   onDragStart={
                     s.pinned
                       ? (e) => {

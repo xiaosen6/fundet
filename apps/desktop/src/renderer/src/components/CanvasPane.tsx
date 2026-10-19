@@ -114,7 +114,10 @@ export function CanvasPane({
   const listArtifacts = [...adhoc, ...visibleArtifacts];
   const active = activeFromList ?? adhoc[0] ?? visibleArtifacts[0] ?? null;
   const [width, setWidth] = useState(loadWidth);
-  const [maximized, setMaximized] = useState(false);
+  // 停靠模式（CDS 分割条停靠）：custom=像素宽（localStorage 持久，进预设不覆写）/
+  // half=50% / wide=82%（按分割容器百分比，避让侧栏后仍正确）/ full=撑满（原最大化）
+  const [mode, setMode] = useState<'custom' | 'half' | 'wide' | 'full'>('custom');
+  const asideRef = useRef<HTMLElement>(null);
   const pillsRef = useRef<HTMLDivElement>(null);
   const prevTurnActiveRef = useRef(turnActive);
   // HTML 轮末自动刷新（Cindy useLocalHtmlAutoReload 简化版：turn 结束即 reload
@@ -133,31 +136,40 @@ export function CanvasPane({
   }, [activePath, artifacts]);
 
   // 拖拽期 resizing=true 会罩一层透明护盾盖住 iframe 预览（HTML/PDF）——指针滑进
-  // iframe 后 mousemove/mouseup 被吞、拖拽冻结的坑（对齐 CDS 分割条护盾方案）
+  // iframe 后 mousemove/mouseup 被吞、拖拽冻结的坑（对齐 CDS 分割条护盾方案）。
+  // 预设停靠态下起拖：从实际渲染像素宽进入 custom；Esc 回滚宽度和模式（都不落盘）。
   const [resizing, setResizing] = useState(false);
   const startResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startW = width;
+      const snapshotMode = mode;
+      const snapshotWidth = width;
+      const startW = asideRef.current?.getBoundingClientRect().width ?? width;
       let dragging = false; // 4px 死区：微抖/单击不改宽度
       const clampW = (clientX: number): number =>
         Math.min(Math.max(MIN_WIDTH, startW + (startX - clientX)), Math.floor(window.innerWidth * 0.7));
       const onMove = (ev: MouseEvent): void => {
         if (!dragging && Math.abs(ev.clientX - startX) < 4) return;
         dragging = true;
+        setMode('custom');
         setWidth(clampW(ev.clientX));
       };
       const onUp = (ev: MouseEvent): void => {
         cleanup();
         if (!dragging) return;
-        window.localStorage.setItem(WIDTH_KEY, String(Math.round(clampW(ev.clientX))));
+        const finalW = Math.round(clampW(ev.clientX));
+        window.localStorage.setItem(WIDTH_KEY, String(finalW));
       };
       const onKey = (ev: KeyboardEvent): void => {
         if (ev.key !== 'Escape') return;
         ev.preventDefault();
         cleanup();
-        if (dragging) setWidth(startW); // Esc 回滚到拖拽前宽度，不落盘
+        if (dragging) {
+          // Esc 完整回滚：宽度 + 模式都回拖拽前，且不落盘（预设像素宽未被覆写）
+          setWidth(snapshotWidth);
+          setMode(snapshotMode);
+        }
       };
       const cleanup = (): void => {
         window.removeEventListener('mousemove', onMove);
@@ -170,27 +182,37 @@ export function CanvasPane({
       window.addEventListener('keydown', onKey, true);
       setResizing(true);
     },
-    [width],
+    [width, mode],
   );
 
   return (
     <aside
-      className={cn('relative flex h-full shrink-0 flex-col border-l border-board bg-surface', maximized ? 'flex-1 min-w-0' : null)}
-      style={maximized ? undefined : { width }}
+      ref={asideRef}
+      className={cn(
+        'relative flex h-full shrink-0 flex-col border-l border-board bg-surface',
+        mode === 'full' ? 'flex-1 min-w-0' : null,
+      )}
+      style={
+        mode === 'full'
+          ? undefined
+          : mode === 'custom'
+            ? { width }
+            : { width: mode === 'half' ? '50%' : '82%' }
+      }
     >
-      {/* 拖宽把手（撑满时隐藏） */}
-      {!maximized && (
+      {/* 拖宽把手（撑满时隐藏）；双击 = 50/50 吸附（CDS 双击中分），再双击回 custom */}
+      {mode !== 'full' && (
         <div
           onMouseDown={startResize}
-          onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
-          title="拖动调整宽度，双击复位，Esc 取消"
+          onDoubleClick={() => setMode((m) => (m === 'half' ? 'custom' : 'half'))}
+          title="拖动调整宽度，双击 50/50 分屏，Esc 取消"
           className="absolute top-0 bottom-0 -left-[3px] z-10 w-[6px] cursor-col-resize hover:bg-accent/30"
         />
       )}
       {/* 拖拽护盾：盖住 iframe 预览防指针事件被吞（CDS 分割条方案） */}
       {resizing && <div className="absolute inset-0 z-20 cursor-col-resize" />}
 
-      {/* 头部：当前文件名 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识；
+      {/* 头部：当前文件名 + 停靠预设 + 撑满/关闭（Canvas 入口=右上角固定按钮，面板内不重复标识；
           右侧 pr 让出窗口控件区——撑满/关闭按钮不与 min/max/close 重叠） */}
       <div className="flex h-[46px] shrink-0 items-center gap-2 border-b border-board px-3 pr-[150px]">
         {active && (
@@ -201,11 +223,33 @@ export function CanvasPane({
         {!active && <span className="flex-1" />}
         <button
           type="button"
-          title={maximized ? '还原宽度' : '撑满内容区'}
-          className="p-1 text-secondary hover:text-primary"
-          onClick={() => setMaximized((v) => !v)}
+          title="对半分屏（50/50）"
+          className={cn(
+            'rounded-[4px] px-1.5 py-0.5 text-11 tabular-nums transition-colors',
+            mode === 'half' ? 'bg-chip text-primary' : 'text-secondary hover:text-primary',
+          )}
+          onClick={() => setMode((m) => (m === 'half' ? 'custom' : 'half'))}
         >
-          {maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          ½
+        </button>
+        <button
+          type="button"
+          title="宽屏停靠（聊天 18% / Canvas 82%）"
+          className={cn(
+            'rounded-[4px] px-1.5 py-0.5 text-11 tabular-nums transition-colors',
+            mode === 'wide' ? 'bg-chip text-primary' : 'text-secondary hover:text-primary',
+          )}
+          onClick={() => setMode((m) => (m === 'wide' ? 'custom' : 'wide'))}
+        >
+          82%
+        </button>
+        <button
+          type="button"
+          title={mode === 'full' ? '还原宽度' : '撑满内容区'}
+          className="p-1 text-secondary hover:text-primary"
+          onClick={() => setMode((m) => (m === 'full' ? 'custom' : 'full'))}
+        >
+          {mode === 'full' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
         <button type="button" title="关闭 Canvas" className="p-1 text-secondary hover:text-primary" onClick={onClose}>
           <X size={14} />

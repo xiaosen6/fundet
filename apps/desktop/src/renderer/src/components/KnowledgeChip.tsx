@@ -58,7 +58,9 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       )}
     >
       <Library size={14} className="shrink-0" />
-      <span>知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : binding.dingtalk ? ' · 钉钉' : ''}</span>
+      <span data-cq-label className="min-w-0 truncate">
+        知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : binding.dingtalk ? ' · 钉钉' : ''}
+      </span>
       <ChevronDown size={14} className="shrink-0 text-muted" />
     </button>
   );

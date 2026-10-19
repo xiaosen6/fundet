@@ -156,6 +156,9 @@
 
 /* ---------- Dark（对齐 CINDY Dark skin，cindy-dark.ts 决策表原值） ---------- */
 :root[data-theme='dark'] {
+  /* Markdown 强调字重微调（CDS 暗色字重补偿试点）：暗底白字渲染偏「发胀」，
+   * bold/600 视觉粗于亮色同字重——降 40 个单位抵消；正文/UI 文本不动 */
+  --md-emphasis-weight: 600;
   --surface: #2a2828;
   --card: #312f2f;
   --card-ivory: #312f2f;
@@ -273,9 +276,11 @@ textarea {
   caret-color: var(--caret);
 }
 
-/* 输入框不要系统/全局 focus ring，只留给按钮等可点控件 */
+/* 输入框不要系统/全局 focus ring，只留给按钮等可点控件。
+ * 键盘焦点用实色 --focus-ring（半透明 soft 在深色选中行/弹层上偏弱——CDS 审计
+ * 建议键盘可见性优先；soft 仍用于 ::selection 不动） */
 :focus-visible:not(input):not(textarea):not(select) {
-  outline: 2px solid var(--focus-ring-soft);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -300,6 +305,11 @@ textarea:focus-visible {
 }
 .md p {
   margin: 0.5em 0;
+}
+/* 强调（strong/b）字重：暗色经 --md-emphasis-weight 降粗（亮色缺省 700 不变） */
+.md strong,
+.md b {
+  font-weight: var(--md-emphasis-weight, 700);
 }
 .md h1,
 .md h2,
@@ -856,6 +866,45 @@ a {
   );
 }
 
+/* 原生 scroll-driven 渐隐（Chromium 115+，合成器线程零 JS）：变量动画按滚动
+ * 位置驱动——顶部 fade 在首 28px 滚程内 0→28px（触顶即无遮罩），底部在最后
+ * 28px 滚程内 28px→0。useScrollFade 检测支持时挂 [data-sf-native] 并停写
+ * inline 变量（inline 优先级会盖掉 animation）。旧环境自动回落 JS 版。 */
+@supports (animation-timeline: scroll(self block)) {
+  @property --sf-top {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+  }
+  @property --sf-bottom {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+  }
+  @keyframes sf-top-grow {
+    from { --sf-top: 0px; }
+    to { --sf-top: 28px; }
+  }
+  @keyframes sf-bottom-shrink {
+    from { --sf-bottom: 28px; }
+    to { --sf-bottom: 0px; }
+  }
+  .scroll-fade[data-sf-native] {
+    animation: sf-top-grow linear both, sf-bottom-shrink linear both;
+    animation-timeline: scroll(self block);
+    animation-range: 0px 28px, calc(100% - 28px) 100%;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-fade[data-sf-native] {
+      animation: none;
+      /* 回落变量常量：上下遮罩按内容溢出判定不可行（纯 CSS 不知道），保持全显
+       * 遮罩值会永久盖住边缘——reduced-motion 下选择无遮罩（保守可读性优先） */
+      --sf-top: 0px;
+      --sf-bottom: 0px;
+    }
+  }
+}
+
 /* Tooltip 入场（120ms 淡入 + 微缩放；translateX(-50%) 与定位变换合并） */
 @keyframes tooltip-in {
   from {
@@ -915,5 +964,36 @@ a {
   to {
     opacity: 0;
     transform: scale(0.96);
+  }
+}
+
+/* ---------- Composer 容器查询分级压缩（CDS §6.5 防挤压梯队，2026-10-19 批三） ----------
+ * 以 composer 自身 inline-size 为准（不是窗口宽）：Canvas 50%/82% 停靠、侧栏拖宽
+ * 都能正确触发。层级：<480px 隐藏 chip 文字标签只留图标；<384px 间距收紧；
+ * <320px 极窄防溢出（min-w-0 + 收缩留白）。发送/语音/停止恒可见。
+ * chip 文字收进 [data-cq-label]，图标/主体收进 [data-cq-icon]（各 chip 自理）。 */
+.composer-toolbar > div {
+  min-width: 0;
+}
+@container (max-width: 479px) {
+  .composer-toolbar [data-cq-label] {
+    display: none;
+  }
+}
+@container (max-width: 383px) {
+  .composer-toolbar {
+    gap: 0.25rem;
+  }
+}
+@container (max-width: 319px) {
+  .composer-toolbar {
+    gap: 0.125rem;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .composer-toolbar [data-cq-label] {
+    transition: opacity var(--motion-fast, 150ms) var(--motion-ease-move, ease-out);
   }
 }

@@ -13,6 +13,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { FileText, Lightbulb, Loader2, Mic, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { markComposerTypingActivity } from '../lib/composerTypingActivity';
+import { splitFilenameTail } from '../lib/truncateFilename';
+import { useImeEnterGuard } from '../hooks/useImeEnterGuard';
 import { brand } from '../../../shared/brand.js';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { toast } from './ui/toast';
@@ -94,6 +96,7 @@ export function ChatInput({
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   /** @ 引用态：tokenStart 含 '@' 字符的位置；query 是 @ 后的路径串 */
   const [mention, setMention] = useState<{ query: string; tokenStart: number } | null>(null);
+  const imeGuard = useImeEnterGuard();
   /** 提示词模板浮层开合（工具行灯泡入口） */
   const [templatePaletteOpen, setTemplatePaletteOpen] = useState(false);
 
@@ -369,7 +372,18 @@ export function ChatInput({
                   path={a.path}
                   onOpen={a.kind === 'image' && onAddFiles ? () => openAttachmentLightbox(a) : undefined}
                 />
-                <span className="min-w-0 truncate">{a.name}</span>
+                <span className="flex min-w-0 items-baseline">
+                  {/* 中段截断（CDS 附件卡规格）：头段随宽收缩，尾段保扩展名 */}
+                  {(() => {
+                    const { head, tail } = splitFilenameTail(a.name);
+                    return (
+                      <>
+                        <span className="min-w-0 truncate">{head}</span>
+                        <span className="shrink-0">{tail}</span>
+                      </>
+                    );
+                  })()}
+                </span>
                 <span className="text-10 text-muted">{fileKind(a.path)}</span>
                 {onRemoveAttachment && (
                   <button
@@ -425,10 +439,18 @@ export function ChatInput({
             if (!hasText) e.preventDefault();
             onAddFiles(files);
           }}
+          onCompositionStart={imeGuard.onCompositionStart}
+          onCompositionEnd={imeGuard.onCompositionEnd}
+          onBeforeInput={imeGuard.onBeforeInput}
           onKeyDown={(e) => {
             // IME 组词期间的按键（Enter 选词 / Esc 关候选窗 / 方向键翻候选）一律放行
             // 给输入法，面板、发送、清空都不响应（CDS 双重互锁守卫，§14.3）
             if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+            // WebKit 组词后 500ms 内的合成 Enter：拦下不发送（lib/imeEnterGuard）
+            if (e.key === 'Enter' && !e.shiftKey && imeGuard.checkKeyDown(e) === 'block') {
+              e.preventDefault();
+              return;
+            }
             // @ 引用面板开着：导航/回车/退出优先给面板（同 slash 语义）
             if (mention && mentionCtx) {
               if (e.key === 'ArrowDown') {
@@ -497,8 +519,13 @@ export function ChatInput({
           )}
         />
 
-        {/* 底部工具行：左侧 回形针 + 语音 + chip 组（知识库/权限…）/ 右侧 chip + 发送 */}
-        <div className="flex items-center justify-between gap-2 pt-1">
+        {/* 底部工具行：左侧 回形针 + 语音 + chip 组（知识库/权限…）/ 右侧 chip + 发送。
+         * 容器查询分级压缩（CDS §6.5）：Canvas 停靠/侧栏拉宽时按「composer 自身宽度」
+         * 压缩——窄容器隐藏 chip 文字标签只留图标，极窄时两组换行、发送/语音恒可见 */}
+        <div
+          className="composer-toolbar flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pt-1"
+          style={{ containerType: 'inline-size' }}
+        >
           <div className="flex min-w-0 shrink items-center gap-2">
             {onPickFiles && (
               <Tooltip label="添加文件" side="top">

@@ -88,7 +88,13 @@ function WorkGroupBlockImpl({
   // 摘要只聚合 tool 条目（thinking 不计入动词）；块内有运行中的行时头部换 spinner
   const toolItems = useMemo(() => childrenItems.filter((c): c is Extract<WorkChild, { kind: 'tool' }> => c.kind === 'tool'), [childrenItems]);
   const summaryText = useMemo(() => formatSummary(aggregateVerbs(toolItems.map((t) => t.toolName))), [toolItems]);
-  const hasRunning = streaming && toolItems.some((t) => !t.done);
+  // 锁定展开 = 运行中的工具行或 thinking 行（外层也锁：只锁内层会把内容藏在
+  // 折叠的组里，等于没锁——CDS 审计指出的双层锁）
+  const hasRunningTool = streaming && toolItems.some((t) => !t.done);
+  const hasRunningThinking = streaming && childrenItems.some((c) => c.kind === 'thinking' && c.running);
+  const lockedOpen = hasRunningTool || hasRunningThinking;
+  const hasRunning = hasRunningTool || hasRunningThinking;
+  const effectiveExpanded = lockedOpen || expanded;
 
   if (childrenItems.length === 0) return null;
 
@@ -97,11 +103,16 @@ function WorkGroupBlockImpl({
       <div className="w-full">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
+          onClick={() => {
+            if (lockedOpen) return;
+            setExpanded((v) => !v);
+          }}
+          aria-expanded={effectiveExpanded}
+          aria-disabled={lockedOpen}
           className={cn(
             'flex w-full cursor-pointer items-center gap-[6px] py-[2px]',
             'select-none text-left transition-opacity hover:opacity-80',
+            lockedOpen && 'cursor-default hover:opacity-100',
           )}
         >
           <span className="inline-flex h-[1lh] shrink-0 items-center">
@@ -120,12 +131,12 @@ function WorkGroupBlockImpl({
             className={cn(
               'shrink-0 text-muted',
               'transition-transform duration-[var(--motion-fast,150ms)]',
-              expanded && 'rotate-90',
+              effectiveExpanded && 'rotate-90',
             )}
           />
         </button>
 
-        <Collapse open={expanded}>
+        <Collapse open={effectiveExpanded}>
           <div className="mt-1 flex flex-col border-l-2 border-board py-[2px] pl-3">
             {childrenItems.map((item) =>
               item.kind === 'thinking' ? (

@@ -44,6 +44,7 @@ import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCit
 import { MessageNavRail } from './chat/MessageNavRail';
 import { GeneratedFilesCard } from './chat/GeneratedFilesCard';
 import { splitGeneratedFileTurns, type GeneratedFileRef } from '../lib/generatedFiles';
+import { useImeEnterGuard } from '../hooks/useImeEnterGuard';
 import {
   NAV_RAIL_JUMP_TOP_OFFSET_PX,
   deriveNavRailEntries,
@@ -153,6 +154,7 @@ function UserTurn({
   const [draft, setDraft] = useState(item.text);
   const [submitting, setSubmitting] = useState(false);
   const editRef = useRef<HTMLTextAreaElement | null>(null);
+  const imeGuard = useImeEnterGuard();
 
   useEffect(() => {
     if (!editing) return;
@@ -207,6 +209,9 @@ function UserTurn({
             <textarea
               ref={editRef}
               value={draft}
+              onCompositionStart={imeGuard.onCompositionStart}
+              onCompositionEnd={imeGuard.onCompositionEnd}
+              onBeforeInput={imeGuard.onBeforeInput}
               onChange={(e) => {
                 setDraft(e.target.value);
                 const el = e.target;
@@ -221,7 +226,13 @@ function UserTurn({
                   cancelEdit();
                   return;
                 }
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  // 组词中让位 / WebKit 组词后 500ms 合成 Enter 拦截（共享守卫）
+                  const guard = imeGuard.checkKeyDown(e);
+                  if (guard !== 'pass') {
+                    if (guard === 'block') e.preventDefault();
+                    return;
+                  }
                   e.preventDefault();
                   submitEdit();
                 }

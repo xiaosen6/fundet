@@ -14,6 +14,7 @@ import { Check } from 'lucide-react';
 import type { InteractionRequest } from '@fundet/agent-core';
 import { visibleAskOptions } from '../../../shared/ask-options.js';
 import { shouldCardShortcutYield } from '../lib/card-shortcut-yield.js';
+import { useImeEnterGuard } from '../hooks/useImeEnterGuard';
 
 type AskRequest = Extract<InteractionRequest, { kind: 'ask_user_question' }>;
 type AskQuestion = AskRequest['questions'][number];
@@ -62,6 +63,7 @@ export function AskUserQuestionPrompt({
   const [showCustomInput, setShowCustomInput] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const imeGuard = useImeEnterGuard();
 
   const currentQ = questions[currentIndex];
   const isMultiSelect = currentQ?.multiSelect === true;
@@ -254,8 +256,16 @@ export function AskUserQuestionPrompt({
                 rows={1}
                 value={customInput}
                 onChange={(e) => setCustomInput(e.target.value)}
+                onCompositionStart={imeGuard.onCompositionStart}
+                onCompositionEnd={imeGuard.onCompositionEnd}
+                onBeforeInput={imeGuard.onBeforeInput}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    const guard = imeGuard.checkKeyDown(e);
+                    if (guard !== 'pass') {
+                      if (guard === 'block') e.preventDefault();
+                      return;
+                    }
                     e.preventDefault();
                     if (isMultiSelect) handleMultiNext();
                     else handleCustomSubmit();
@@ -301,10 +311,20 @@ export function AskUserQuestionPrompt({
             value={customInput}
             autoFocus
             onChange={(e) => setCustomInput(e.target.value)}
+            onCompositionStart={imeGuard.onCompositionStart}
+            onCompositionEnd={imeGuard.onCompositionEnd}
+            onBeforeInput={imeGuard.onBeforeInput}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                if (customInput.trim()) advance(customInput.trim());
+              if (e.key === 'Enter' && !e.shiftKey) {
+                const guard = imeGuard.checkKeyDown(e);
+                if (guard !== 'pass') {
+                  if (guard === 'block') e.preventDefault();
+                  return;
+                }
+                if (customInput.trim()) {
+                  e.preventDefault();
+                  advance(customInput.trim());
+                }
               }
             }}
             placeholder="输入你的回答…"

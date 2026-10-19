@@ -27,18 +27,26 @@ export function formatDuration(ms: number): string {
 }
 
 export function ThinkingCard({ text, running, durationMs }: ThinkingCardProps): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
+  const [userExpanded, setUserExpanded] = useState(false);
+  // 生成中锁定展开（CDS ThinkingAccordion 互斥）：流式内容强制可见不可收起；
+  // 结束后回到用户偏好（此前手风琴里长文一路「藏着流」看不到进度）
+  const effectiveExpanded = running || userExpanded;
 
   return (
     <div className="w-full">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
+        onClick={() => {
+          if (running) return;
+          setUserExpanded((v) => !v);
+        }}
+        aria-expanded={effectiveExpanded}
+        aria-disabled={running}
         className={cn(
           'flex w-full items-center gap-[6px] py-[2px]',
           'cursor-pointer text-left select-none',
           'transition-opacity hover:opacity-80',
+          running && 'cursor-default hover:opacity-100',
         )}
       >
         <span className="inline-flex h-[1lh] shrink-0 items-center">
@@ -60,12 +68,12 @@ export function ThinkingCard({ text, running, durationMs }: ThinkingCardProps): 
           className={cn(
             'shrink-0 text-secondary',
             'transition-transform duration-[var(--motion-fast,150ms)]',
-            expanded && 'rotate-90',
+            effectiveExpanded && 'rotate-90',
           )}
         />
       </button>
 
-      <Collapse open={expanded}>
+      <Collapse open={effectiveExpanded}>
         <div className="mt-1 border-l-2 border-rail py-[6px] pl-3 select-text">
           {text ? (
             <p className="text-14 leading-[1.6] whitespace-pre-wrap italic text-muted">{text}</p>

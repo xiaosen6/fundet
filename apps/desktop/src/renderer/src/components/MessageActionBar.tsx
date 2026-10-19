@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -14,6 +14,7 @@ import {
 import { cn } from '../lib/cn';
 import { Tooltip } from './ui/Tooltip';
 import { toast } from './ui/toast';
+import { useRovingFocus } from '../hooks/useRovingFocus';
 
 export interface TurnUsage {
   tokenUsage: number;
@@ -139,9 +140,112 @@ export function MessageActionBar({
   const canRewind = Boolean(onRewind && align === 'right');
   const hasMore = Boolean(onAddToChat || canRewind || onDelete);
 
+  // Roving focus（WAI-ARIA）：操作栏横向方向键漫游；不可见时整组不可聚焦
+  // （pointer-events-none 之上再加 inert，防隐形按钮吃 Tab）
+  const buttonCount = 1 + (onShare ? 1 : 0) + (onFork ? 1 : 0) + (onEdit ? 1 : 0) + (hasMore ? 1 : 0);
+  const roving = useRovingFocus(buttonCount, { orientation: 'horizontal' });
+  // 「更多」菜单纵向漫游（菜单项最多 3 个：添加到对话/回滚/删除）
+  const menuRoving = useRovingFocus(3, { orientation: 'vertical' });
+
+  const buttons: Array<{ key: string; node: React.ReactNode }> = [];
+  buttons.push({ key: 'copy', node: (
+    <Tooltip label={copyError ? '复制失败' : copied ? '已复制' : '复制'} side="top">
+      <button
+        type="button"
+        className={ICON_BTN}
+        aria-label="复制"
+        data-roving-index={buttons.length}
+        tabIndex={roving.itemTabIndex(0)}
+        onFocus={() => roving.onItemFocus(0)}
+        onClick={() => void copy(copyText)}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+    </Tooltip>
+  ) });
+  if (onShare) {
+    const idx = buttons.length;
+    buttons.push({ key: 'share', node: (
+      <Tooltip label="分享为图片" side="top">
+        <button
+          type="button"
+          className={ICON_BTN}
+          aria-label="分享为图片"
+          data-roving-index={idx}
+          tabIndex={roving.itemTabIndex(idx)}
+          onFocus={() => roving.onItemFocus(idx)}
+          onClick={onShare}
+        >
+          <Share size={14} />
+        </button>
+      </Tooltip>
+    ) });
+  }
+  if (onFork) {
+    const idx = buttons.length;
+    buttons.push({ key: 'fork', node: (
+      <Tooltip label="分叉到新会话" side="top">
+        <button
+          type="button"
+          className={ICON_BTN}
+          aria-label="分叉到新会话"
+          data-roving-index={idx}
+          tabIndex={roving.itemTabIndex(idx)}
+          onFocus={() => roving.onItemFocus(idx)}
+          disabled={forking}
+          onClick={() => {
+            if (forking) return;
+            setForking(true);
+            void onFork().finally(() => setForking(false));
+          }}
+        >
+          <Split size={14} />
+        </button>
+      </Tooltip>
+    ) });
+  }
+  if (onEdit) {
+    const idx = buttons.length;
+    buttons.push({ key: 'edit', node: (
+      <Tooltip label="编辑" side="top">
+        <button
+          type="button"
+          className={ICON_BTN}
+          aria-label="编辑"
+          data-roving-index={idx}
+          tabIndex={roving.itemTabIndex(idx)}
+          onFocus={() => roving.onItemFocus(idx)}
+          onClick={onEdit}
+        >
+          <Pen size={14} />
+        </button>
+      </Tooltip>
+    ) });
+  }
+  if (hasMore) {
+    const idx = buttons.length;
+    buttons.push({ key: 'more', node: (
+      <Tooltip label="更多" side="top">
+        <button
+          type="button"
+          className={ICON_BTN}
+          aria-label="更多"
+          aria-expanded={menuOpen}
+          data-roving-index={idx}
+          tabIndex={roving.itemTabIndex(idx)}
+          onFocus={() => roving.onItemFocus(idx)}
+          onClick={() => setMenuOpen((v) => !v)}
+        >
+          <Ellipsis size={14} />
+        </button>
+      </Tooltip>
+    ) });
+  }
   return (
     <div
       ref={rootRef}
+      onKeyDown={visible ? roving.onKeyDown : undefined}
+      inert={!visible}
       className={cn(
         'mt-1 flex h-6 items-center gap-0.5 transition-opacity duration-[var(--motion-fast)]',
         visible ? 'opacity-100' : 'pointer-events-none opacity-0',
@@ -149,62 +253,15 @@ export function MessageActionBar({
     >
       {/* 时间位置按对齐侧（Cindy 双序）：user 在最前 / assistant 靠后 */}
       {align === 'right' && createdAt ? timeEl : null}
-      <Tooltip label={copyError ? '复制失败' : copied ? '已复制' : '复制'} side="top">
-        <button
-          type="button"
-          className={ICON_BTN}
-          aria-label="复制"
-          onClick={() => void copy(copyText)}
-        >
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
-      </Tooltip>
-      {onShare ? (
-        <Tooltip label="分享为图片" side="top">
-          <button type="button" className={ICON_BTN} aria-label="分享为图片" onClick={onShare}>
-            <Share size={14} />
-          </button>
-        </Tooltip>
-      ) : null}
-      {onFork ? (
-        <Tooltip label="分叉到新会话" side="top">
-          <button
-            type="button"
-            className={ICON_BTN}
-            aria-label="分叉到新会话"
-            disabled={forking}
-            onClick={() => {
-              if (forking) return;
-              setForking(true);
-              void onFork().finally(() => setForking(false));
-            }}
-          >
-            <Split size={14} />
-          </button>
-        </Tooltip>
-      ) : null}
-      {onEdit ? (
-        <Tooltip label="编辑" side="top">
-          <button type="button" className={ICON_BTN} aria-label="编辑" onClick={onEdit}>
-            <Pen size={14} />
-          </button>
-        </Tooltip>
-      ) : null}
-      {hasMore ? (
+      {buttons.map((b) => (
+        <React.Fragment key={b.key}>{b.node}</React.Fragment>
+      ))}
+      {hasMore && (
         <div className="relative">
-          <Tooltip label="更多" side="top">
-            <button
-              type="button"
-              className={ICON_BTN}
-              aria-label="更多"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              <Ellipsis size={14} />
-            </button>
-          </Tooltip>
           {menuOpen && (
             <div
+              role="menu"
+              onKeyDown={menuRoving.onKeyDown}
               className={cn(
                 'absolute bottom-full z-20 mb-1 min-w-[184px] rounded-xl border border-board bg-card p-1 shadow-[var(--shadow-menu)]',
                 align === 'right' ? 'right-0' : 'left-0',
@@ -213,6 +270,10 @@ export function MessageActionBar({
               {onAddToChat ? (
                 <button
                   type="button"
+                  role="menuitem"
+                  data-roving-index={0}
+                  tabIndex={menuRoving.itemTabIndex(0)}
+                  onFocus={() => menuRoving.onItemFocus(0)}
                   className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-primary hover:bg-hover"
                   onClick={() => {
                     onAddToChat();
@@ -226,6 +287,10 @@ export function MessageActionBar({
               {canRewind ? (
                 <button
                   type="button"
+                  role="menuitem"
+                  data-roving-index={1}
+                  tabIndex={menuRoving.itemTabIndex(1)}
+                  onFocus={() => menuRoving.onItemFocus(1)}
                   className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-primary hover:bg-hover"
                   onClick={() => {
                     setMenuOpen(false);
@@ -241,6 +306,10 @@ export function MessageActionBar({
                   {(onAddToChat || canRewind) && <div className="my-1 h-px bg-board" />}
                   <button
                     type="button"
+                    role="menuitem"
+                    data-roving-index={2}
+                    tabIndex={menuRoving.itemTabIndex(2)}
+                    onFocus={() => menuRoving.onItemFocus(2)}
                     className="flex h-8 w-full items-center rounded-lg px-2 text-left text-13 text-error hover:bg-hover"
                     onClick={() => {
                       setMenuOpen(false);
@@ -255,7 +324,7 @@ export function MessageActionBar({
             </div>
           )}
         </div>
-      ) : null}
+      )}
       {align === 'left' && timeEl}
       {tokens > 0 ? (
         <Tooltip label={tooltip} side="top">

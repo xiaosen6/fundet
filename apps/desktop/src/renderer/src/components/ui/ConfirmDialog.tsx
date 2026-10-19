@@ -111,7 +111,7 @@ export function ConfirmDialogHost(): React.JSX.Element | null {
           <div className="mt-5 flex justify-end gap-2.5">
             <button
               type="button"
-              className="h-9 min-w-[88px] rounded-lg border border-board px-3 text-13 text-secondary transition-colors hover:bg-hover"
+              className="h-9 min-w-[88px] rounded-lg border border-transparent bg-chip px-3 text-13 text-secondary transition-colors hover:bg-hover"
               onClick={() => settle(false)}
             >
               {options.cancelText ?? '取消'}
@@ -120,7 +120,7 @@ export function ConfirmDialogHost(): React.JSX.Element | null {
               type="button"
               autoFocus
               className={cn(
-                'h-9 min-w-[88px] rounded-lg px-3 text-13 font-medium transition-colors',
+                'h-9 min-w-[88px] rounded-lg border border-transparent px-3 text-13 font-medium transition-colors',
                 options.danger
                   ? 'bg-error text-white hover:opacity-90'
                   : 'bg-accent text-accent-fg hover:bg-accent-hover',
