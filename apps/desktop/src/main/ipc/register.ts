@@ -11,6 +11,7 @@ import { brand } from '../../shared/brand.js';
 import os from 'node:os';
 import path from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron';
+import { getMainWindow, openSessionPopoutWindow, setRunningSessionCount } from '../window-registry.js';
 import type {
   AgentEvent,
   Effort,
@@ -104,12 +105,14 @@ function embedKbInBackground(kbId: string): void {
 import {
   cleanupOrphanPrewarmRows,
   discardSessionPrewarm,
+  isPrewarming,
   prewarmAttachDecision,
   prewarmSession,
   promotePrewarm,
   setPrewarmDeps,
 } from '../host/session-prewarm.js';
 import type { PrewarmInput } from '../host/session-prewarm.js';
+import { pickRecyclableSessions } from '../host/session-recycle-logic.ts';
 import { deleteSessionTranscript } from '../host/agent-home-cleanup.js';
 import { createConsoleLogger } from '@fundet/agent-core';
 import { ensureBrowserRuntime, runExclusiveBrowserOp, stopManagedRuntime } from '../browser/host.js';
@@ -174,7 +177,6 @@ import { createMemoryPanelService, ensureMemoryScopeDir, memoryRoot } from '../m
 import { checkpointDiskUsageAsync, purgeAllCheckpoints } from '../checkpoint/store.js';
 import { assertPreviewablePath, isShellExecutablePath } from '../filePathPolicy.js';
 import { issuePreviewUrl } from '../file-protocol.js';
-import { getMainWindow, openSessionPopoutWindow } from '../window-registry.js';
 import { createSessionOutboxStore } from '../db/session-outbox.js';
 import {
   createOutboxService,
@@ -196,6 +198,9 @@ import type {
 
 /** 交互（permission/ask/plan）的兜底超时：超时系统侧收口，防 pi 侧永久挂起 + Map 泄漏 */
 const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** 会话历史回传窗口（内存批 P1）：巨型会话只回最近 N 条，防切会话内存尖峰 */
+const SESSION_HISTORY_LIMIT = 300;
 
 /**
  * 完成提醒（0.3.23）：turn 终态统一口径（用户拍板不区分 done/出错）。
@@ -351,6 +356,51 @@ const wiredSessions = new Set<string>();
 
 /** 会话待发队列服务（registerIpcHandlers 里装配；wireSession 终态收口用） */
 let outboxService: ReturnType<typeof createOutboxService> | null = null;
+
+/** 会话最近活动时间（闲置回收器用；wireSession 事件回调 touch） */
+const sessionLastActivity = new Map<string, number>();
+
+/** 闲置会话回收器（2026-10-19 内存批）：每会话常驻一只 pi.exe ≈160MB WS/390MB
+ *  私有且永不回收（0.3.36 拍板时 resume 未接；0.3.47 起转录持久化 + lazy-create
+ *  自动恢复，前提已消失）。只关 pi 进程不动 DB——下次发消息透明恢复（≈6s 冷启）。
+ *  开关 settings `session.idleRecycleEnabled`（默认开，设置→通用）。 */
+let recycleTimer: ReturnType<typeof setInterval> | null = null;
+function startSessionRecycler(): void {
+  if (recycleTimer) return;
+  recycleTimer = setInterval(() => {
+    void (async () => {
+      if (!getBoolSetting('session.idleRecycleEnabled', true)) return;
+      const { maker } = getHost();
+      const now = Date.now();
+      const candidates = [];
+      for (const id of [...wiredSessions]) {
+        const session = maker.getSession(id);
+        if (!session) continue; // 已关/异常关闭，onStatusChange 会摘
+        candidates.push({
+          sessionId: id,
+          lastActivityAt: sessionLastActivity.get(id) ?? now,
+          isRunning: session.isTurnRunning(),
+          hasPendingInteraction: [...pendingInteractions.values()].some((e) => e.sessionId === id),
+          hasPendingOutbox: outboxStoreRef?.hasPending(id) ?? false,
+          isPrewarm: isPrewarming(id),
+        });
+      }
+      for (const id of pickRecyclableSessions(candidates, now)) {
+        sessionLastActivity.delete(id);
+        console.log(`[fundet:recycle] 闲置会话回收 pi 进程：${id}（下次发消息自动恢复上下文）`);
+        try {
+          await maker.closeSession(id, 'requested');
+        } catch (err) {
+          console.warn('[fundet:recycle] 回收失败（下轮重试）', err);
+        }
+      }
+    })().catch(() => undefined);
+  }, 60_000);
+  recycleTimer.unref?.();
+}
+
+/** outbox store 引用（回收器判定排队保护用；registerIpcHandlers 里赋值） */
+let outboxStoreRef: ReturnType<typeof createSessionOutboxStore> | null = null;
 /** 轮末产物扫描基线：sessionId → 轮前文件快照（只随 SESSION_SEND 更新，轮末 diff 后不回写） */
 const turnArtifactSnapshots = new Map<string, TurnArtifactSnapshot>();
 
@@ -418,6 +468,7 @@ export function wireSession(session: Session): void {
   let lastCostUsd = 0;
   let lastSplit = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   session.onEvent((event) => {
+    sessionLastActivity.set(session.id, Date.now());
     persistEvent(session.id, event);
     const data = event.data as {
       tokenUsage?: number; costUsd?: number;
@@ -815,10 +866,15 @@ export function registerIpcHandlers(): void {
     const dbMessages = listMessages(id);
     // 老会话产物回填：伪行按 createdAt 混排（stable sort 保序）
     const backfilled = await backfillTurnArtifacts(id, row.workDir, dbMessages);
-    const messages = [
+    const all = [
       ...dbMessages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
       ...backfilled,
     ].sort((a, b) => a.createdAt - b.createdAt);
+    // 历史窗口（内存批 P1）：只回最近 SESSION_HISTORY_LIMIT 条——巨型会话全量
+    // 跨 IPC（结构化克隆 ×2 + JSON.parse ×1）曾把切会话变成内存尖峰；更早消息
+    // 仍可经会话搜索（FTS 走 DB）到达
+    const truncated = all.length > SESSION_HISTORY_LIMIT;
+    const messages = truncated ? all.slice(-SESSION_HISTORY_LIMIT) : all;
     return {
       meta: {
         id: row.id,
@@ -832,6 +888,7 @@ export function registerIpcHandlers(): void {
         updatedAt: row.updatedAt,
       },
       messages,
+      ...(truncated ? { truncated: true } : {}),
     };
   });
 
@@ -1881,6 +1938,8 @@ ${input.text}`;
   ipcMain.on(FUNDET_INVOKE.WINDOW_SET_RUNNING_BADGE, (_e, count: number) => {
     const n = Math.max(0, Math.min(99, Math.round(Number(count) || 0)));
     app.setBadgeCount(n);
+    // 托盘隐藏节流联动（内存批 P2）：运行数变化时重判主窗节流态
+    setRunningSessionCount(n);
   });
 
   ipcMain.handle(FUNDET_INVOKE.CLIPBOARD_WRITE_TEXT, (_e, text: string) => {
@@ -1948,8 +2007,7 @@ ${input.text}`;
     e.sender.stopFindInPage('clearSelection');
   });
 
-  ipcMain.handle(FUNDET_INVOKE.SESSION_OPEN_POPOUT, async (e, sessionId: string) => {
-    const id = String(sessionId ?? '');
+  ipcMain.handle(FUNDET_INVOKE.SESSION_OPEN_POPOUT, async (e, sessionId: string) => {    const id = String(sessionId ?? '');
     // 仅主窗可开弹窗（弹窗自身/未来子 frame 不允许再繁殖）；会话必须真实存在
     const main = getMainWindow();
     if (!main || e.sender.id !== main.webContents.id) {
@@ -1960,8 +2018,18 @@ ${input.text}`;
     openSessionPopoutWindow(id);
   });
 
+  // 闲置回收开关（性能卡）：settings `session.idleRecycleEnabled`，默认开
+  ipcMain.handle(FUNDET_INVOKE.PERF_IDLE_RECYCLE_GET, async () => ({
+    enabled: getBoolSetting('session.idleRecycleEnabled', true),
+  }));
+  ipcMain.handle(FUNDET_INVOKE.PERF_IDLE_RECYCLE_SET, async (_e, enabled: boolean) => {
+    setBoolSetting('session.idleRecycleEnabled', enabled !== false);
+    return { enabled: enabled !== false };
+  });
+
   // ---------- 会话待发队列（durable outbox：排队/自动重试全在主进程，CDS 批二） ----------
   const outboxStore = createSessionOutboxStore(getSqlite());
+  outboxStoreRef = outboxStore;
   const pushOutbox = (sessionId: string): void => {
     broadcast(FUNDET_PUSH.SESSION_OUTBOX_CHANGED, {
       sessionId,
@@ -2041,4 +2109,6 @@ ${input.text}`;
   );
   // 启动恢复：崩溃遗留的 sending 转 outcome_unknown（绝不自动重放），到期的 queued 续派
   outboxService.recoverAndResume();
+  // 闲置会话回收（内存批 P0-A）：60s 巡检，闲置 30min 且无在办 → 只关 pi 进程
+  startSessionRecycler();
 }

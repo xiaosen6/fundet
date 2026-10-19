@@ -13,14 +13,17 @@
  * 片段切成路径 chip（悬停出完整路径卡 + 复制，见 lib/artifactPathChips 与
  * chat/FilePathChip）；流式中间态不做（正文未封口，chip 会闪）。
  */
-import React, { memo, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import React, { memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkCjkFriendly from 'remark-cjk-friendly';
-import rehypeHighlight from 'rehype-highlight';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import {
+  ensureRichRehype,
+  getRichRehype,
+  subscribeRichRehype,
+  textNeedsRichMarkdown,
+} from '../lib/richMarkdown';
 import { normalizeMathDelimiters } from '../lib/mathMarkdown';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { isImagePath } from '../lib/artifacts';
@@ -122,6 +125,16 @@ function AssistantMessageImpl({
     fadeStateRef.current = createStreamFadeState();
   }
 
+  // 富插件懒加载（内存批 P3）：katex+highlight 按需拉取；未加载完成前以轻量
+  // 插件组渲染（纯文本可读），加载完成后全应用共享升级
+  const [richTick, setRichTick] = useState(0);
+  useEffect(() => {
+    if (textNeedsRichMarkdown(text)) ensureRichRehype();
+    return subscribeRichRehype(() => setRichTick((n) => n + 1));
+  }, [text]);
+  const rich = getRichRehype();
+  void richTick;
+
   // 对齐 Cindy：() / [] 数学定界符规范化后交给 remark-math；
   // 快速通路（无 LaTeX 定界符）零成本原样返回。流式先做结构修复（终版不修）。
   const normalizedText = streamingOn
@@ -134,9 +147,11 @@ function AssistantMessageImpl({
   );
 
   if (!streamingOn || chunks === null) {
-    const rehypePlugins = hasSources
-      ? [rehypeKnowledgeCite(knowledgeSources!), rehypeHighlight, rehypeKatex]
-      : [rehypeHighlight, rehypeKatex];
+    const rehypePlugins = [
+      ...(hasSources ? [rehypeKnowledgeCite(knowledgeSources!)] : []),
+      ...(rich?.highlight ? [rich.highlight] : []),
+      ...(rich?.katex ? [rich.katex] : []),
+    ] as never[];
     return (
       <div className="flex w-full min-w-0 flex-col">
         <div className="md text-primary select-text">
@@ -251,8 +266,11 @@ const StreamingMarkdownChunk = memo(function StreamingMarkdownChunk({
   fadeState?: StreamFadeState;
   callbacksRef: React.RefObject<MarkdownCallbacks>;
 }): React.JSX.Element {
-  const rehypePlugins =
-    isLast && fadeState ? [rehypeHighlight, rehypeStreamWordFade(fadeState)] : [rehypeHighlight];
+  const rich = getRichRehype();
+  const rehypePlugins = [
+    ...(rich ? [rich.highlight, rich.katex] : []),
+    ...(isLast && fadeState ? [rehypeStreamWordFade(fadeState)] : []),
+  ] as never[];
   return (
     <ReactMarkdown
       remarkPlugins={REMARK_PLUGINS}

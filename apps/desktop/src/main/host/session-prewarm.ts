@@ -79,9 +79,15 @@ async function discardPrewarm(sessionId: string): Promise<void> {
   deps?.notifyListChanged();
 }
 
-/** 预热（幂等）：指纹相同不重做；变化弃旧重建；只预热草稿、不碰真实会话 */
+/** 预热（幂等）：指纹相同不重做；变化弃旧重建；只预热草稿、不碰真实会话。
+ *  单槽（2026-10-19 内存批）：新草稿预热时连带弃掉**其它**未转正的预热记录——
+ *  连点「新对话」曾会堆 N 只 pi.exe 各驻留 ~6 分钟（每只 ~160MB）。 */
 export async function prewarmSession(input: PrewarmInput): Promise<boolean> {
   if (!deps) return false;
+  // 单槽：弃其它未转正记录（已发消息转正的走 promotePrewarm 早删了，不在 records）
+  for (const otherId of [...records.keys()]) {
+    if (otherId !== input.sessionId) await discardPrewarm(otherId);
+  }
   const existing = records.get(input.sessionId);
   // 与 attach 侧同口径（带真实 KB 绑定与 browser/computer 开关）——否则开了
   // 这些开关的用户预热必指纹失配被弃（0.3.13 引入的静默回归）
@@ -156,6 +162,11 @@ export function promotePrewarm(sessionId: string): void {
 /** 显式弃预热（renderer 删草稿时） */
 export async function discardSessionPrewarm(sessionId: string): Promise<void> {
   await discardPrewarm(sessionId);
+}
+
+/** 该会话是否在预热中（闲置回收器跳过预热会话——它们有自己的 TTL 生命周期）。 */
+export function isPrewarming(sessionId: string): boolean {
+  return records.has(sessionId);
 }
 
 function ensureSweep(): void {

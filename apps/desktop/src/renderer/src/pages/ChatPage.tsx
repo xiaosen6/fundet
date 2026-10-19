@@ -26,6 +26,7 @@ import {
   getDraftSession,
   isDraftSession,
   markSessionSeen,
+  registerTurnArtifactPathsCleanup,
   refreshSessionList,
   patchSessionInList,
   removeSessionFromList,
@@ -91,8 +92,17 @@ import { PanelView, type SidebarPanelId } from '../components/sidebar/SidebarPan
 import { cn } from '../lib/cn';
 
 /** 产物去重键：Windows 路径分隔符/大小写归一（write 工具、附件与扫描可能给同一路径的不同写法） */
-/** 轮末扫描产物（per-session 累积）：模块级 Map，背景会话完成的 push 也不丢 */
+/** 轮末扫描产物（per-session 累积）：模块级 Map，背景会话完成的 push 也不丢。
+ *  会话删除时由 sessionStore.removeSessionFromList 连带清理（跨模块清理钩，
+ *  内存批 P1：此前应用生命周期内只增不减） */
 const turnArtifactPathsStore = new Map<string, string[]>();
+let turnArtifactPathsTickBump: (() => void) | null = null;
+
+/** store 删除会话时回调（注册一次，见下方 effect） */
+export function clearTurnArtifactPaths(sessionId: string): void {
+  turnArtifactPathsStore.delete(sessionId);
+  turnArtifactPathsTickBump?.();
+}
 
 function artifactKey(p: string): string {
   return p.replace(/\//g, '\\').toLowerCase();
@@ -159,6 +169,16 @@ export function ChatPage(): React.JSX.Element {
       }
     });
     return off;
+  }, []);
+  // 删除会话连带清产物路径集合（store 侧回调注册）
+  useEffect(() => {
+    turnArtifactPathsTickBump = () => setTurnArtifactPathsTick((n) => n + 1);
+    registerTurnArtifactPathsCleanup(clearTurnArtifactPaths);
+    return () => {
+      if (turnArtifactPathsTickBump === null) return;
+      turnArtifactPathsTickBump = null;
+      registerTurnArtifactPathsCleanup(null);
+    };
   }, []);
   // 当前会话的扫描产物（切会话自动切换到对应集合）
   const turnArtifactPaths = activeId ? (turnArtifactPathsStore.get(activeId) ?? []) : [];

@@ -61,6 +61,47 @@ if (process.env['WSL_DISTRO_NAME'] || process.env['WSL_INTEROP']) {
   app.commandLine.appendSwitch('disable-features', 'WaylandWindowDecorations');
 }
 
+// GPU 崩溃检测（内存批 P2）：显卡驱动异常的机器上 GPU 进程反复崩溃重启，
+// 症状就是界面闪烁/卡顿（用户实报「闪卡」的候选根因之一）。累计 3 次后弹窗
+// 提议「禁用硬件加速重启」（软件渲染更稳）。选择记进 userData 开关文件，
+// 下次启动直接以禁用模式启动。
+const GPU_CRASH_FLAG = path.join(app.getPath('userData') || '.', 'disable-gpu.flag');
+let gpuCrashCount = 0;
+app.on('child-process-gone', (_event, details) => {
+  if (details.type !== 'GPU' || details.exitCode === 0) return;
+  gpuCrashCount += 1;
+  console.warn(`[fundet:gpu] GPU 进程异常退出（${gpuCrashCount} 次）code=${details.exitCode} reason=${details.reason}`);
+  if (gpuCrashCount < 3 || !app.isPackaged) return;
+  gpuCrashCount = -1_000; // 只提示一次
+  void dialog
+    .showMessageBox({
+      type: 'warning',
+      title: `${brand.name}：显卡渲染异常`,
+      message: '检测到显卡驱动多次异常退出，这会导致界面闪烁和卡顿。',
+      detail: '可以切换为软件渲染模式并重启应用（界面动画可能略降，但更稳定）。',
+      buttons: ['重启并切换软件渲染', '保持现状'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response !== 0) return;
+      try {
+        fs.writeFileSync(GPU_CRASH_FLAG, '1');
+      } catch { /* 写失败则下次还会再提示 */ }
+      app.relaunch();
+      app.exit(0);
+    });
+});
+// 启动期：用户曾选择软件渲染 → 禁硬件加速（须在 ready 前调用）
+if (!process.env['WSL_DISTRO_NAME'] && !process.env['WSL_INTEROP']) {
+  try {
+    if (fs.existsSync(GPU_CRASH_FLAG)) {
+      app.disableHardwareAcceleration();
+      console.log('[fundet:gpu] 按用户选择以软件渲染模式启动');
+    }
+  } catch { /* 读失败按默认 */ }
+}
+
 function resolveAppIcon(): string {
   const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
   if (app.isPackaged) {
@@ -83,7 +124,10 @@ function focusMainWindow(): void {
   // pet 窗时 show/focus 到小透明窗，用户感知「点了没反应」，2026-10-08 实报）
   const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
   if (!win) return;
-  if (!win.isVisible()) win.show();
+  if (!win.isVisible()) {
+    win.show();
+    applyTrayHiddenThrottling(); // 可见即恢复不节流（流式/交互常活）
+  }
   if (win.isMinimized()) win.restore();
   win.focus();
   // Windows 前台抢占保护：其他应用持有前台焦点时 focus 可能被吞，setForegroundWindow 抢回
@@ -127,6 +171,8 @@ function setupTrayAndCloseBehavior(win: BrowserWindow): void {
     if (isQuitting) return;
     event.preventDefault();
     win.hide();
+    // 托盘隐藏期恢复后台节流（内存批 P2）：见 window-registry.applyTrayHiddenThrottling
+    applyTrayHiddenThrottling();
     if (!trayHintShown && process.platform === 'win32') {
       trayHintShown = true;
       tray.displayBalloon({
@@ -147,7 +193,7 @@ function revealWindow(win: BrowserWindow): void {
 /** 主窗显式引用（托盘点击/二次启动唤起用；createWindow 赋值、closed 清空）
  * ——经 window-registry 共享给通知/桌宠/弹窗等主窗语义消费方 */
 let mainWindow: BrowserWindow | null = null;
-import { setMainWindow as setRegisteredMainWindow } from './window-registry.js';
+import { setMainWindow as setRegisteredMainWindow, applyTrayHiddenThrottling } from './window-registry.js';
 
 function createWindow(): void {
   const chrome =

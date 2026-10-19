@@ -19,6 +19,28 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 }
 
+// ---------------------------------------------------------------------------
+// 托盘隐藏节流联动（内存批 P2）：主窗 backgroundThrottling:false 常开（流式
+// 不能冻结），但「关到托盘且无运行会话」时恢复节流——此前挂机的机器持续全速
+// 渲染。运行数由 badge 通道喂进来（register.ts）。
+// ---------------------------------------------------------------------------
+let runningSessionCount = 0;
+
+export function setRunningSessionCount(n: number): void {
+  runningSessionCount = n;
+  applyTrayHiddenThrottling();
+}
+
+export function applyTrayHiddenThrottling(): void {
+  const win = getMainWindow();
+  if (!win) return;
+  if (runningSessionCount > 0 || win.isVisible()) {
+    win.webContents.setBackgroundThrottling(false);
+  } else {
+    win.webContents.setBackgroundThrottling(true);
+  }
+}
+
 /** 弹出窗登记（按会话 id 去重：同会话复用同一弹窗）。 */
 export function getPopoutWindow(sessionId: string): BrowserWindow | null {
   const win = popoutWindows.get(sessionId);

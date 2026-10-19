@@ -28,6 +28,7 @@ import { useTheme, type ThemeMode } from '../themes/useTheme';
 import { SearchPanel } from './settings/SearchPanel';
 import { PetPanel } from './settings/PetPanel';
 import { UpdateCard } from '../components/settings/UpdateCard';
+import { PerformanceCard } from './settings/PerformanceCard';
 import { CheckpointUsageCard } from '../components/settings/CheckpointUsageCard';
 import { LoginItemSection } from '../components/settings/LoginItemSection';
 import { BrowserSection } from '../components/settings/BrowserSection';
@@ -273,6 +274,7 @@ export function SettingsPage(): React.JSX.Element {
 
                 <UpdateCard />
                 <CheckpointUsageCard />
+                <PerformanceCard />
               </div>
             )}
 

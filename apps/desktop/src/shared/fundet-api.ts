@@ -134,6 +134,8 @@ export interface MessageView {
 export interface SessionDetail {
   meta: SessionListItem;
   messages: MessageView[];
+  /** 历史被截断只返回最近 N 条（更早的可用会话搜索到达） */
+  truncated?: boolean;
 }
 
 export interface AgentEventPayload {
@@ -459,6 +461,9 @@ export interface FundetApi {
   sendMessage(input: SessionSendInput): Promise<SendResult>;
   /** 在独立窗口打开会话只读/搜索视图（静态全量转录，原生 findInPage 全文可达） */
   openSessionPopout(sessionId: string): Promise<void>;
+  /** 闲置会话自动回收开关（内存优化；默认开） */
+  idleRecycleGet(): Promise<{ enabled: boolean }>;
+  idleRecycleSet(enabled: boolean): Promise<{ enabled: boolean }>;
   /**
    * 入待发队列（持久 outbox）：排队/自动重试全部主进程持有；userMessageId 由
    * 渲染层预生成（乐观气泡与历史按它去重），重复入队幂等。
