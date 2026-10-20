@@ -22,10 +22,15 @@ import {
   ensureDraftSession,
   ensureHistory,
   forkSessionAt,
+  getComposerDraft,
   getDraftProviderId,
   getDraftSession,
   isDraftSession,
   markSessionSeen,
+  setActiveSessionId,
+  setComposerDraft,
+  useActiveSessionId,
+  useComposerDraft,
   refreshSessionList,
   patchSessionInList,
   removeSessionFromList,
@@ -94,6 +99,18 @@ import { cn } from '../lib/cn';
 /** 轮末扫描产物（per-session 累积）：模块级 Map，背景会话完成的 push 也不丢 */
 const turnArtifactPathsStore = new Map<string, string[]>();
 
+/** 已落库会话改工作目录的拒答文案（工作目录进预热指纹、绑 pi 会话与记忆仓） */
+const WORKDIR_LOCKED_HINT =
+  '工作目录在新建会话时确定，已开始的会话不能改。新对话会直接使用这个目录。';
+
+/** 历史加载骨架：宽度按「用户气泡右对齐 + 若干助手段落」排，别做成整齐的方块阵 */
+const HISTORY_SKELETON_ROWS: readonly string[] = [
+  'w-1/3',
+  'w-11/12',
+  'w-4/5',
+  'w-2/3',
+];
+
 function artifactKey(p: string): string {
   return p.replace(/\//g, '\\').toLowerCase();
 }
@@ -101,10 +118,20 @@ function artifactKey(p: string): string {
 export function ChatPage(): React.JSX.Element {
   const sessions = useSessionList();
   const runningIds = useRunningIds();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // activeId / composer 草稿放 store 模块级：路由切到设置页会卸载 ChatPage，
+  // 放组件 state 里等于「去趟设置就把正在聊的会话和没发出去的半句话丢掉」
+  const activeId = useActiveSessionId();
+  const setActiveId = setActiveSessionId;
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [skills, setSkills] = useState<SkillView[]>([]);
-  const [input, setInput] = useState('');
+  const input = useComposerDraft(activeId);
+  const setInput = useCallback(
+    (next: string | ((prev: string) => string)): void => {
+      const prev = getComposerDraft(activeId);
+      setComposerDraft(activeId, typeof next === 'function' ? next(prev) : next);
+    },
+    [activeId],
+  );
   const [notice, setNotice] = useState('');
   const [dwsWidgets, setDwsWidgets] = useState<DwsWidgetsSnapshot | null>(null);
   const [dwsEnabled, setDwsEnabled] = useState(true);
@@ -214,6 +241,15 @@ export function ChatPage(): React.JSX.Element {
   const dragCountRef = useRef(0);
 
   const slice = useSessionSlice(activeId);
+  // 历史在途 = 切进会话后、DB 历史回来之前。此窗口 items 必为空，不能当「真空
+  // 会话」渲染首页（品牌 lockup + 建议卡），否则切到有历史的会话会先闪一屏
+  // 新对话页再整块换掉。草稿是纯内存的，永远不算在途。
+  const historyLoading = activeId !== null && !isDraftSession(activeId) && slice.historyLoading;
+  /** 主区按「有内容」排版（头部标题、正常 composer 位、隐藏首页 lockup）。
+   *  加载中也算有内容——否则会在加载窗口里闪一屏首页再跳回来。 */
+  const hasContent = slice.items.length > 0 || historyLoading;
+  /** 当前会话工作目录已钉死（已落库）——路径 chip / 拖拽文案据此如实表述 */
+  const workDirLocked = activeId !== null && !isDraftSession(activeId);
   // durable outbox 队列快照（排队/自动重试/失败重试都在主进程，渲染层只展示）
   const outboxItems = useSessionOutbox(activeId);
   // 只把「需要用户注意」的条目挂成 chip：发送中已有乐观气泡 + Working… 状态行，
@@ -426,7 +462,7 @@ export function ChatPage(): React.JSX.Element {
   const pendingShotRef = useRef<SessionAttachment | null>(null);
   // 下方 pet 订阅 effect deps=[]，回调用 ref 取最新 createSession——直接捕获会把
   // 首渲染的空 providers 闭包进去（桌宠左键/截图的强制新建会话会静默失效）
-  const createSessionRef = useRef<() => void>(() => undefined);
+  const createSessionRef = useRef<() => string | null>(() => null);
   useEffect(() => {
     const unSubShot = window.fundet?.onPetScreenshot?.(async (payload) => {
       if (payload?.base64) {
@@ -475,12 +511,18 @@ export function ChatPage(): React.JSX.Element {
 
   // 新建会话只建本地草稿（不调 session:create、不 spawn pi）；
   // 首条消息 send 时由 main 侧 lazy-create 落 DB + 起进程。
+  /** 切工作目录。返回 false = 当前会话已落库、目录在建会话时就钉死了（工作目录
+   *  进预热指纹、绑 pi 会话与记忆仓），本次只更新「新建会话的默认目录」——
+   *  调用方必须如实告知，不能再弹「工作目录已切换」。
+   *  旧实现无论当前是不是草稿都弹成功提示，而 sessionWorkDir 仍取 activeMeta，
+   *  于是出现「提示说切了、路径 chip 没变、附件仍 stage 到旧目录」的假成功。 */
   const applyWorkDir = useCallback(
-    (picked: string): void => {
+    (picked: string): boolean => {
       addRecentFolder(picked);
       setDefaultWorkDir(picked);
       setWorkDir(picked);
-      if (activeId && isDraftSession(activeId)) {
+      if (activeId && !isDraftSession(activeId)) return false;
+      if (activeId) {
         updateDraftSession(activeId, { workDir: picked });
         // 工作目录进了预热指纹：重预热（main 侧弃旧建新）
         const providerId = getDraftProviderId(activeId);
@@ -498,17 +540,17 @@ export function ChatPage(): React.JSX.Element {
           });
         }
       }
+      return true;
     },
     [activeId, providers],
   );
 
-  const createSession = useCallback((): void => {
+  const createSession = useCallback((): string | null => {
     setNotice('');
-    setInput('');
     const dir = workDir.trim() || getDefaultWorkDir();
     if (!dir) {
       setNotice('请先选择工作目录');
-      return;
+      return null;
     }
     const provider =
       providers.find((p) => p.id === getLastProviderId()) ?? providers[0];
@@ -516,7 +558,7 @@ export function ChatPage(): React.JSX.Element {
       provider?.models.find((m) => m.id === getLastModel())?.id ?? provider?.models[0]?.id;
     if (!provider || !model) {
       setNotice('请先在设置页配置 provider 和模型');
-      return;
+      return null;
     }
     const meta = ensureDraftSession({
       workDir: dir,
@@ -533,14 +575,16 @@ export function ChatPage(): React.JSX.Element {
       model,
       workDir: dir,
     });
+    return meta.id;
   }, [providers, workDir]);
   createSessionRef.current = createSession;
 
-  /** 钉钉组件 AI 钩子：开新会话并预填 prompt（用户过目后手动发送） */
+  /** 钉钉组件 AI 钩子：开新会话并预填 prompt（用户过目后手动发送）。
+   *  草稿按会话分桶，必须写到**新会话**的桶里——闭包里的 activeId 还是旧的。 */
   const askDwsAgent = useCallback(
     (prompt: string): void => {
-      createSession();
-      setInput(prompt);
+      const id = createSession();
+      if (id) setComposerDraft(id, prompt);
     },
     [createSession],
   );
@@ -732,8 +776,8 @@ export function ChatPage(): React.JSX.Element {
   }, [activeId, slice.isRunning]);
 
   const submitUserEdit = useCallback(
-    async (text: string, createdAt: number | undefined, attachments?: SessionAttachment[]): Promise<void> => {
-      if (!activeId || createdAt === undefined) return;
+    async (text: string, createdAt: number | undefined, attachments?: SessionAttachment[]): Promise<boolean> => {
+      if (!activeId || createdAt === undefined) return false;
       setNotice('');
       // 运行中（刚点编辑触发的中断还在收尾）：等 abort 收口再截断，防重发被拒
       if (slice.isRunning) await abortSession(activeId);
@@ -741,14 +785,15 @@ export function ChatPage(): React.JSX.Element {
         try {
           await window.fundet.deleteTurn(activeId, createdAt - 1, Date.now() + 60_000);
         } catch (err) {
-          setNotice(`编辑发送失败：${err instanceof Error ? err.message : String(err)}`);
-          return;
+          // 失败必须在气泡旁提示（用户视线在编辑框），并返回 false 保住编辑态
+          toast.error(`编辑发送失败：${err instanceof Error ? err.message : String(err)}`);
+          return false;
         }
       }
       truncateItemsFrom(activeId, createdAt);
       // 编辑=截断重发：连带取消该会话未发送的排队条目（语义同删除该轮）
       void window.fundet.cancelAllOutbox(activeId).catch(() => undefined);
-      await sendMessage(activeId, text, buildCreateParam(), attachments && attachments.length > 0 ? attachments : undefined);
+      return sendMessage(activeId, text, buildCreateParam(), attachments && attachments.length > 0 ? attachments : undefined);
     },
     [activeId, slice.isRunning, buildCreateParam],
   );
@@ -993,7 +1038,7 @@ export function ChatPage(): React.JSX.Element {
                 <div className="flex shrink-0 flex-col rounded-container border border-board bg-card px-8 py-3.5 text-center select-none">
                   <p className="text-14 text-secondary">选择文件夹，再开启新对话</p>
                   <div className="mt-2.5 flex flex-col items-center gap-2.5">
-                    <FolderPickerChip cwd={workDir} onSelect={applyWorkDir} size="big" />
+                    <FolderPickerChip cwd={workDir} onSelect={(p) => void applyWorkDir(p)} size="big" />
                     <button
                       type="button"
                       className="h-9 rounded-full bg-accent px-4 text-13 text-accent-fg"
@@ -1046,8 +1091,9 @@ export function ChatPage(): React.JSX.Element {
               // 文件夹拖入 = 切工作目录（唯一目录优先；混拖文件按工作目录处理）
               const dirPath = firstDroppedDirectoryPath(e.dataTransfer);
               if (dirPath) {
-                applyWorkDir(dirPath);
-                toast.success(`工作目录已切换：${dirPath.split(/[\\/]/).pop() || dirPath}`);
+                const name = dirPath.split(/[\\/]/).pop() || dirPath;
+                if (applyWorkDir(dirPath)) toast.success(`工作目录已切换：${name}`);
+                else toast.info(WORKDIR_LOCKED_HINT);
                 return;
               }
               const { files } = filesFromDataTransfer(e.dataTransfer);
@@ -1066,7 +1112,11 @@ export function ChatPage(): React.JSX.Element {
                 style={{ backgroundColor: 'color-mix(in srgb, var(--focus-ring) 10%, transparent)' }}
               >
                 <div className="rounded-container border border-board bg-card px-4 py-2 text-13 text-primary">
-                  {dragFolder ? '松手设为工作目录' : '放到这里，发给助手'}
+                  {dragFolder
+                    ? workDirLocked
+                      ? '松手设为新对话的默认目录（本会话目录已固定）'
+                      : '松手设为工作目录'
+                    : '放到这里，发给助手'}
                 </div>
               </div>
             )}
@@ -1076,8 +1126,8 @@ export function ChatPage(): React.JSX.Element {
             <header
               className={cn(
                 'relative flex h-[46px] shrink-0 items-center gap-3 px-4 select-none',
-                slice.items.length > 0 && 'justify-between border-b border-board',
-                slice.items.length === 0 && 'justify-end',
+                hasContent && 'justify-between border-b border-board',
+                !hasContent && 'justify-end',
                 hasFramelessControls() && 'pr-[186px]',
               )}
             >
@@ -1090,7 +1140,7 @@ export function ChatPage(): React.JSX.Element {
                   hasFramelessControls() ? 'right-[150px]' : 'right-0',
                 )}
               />
-              {slice.items.length > 0 && (
+              {hasContent && (
               <div className="no-drag group/title relative flex min-w-0 flex-1 items-center gap-1">
                 {renamingHeader ? (
                   <SessionRenameInput
@@ -1240,17 +1290,35 @@ export function ChatPage(): React.JSX.Element {
             />
             </FadeSwitcher>
             )}
+            {/* 历史在途：占住消息区一定高度（不让 composer 从页面中部弹到底部），
+                但不用遮罩——消息回来是原地替换，视觉上只是占位块消失 */}
+            {historyLoading && (
+              <div className="flex min-h-0 flex-1 flex-col px-6 py-4" aria-busy="true" aria-label="正在加载会话历史">
+                <div className="mx-auto flex w-full max-w-[820px] flex-col gap-3">
+                  {HISTORY_SKELETON_ROWS.map((w, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'h-4 rounded bg-chip',
+                        w,
+                        i === 0 && 'ml-auto',
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* composer：审批悬挂时换成 PermissionPrompt；运行状态行在输入卡上方。
                 空消息态（Cindy 首页）：整个块垂直居中，lockup 上置、输入框、建议卡 */}
             <div
               className={cn(
                 'flex flex-col px-6',
-                slice.items.length === 0 ? 'min-h-0 flex-1 items-center justify-center pb-4 pt-[10vh]' : 'pt-1 pb-4',
+                hasContent ? 'pt-1 pb-4' : 'min-h-0 flex-1 items-center justify-center pb-4 pt-[10vh]',
               )}
             >
-              <div className={cn('mx-auto flex w-full flex-col', slice.items.length === 0 ? 'max-w-[790px]' : 'max-w-[820px]')}>
-                {slice.items.length === 0 && (
+              <div className={cn('mx-auto flex w-full flex-col', hasContent ? 'max-w-[820px]' : 'max-w-[790px]')}>
+                {!hasContent && (
                   <div className="mb-3.5 flex items-center gap-3 self-start select-none">
                     <BrandMark size={44} />
                     {/* 品牌 wordmark（图3）：斜体粗体压缩红字 FunDet */}
@@ -1344,7 +1412,7 @@ export function ChatPage(): React.JSX.Element {
                       onSend={() => void send()}
                       onAbort={() => void abort()}
                       isRunning={slice.isRunning}
-                      tall={slice.items.length === 0}
+                      tall={!hasContent}
                       sendDisabled={noModel}
                       slashItems={slashItems}
                       placeholder={noModel ? '先在设置页添加 Provider，再开始对话…' : '输入消息；@ 引用文件，或拖入文件…'}
@@ -1391,7 +1459,12 @@ export function ChatPage(): React.JSX.Element {
                 )}
                 {/* Cindy：路径按钮在输入卡下方左侧（「WX」位），用量环 + 费用在右侧 */}
                 <div className="mt-1.5 flex w-full items-center justify-between gap-3 px-1">
-                  <FolderPickerChip cwd={activeMeta?.workDir || workDir} onSelect={applyWorkDir} />
+                  <FolderPickerChip
+                    cwd={activeMeta?.workDir || workDir}
+                    onSelect={(p) => {
+                      if (!applyWorkDir(p)) toast.info(WORKDIR_LOCKED_HINT);
+                    }}
+                  />
                   <div className="flex items-center justify-end gap-3">
                   {slice.usage.costUsd > 0 && (
                     <span className="text-12 tabular-nums text-muted">
@@ -1406,7 +1479,7 @@ export function ChatPage(): React.JSX.Element {
                   </div>
                 </div>
                 {/* Cindy 首页建议卡：空消息时展示，点击预填 prompt 由用户发送 */}
-                {slice.items.length === 0 && (
+                {!hasContent && (
                   <div className="mt-5 w-full px-1">
                     <WelcomeSuggestions onPick={setInput} />
                   </div>

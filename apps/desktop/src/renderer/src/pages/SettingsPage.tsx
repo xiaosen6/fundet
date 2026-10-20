@@ -8,9 +8,9 @@
  *
  * 功能：主题 / 默认工作目录 / provider CRUD（BYOK）/ 搜索 / IM 机器人 / 技能导入。
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Monitor, Moon, Sun } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { UserProfileCard } from '../components/settings/UserProfileCard';
 import { FontFamilyPicker } from '../components/settings/FontFamilyPicker';
 import { ProvidersPanel } from '../components/settings/ProvidersPanel';
@@ -93,12 +93,24 @@ function SectionCard({ children }: { children: React.ReactNode }): React.JSX.Ele
 
 export function SettingsPage(): React.JSX.Element {
   const { mode, setMode } = useTheme();
-  // 侧栏快捷入口直达：/settings 带 state.tab 时定位到对应分区
+  const navigate = useNavigate();
+  // 侧栏快捷入口直达：/settings 带 state.tab 时定位到对应分区。
+  // 用 effect 跟随后续导航——直接写进 useState 初值只在首次挂载生效，二次深链
+  // （比如从聊天页的「添加 Provider」进来）会静默停在「通用」。
   const location = useLocation();
   const requestedTab = (location.state as { tab?: SettingsTab } | null)?.tab;
   const [tab, setTab] = useState<SettingsTab>(
     requestedTab && requestedTab in TAB_LABELS ? requestedTab : 'general',
   );
+  useEffect(() => {
+    if (requestedTab && requestedTab in TAB_LABELS) setTab(requestedTab);
+  }, [requestedTab]);
+
+  /** 返回：有历史就回上一页（保留聊天页的会话选择与草稿），直接深链进来才落首页 */
+  const goBack = (): void => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  };
   const [workDir, setWorkDir] = useState(getDefaultWorkDir());
   const [uiFont, setUiFontState] = useState(getUiFont);
   const [codeFont, setCodeFontState] = useState(getCodeFont);
@@ -108,13 +120,14 @@ export function SettingsPage(): React.JSX.Element {
         {/* 内栏：返回 + 标题 + pill tab 列表（对齐 Cindy SettingsView） */}
         <aside className="flex h-full min-h-0 w-[220px] shrink-0 flex-col gap-2 overflow-y-auto pr-4 pl-6">
           <div className="drag-region flex items-center gap-2.5 px-3 pb-[18px] select-none">
-            <Link
-              to="/"
+            <button
+              type="button"
+              onClick={goBack}
               aria-label="返回"
               className="no-drag flex items-center justify-center text-muted transition-colors hover:text-primary"
             >
               <ArrowLeft size={20} />
-            </Link>
+            </button>
             <h1 className="text-24 leading-[1.1] font-medium text-primary">设置</h1>
           </div>
           <nav className="no-drag flex flex-col gap-0.5">

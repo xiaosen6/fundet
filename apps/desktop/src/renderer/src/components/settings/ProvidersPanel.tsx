@@ -7,6 +7,8 @@ import { formatTokenCount, preferScannedContextWindow } from '../../../../shared
 import { cn } from '../../lib/cn';
 import { ProviderLogoMark } from '../icons/ProviderLogoMark';
 import { AddProviderWizard } from './AddProviderWizard';
+import { confirmDialog } from '../ui/ConfirmDialog';
+import { toast } from '../ui/toast';
 
 const FIELD =
   'w-full h-10 rounded-xl border border-board bg-card px-3 text-13 text-primary placeholder:text-placeholder outline-none';
@@ -332,9 +334,22 @@ export function ProvidersPanel(): React.JSX.Element {
 
   const remove = async (): Promise<void> => {
     if (!selected) return;
-    await window.fundet.deleteProvider(selected.id);
     setMenuOpen(false);
-    await refresh();
+    // API key 与模型配置一并删除、不可恢复——全应用其它删除（会话/模板/MCP/
+    // 知识库/记忆/自动化）都有二次确认，唯独这里一点就没，属数据风险
+    const ok = await confirmDialog({
+      title: `删除供应商「${selected.name}」？`,
+      description: '保存的 API Key 与模型列表会一并删除，此操作不可撤销。',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await window.fundet.deleteProvider(selected.id);
+      await refresh();
+    } catch (err) {
+      toast.error(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const shown = selected?.models.length ?? 0;

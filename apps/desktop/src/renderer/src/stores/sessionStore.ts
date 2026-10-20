@@ -83,6 +83,10 @@ export interface SessionSlice {
   pendingInteraction: InteractionRequest | null;
   /** DB 历史是否已重建进 items */
   historyLoaded: boolean;
+  /** 历史拉取在途（切进会话 → getSession 返回之间）。与「真空会话」区分：
+   *  不在途且 items 为空才是真首页；在途时要显示加载占位，否则切进有历史的
+   *  会话会先闪一屏「新对话」品牌页再整块替换（用户实报的跳动） */
+  historyLoading: boolean;
   /** 侧栏关注态：turn 在非注视下完成（绿）/ 终态出错（红）；注视即清除 */
   attention: 'done' | 'error' | null;
 }
@@ -105,6 +109,7 @@ const EMPTY_SLICE: SessionSlice = {
   usage: EMPTY_USAGE,
   pendingInteraction: null,
   historyLoaded: false,
+  historyLoading: false,
   attention: null,
 };
 
@@ -156,6 +161,65 @@ function rebuildCombinedList(): void {
 
 function notifyList(): void {
   for (const l of listListeners) l();
+}
+
+// ---------------------------------------------------------------------------
+// 当前会话 + composer 草稿（模块级）
+//
+// 它们是「用户的当前位置」，不是 ChatPage 组件的私有状态：进设置页会卸载整个
+// ChatPage（路由切换），放组件 state 里等于「去趟设置就把正在聊的会话和没发出去
+// 的半句话一起丢掉」。放模块级后路由来回切、面板开关都不受影响。
+// ---------------------------------------------------------------------------
+
+let activeSessionId: string | null = null;
+const activeSessionListeners = new Set<() => void>();
+
+export function getActiveSessionId(): string | null {
+  return activeSessionId;
+}
+
+export function setActiveSessionId(sessionId: string | null): void {
+  if (activeSessionId === sessionId) return;
+  activeSessionId = sessionId;
+  for (const l of activeSessionListeners) l();
+}
+
+/** 当前会话 id（useSyncExternalStore：路由切换不丢） */
+export function useActiveSessionId(): string | null {
+  return useSyncExternalStore(
+    (cb) => {
+      activeSessionListeners.add(cb);
+      return () => activeSessionListeners.delete(cb);
+    },
+    () => activeSessionId,
+  );
+}
+
+/** composer 草稿（按会话分桶；空串也记，切回同一会话能恢复没发出去的内容） */
+const composerDrafts = new Map<string, string>();
+const composerListeners = new Set<() => void>();
+
+export function getComposerDraft(sessionId: string | null): string {
+  return sessionId ? (composerDrafts.get(sessionId) ?? '') : '';
+}
+
+export function setComposerDraft(sessionId: string | null, text: string): void {
+  if (!sessionId) return;
+  if ((composerDrafts.get(sessionId) ?? '') === text) return;
+  if (text) composerDrafts.set(sessionId, text);
+  else composerDrafts.delete(sessionId);
+  for (const l of composerListeners) l();
+}
+
+export function useComposerDraft(sessionId: string | null): string {
+  return useSyncExternalStore(
+    (cb) => {
+      composerListeners.add(cb);
+      return () => composerListeners.delete(cb);
+    },
+    () => getComposerDraft(sessionId),
+    () => getComposerDraft(sessionId),
+  );
 }
 
 /** 乐观更新：立即改本地会话列表某个字段（不等服务器回包）——权限/模型
@@ -812,19 +876,29 @@ export async function ensureHistory(sessionId: string): Promise<void> {
   if (drafts.has(sessionId)) return;
   const s = getSlice(sessionId);
   if (s.historyLoaded) return;
-  // 标记前置，防止并发重复拉取
-  patchSlice(sessionId, { historyLoaded: true });
+  // 标记前置，防止并发重复拉取；historyLoading 让 UI 显示占位而不是「新对话首页」
+  patchSlice(sessionId, { historyLoaded: true, historyLoading: true });
+  notifySlice(sessionId);
   try {
     const detail = await window.fundet.getSession(sessionId);
-    if (!detail) return;
+    if (!detail) {
+      patchSlice(sessionId, { historyLoading: false });
+      notifySlice(sessionId);
+      return;
+    }
     const current = getSlice(sessionId);
     // 等待期间已有直播事件进来（流式/审批中），跳过重建以免覆盖
-    if (current.items.length > 0 || current.isRunning) return;
-    patchSlice(sessionId, { items: rebuildItems(detail.messages) });
+    if (current.items.length > 0 || current.isRunning) {
+      patchSlice(sessionId, { historyLoading: false });
+      notifySlice(sessionId);
+      return;
+    }
+    patchSlice(sessionId, { items: rebuildItems(detail.messages), historyLoading: false });
     notifySlice(sessionId);
   } catch {
     // 拉取失败：保持空，下次切回重试
-    patchSlice(sessionId, { historyLoaded: false });
+    patchSlice(sessionId, { historyLoaded: false, historyLoading: false });
+    notifySlice(sessionId);
   }
 }
 

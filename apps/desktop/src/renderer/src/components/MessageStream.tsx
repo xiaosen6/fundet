@@ -45,6 +45,7 @@ import { MessageNavRail } from './chat/MessageNavRail';
 import { GeneratedFilesCard } from './chat/GeneratedFilesCard';
 import { splitGeneratedFileTurns, type GeneratedFileRef } from '../lib/generatedFiles';
 import { useImeEnterGuard } from '../hooks/useImeEnterGuard';
+import { editSubmitSettles, errorRetriable } from '../lib/sessionEditState';
 import {
   NAV_RAIL_JUMP_TOP_OFFSET_PX,
   deriveNavRailEntries,
@@ -144,8 +145,9 @@ function UserTurn({
   canEdit?: boolean;
   /** 点编辑瞬间（外部据此中断运行中的 turn，Cindy：点编辑=停下要改） */
   onEditStart?: () => void;
-  /** 提交编辑：截断该消息及之后全部内容并按新文本重发 */
-  onEditSubmit?: (text: string, createdAt: number | undefined, attachments: SessionAttachment[] | undefined) => Promise<void>;
+  /** 提交编辑：截断该消息及之后全部内容并按新文本重发。
+   *  返回 false = 失败（调用方已提示），编辑态与草稿必须保留，别让用户白打一遍。 */
+  onEditSubmit?: (text: string, createdAt: number | undefined, attachments: SessionAttachment[] | undefined) => Promise<boolean>;
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   // ── inline 编辑态（Cindy UserMessageEditBox 同款交互）：气泡原位替换成
@@ -180,7 +182,11 @@ function UserTurn({
     const text = draft.trim() ? draft : item.text;
     setSubmitting(true);
     void onEditSubmit(text, item.createdAt, item.attachments)
-      .then(() => setEditing(false))
+      // 失败（false）保持编辑态：草稿还在，用户可直接重试或改（旧实现无论成败
+      // 都关编辑框，失败时改好的文字凭空消失）
+      .then((ok) => {
+        if (editSubmitSettles(ok)) setEditing(false);
+      })
       .finally(() => setSubmitting(false));
   };
 
@@ -314,12 +320,12 @@ interface MessageStreamProps {
   onRetryError?: () => void;
   /** 编辑入口（仅最后一条 user 消息显示）：点击瞬间回调（外部据此中断运行中 turn） */
   onEditStart?: () => void;
-  /** 提交编辑：截断该消息及之后全部内容并按新文本重发 */
+  /** 提交编辑：截断该消息及之后全部内容并按新文本重发（false = 失败，编辑态保留） */
   onEditSubmit?: (
     text: string,
     createdAt: number | undefined,
     attachments: SessionAttachment[] | undefined,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /** 删除某条用户消息及其后全部内容（confirm 在调用方） */
   onDeleteUserMessage?: (createdAt: number) => void;
   /** Canvas 产物全集：助手正文里命中 basename/路径形状的片段升级为路径 chip */
@@ -597,6 +603,17 @@ export function MessageStream({
   // 编辑入口只给最后一条 user 消息（Cindy edit-last-message）
   let lastUserId = '';
   for (const it of slice.items) if (it.kind === 'user') lastUserId = it.id;
+  // 「重新发送」只给最后一轮的错误卡（判定见 lib/sessionEditState.errorRetriable：
+  // error 会随历史落库重建，旧卡也带按钮的话点了实际重发的是当前最后一条 user 消息）
+  const retryableErrorIds = useMemo(
+    () =>
+      new Set(
+        slice.items
+          .filter((it) => it.kind === 'error' && errorRetriable(slice.items, it.id))
+          .map((it) => it.id),
+      ),
+    [slice.items],
+  );
   // 各轮产物（只随 items 变化重算；流式文本帧不重复派生）
   const genFilesByTurn = useMemo(() => splitGeneratedFileTurns(slice.items), [slice.items]);
   // 虚拟化行 = 分组行 + 各轮产物卡伪行 + 流式未封口伪行 + 轮末改动卡伪行
@@ -1103,7 +1120,7 @@ export function MessageStream({
                       <span className="block text-13 break-all whitespace-pre-wrap text-error select-text">
                         {item.message}
                       </span>
-                      {onRetryError && (
+                      {onRetryError && retryableErrorIds.has(item.id) && (
                         <button
                           type="button"
                           onClick={onRetryError}
