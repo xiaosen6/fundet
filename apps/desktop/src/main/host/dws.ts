@@ -35,12 +35,14 @@ export interface DwsProfileView {
   org?: string;
   user?: string;
   isCurrent?: boolean;
+  /** dws v1.0.62+ 返回：active / expired（access token 过期即 expired）。老版本无此字段 */
+  status?: string;
 }
 
 export interface DwsStatusView {
   installed: boolean;
   version?: string;
-  /** profile list 非空即视为已登录（未登录时 dws 返回空 profiles 数组） */
+  /** 有 profile 且当前 profile 非 expired（profile list 不需有效 token，光看 profiles 非空会把过期登录态误判为已登录） */
   loggedIn: boolean;
   profiles: DwsProfileView[];
   /** 已装配的 dingtalk-* 技能目录名（~/.agents/skills 下） */
@@ -98,10 +100,23 @@ export function parseProfileList(stdout: string): DwsProfileView[] {
       org: firstString(p.corpName, p.orgName, p.companyName),
       user: firstString(p.userName, p.nickName, p.name),
       isCurrent: p.isCurrent === true || p.isOrgCurrent === true,
+      status: firstString(p.status),
     };
     if (view.id || view.org || view.user) out.push(view);
   }
   return out;
+}
+
+/**
+ * 当前登录态是否可用：有 profile 且当前 profile 未被 dws 标为 expired。
+ * profile list 本身不需要有效 access token 也能返回（2026-10-20 实报：status=expired
+ * 时四路业务查询全部 authCode.notFound——旧登录态的服务端刷新通道已关闭），所以
+ * 「profile list 成功 ≠ 已登录」。老版本 dws 无 status 字段 → 维持「有 profile 即已登录」。
+ */
+export function hasActiveLogin(profiles: DwsProfileView[]): boolean {
+  if (profiles.length === 0) return false;
+  const current = profiles.find((p) => p.isCurrent) ?? profiles[0];
+  return current?.status !== 'expired';
 }
 
 /** 用户级技能根下的 dingtalk-* 技能（dws 官方技能包的落点） */
@@ -262,7 +277,7 @@ export async function getDwsStatus(): Promise<DwsStatusView> {
   return {
     installed: true,
     version: parseDwsVersion(ver.stdout).version,
-    loggedIn: profiles.length > 0,
+    loggedIn: hasActiveLogin(profiles),
     profiles,
     skills,
   };

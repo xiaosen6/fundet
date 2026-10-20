@@ -153,6 +153,8 @@ export interface DwsProfileView {
   org?: string;
   user?: string;
   isCurrent?: boolean;
+  /** dws v1.0.62+ 返回：active / expired（access token 过期）。老版本无此字段 */
+  status?: string;
 }
 
 /** 钉钉工作台状态（主进程 host/dws.ts 是唯一真源） */

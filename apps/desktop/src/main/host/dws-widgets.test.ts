@@ -155,14 +155,35 @@ describe('errOf（失败原因人话化）', () => {
     assert.equal(errOf({ code: 1, stdout: out, stderr: '' }), '操作人无花名册管理权限');
   });
 
+  it('stderr 里的 dws 错误 JSON 也能解析出业务错（不再把尾行 } 当文案）', () => {
+    const stderr = JSON.stringify({
+      error: { category: 'internal', code: 5, message: '操作人无花名册管理权限' },
+    }, null, 2);
+    assert.equal(errOf({ code: 5, stdout: '', stderr }), '操作人无花名册管理权限');
+  });
+
+  it('旧登录态刷新失败（authCode.notFound）映射为固定重新登录指引（2026-10-20 实报形状）', () => {
+    const stderr = JSON.stringify({
+      error: {
+        category: 'internal',
+        code: 5,
+        message: '[UNCLASSIFIED] resolve access token: 旧版登录态已无法由当前认证服务刷新；本地 profile 已保留，请重新运行 dws auth login 完成一次重新授权；为保留原身份，请把 --profile 参数设置为下方 profile 标识:\nprofile: "ding…:175…": MCP token exchange failed: invalidParameter.authCode.notFound - 不合法的临时授权码',
+      },
+    }, null, 2);
+    assert.equal(
+      errOf({ code: 5, stdout: '', stderr }),
+      '钉钉登录态已失效，请重新登录（钉钉工作台面板点「开始登录」）',
+    );
+  });
+
   it('stdout 无 JSON 时退 stderr 尾行', () => {
     const r = { code: 1, stdout: '', stderr: 'line1\nfetch failed: ETIMEDOUT 10.7.0.95:443\n' };
     assert.equal(errOf(r), 'fetch failed: ETIMEDOUT 10.7.0.95:443');
   });
 
-  it('超长信息截 120，最后兜底退出码', () => {
+  it('超长信息截 220，最后兜底退出码', () => {
     const long = 'x'.repeat(300);
-    assert.equal(errOf({ code: 1, stdout: `{"error":{"message":"${long}"}}`, stderr: '' }).length, 120);
+    assert.equal(errOf({ code: 1, stdout: `{"error":{"message":"${long}"}}`, stderr: '' }).length, 220);
     assert.equal(errOf({ code: 3, stdout: '', stderr: '' }), '退出码 3');
   });
 });

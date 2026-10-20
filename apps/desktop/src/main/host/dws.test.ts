@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { extractAuthUrl, listDingtalkSkills, parseDwsVersion, parseProfileList } from './dws.ts';
+import { extractAuthUrl, hasActiveLogin, listDingtalkSkills, parseDwsVersion, parseProfileList } from './dws.ts';
 
 describe('parseDwsVersion', () => {
   it('解析本机实测形状', () => {
@@ -57,21 +57,66 @@ describe('parseProfileList', () => {
       ],
     });
     assert.deepEqual(parseProfileList(raw), [
-      { id: 'ding123:01234', org: '山东未来互联', user: '孙记森', isCurrent: true },
-      { id: 'ding456:56789', org: '另一家企业', user: '张三', isCurrent: false },
+      { id: 'ding123:01234', org: '山东未来互联', user: '孙记森', isCurrent: true, status: undefined },
+      { id: 'ding456:56789', org: '另一家企业', user: '张三', isCurrent: false, status: undefined },
+    ]);
+  });
+
+  it('提取 status 字段（v1.0.62+：active/expired；2026-10-20 实捕形状）', () => {
+    const raw = JSON.stringify({
+      success: true,
+      profiles: [
+        {
+          profile: 'ding123:01234',
+          corpName: '山东未来互联',
+          userName: '孙记森',
+          isCurrent: true,
+          status: 'expired',
+          expiresAt: '2026-10-15T17:34:43+08:00',
+        },
+      ],
+    });
+    assert.deepEqual(parseProfileList(raw), [
+      { id: 'ding123:01234', org: '山东未来互联', user: '孙记森', isCurrent: true, status: 'expired' },
     ]);
   });
 
   it('空对象条目被过滤；有任一身份字段的保留', () => {
     const raw = JSON.stringify({ profiles: [{}, { profile: 'x:y' }, 'junk'] });
-    assert.deepEqual(parseProfileList(raw), [{ id: 'x:y', org: undefined, user: undefined, isCurrent: false }]);
+    assert.deepEqual(parseProfileList(raw), [{ id: 'x:y', org: undefined, user: undefined, isCurrent: false, status: undefined }]);
   });
 
   it('stdout 混横幅时截取 JSON 段（本机 cmd AutoRun 实捕形状）', () => {
     const polluted = 'some banner line\r\n{"success":true,"profiles":[{"profile":"a:b","corpName":"X","userName":"Y","isOrgCurrent":true}]}\r\n';
     assert.deepEqual(parseProfileList(polluted), [
-      { id: 'a:b', org: 'X', user: 'Y', isCurrent: true },
+      { id: 'a:b', org: 'X', user: 'Y', isCurrent: true, status: undefined },
     ]);
+  });
+});
+
+describe('hasActiveLogin（profile list 不需有效 token，status=expired 才是真过期）', () => {
+  it('空 profiles → 未登录', () => {
+    assert.equal(hasActiveLogin([]), false);
+  });
+
+  it('当前 profile status=expired → 登录态不可用（2026-10-20 实报：此时四路查询全部 authCode.notFound）', () => {
+    assert.equal(hasActiveLogin([{ id: 'a:b', isCurrent: true, status: 'expired' }]), false);
+  });
+
+  it('status=active → 已登录；无 status 字段的老版本 → 有 profile 即已登录', () => {
+    assert.equal(hasActiveLogin([{ id: 'a:b', isCurrent: true, status: 'active' }]), true);
+    assert.equal(hasActiveLogin([{ id: 'a:b', isCurrent: true }]), true);
+  });
+
+  it('多 profile 时只看当前 profile；无 isCurrent 标记时看第一个', () => {
+    assert.equal(
+      hasActiveLogin([
+        { id: 'a:b', isCurrent: false, status: 'active' },
+        { id: 'c:d', isCurrent: true, status: 'expired' },
+      ]),
+      false,
+    );
+    assert.equal(hasActiveLogin([{ id: 'a:b', status: 'expired' }, { id: 'c:d', status: 'active' }]), false);
   });
 });
 

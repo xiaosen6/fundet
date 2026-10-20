@@ -15,8 +15,16 @@ const PRIMARY_BTN = 'h-8 rounded-full bg-accent px-3 text-12 font-medium text-ac
 const DWS_REPO_URL = 'https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli';
 const DINGTALK_OPEN_URL = 'https://open-dev.dingtalk.com';
 
+/** 有 profile 但 dws 标了 expired：access token 过期，旧登录态服务端不再自动刷新 */
+function loginExpired(s: DwsStatusView): boolean {
+  if (!s.installed || s.profiles.length === 0) return false;
+  const current = s.profiles.find((p) => p.isCurrent) ?? s.profiles[0];
+  return current?.status === 'expired';
+}
+
 function statusChip(s: DwsStatusView): { label: string; className: string } {
   if (!s.installed) return { label: '未安装', className: 'bg-hover-soft text-muted' };
+  if (loginExpired(s)) return { label: '登录已过期', className: 'bg-hover-soft text-secondary' };
   if (!s.loggedIn) return { label: '待登录', className: 'bg-hover-soft text-secondary' };
   if (s.skills.length === 0) return { label: '待装技能', className: 'bg-hover-soft text-secondary' };
   return { label: '就绪', className: 'bg-chip text-secondary' };
@@ -193,7 +201,9 @@ export function DwsPanel(): React.JSX.Element {
         ) : !status.loggedIn ? (
           <>
             <p className="mt-2 text-12 text-secondary">
-              已安装，还没登录。点「开始登录」会在后台启动钉钉授权——浏览器应自动打开授权页；
+              {loginExpired(status)
+                ? '登录已过期：钉钉旧登录态已无法自动刷新，重新授权一次即可（工作台四个卡片也会同步提示）。点「开始登录」会在后台启动钉钉授权——浏览器应自动打开授权页；'
+                : '已安装，还没登录。点「开始登录」会在后台启动钉钉授权——浏览器应自动打开授权页；'}
               没弹的话点「打开授权页」。选企业 → 授权，完成后这里自动刷新。如果提示企业未开启
               CLI 访问，需要管理员在开放平台「CLI 访问管理」里开通（点右侧链接去找管理员）。
             </p>

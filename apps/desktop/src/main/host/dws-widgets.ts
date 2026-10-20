@@ -11,7 +11,7 @@
  * fixture 是真机登录态实捕（__fixtures__/dws-*.json）。
  */
 import { createRequire } from 'node:module';
-import { execDws, extractJson, resolveDws } from './dws.ts';
+import { execDws, extractJson, hasActiveLogin, parseProfileList, resolveDws } from './dws.ts';
 import type {
   DwsApprovalPendingView,
   DwsCalendarEventView,
@@ -205,6 +205,7 @@ let disabled: { reason: string } | null = null;
 let lastCycleAt = 0;
 let busy = false;
 let timer: NodeJS.Timeout | null = null;
+let loggedInvocation = false;
 
 function snapshot(): DwsWidgetsSnapshot {
   if (disabled) {
@@ -250,14 +251,27 @@ function push(): void {
 }
 
 /**
- * 从 dws 调用结果提炼人话错误：优先 stdout 里 dws 的 error.message（业务错：
- * 无权限/token 过期/缺命令），退 stderr 尾行（网络层），兜底退出码。
- * 此前只记「退出码 N」——所有人所有原因一个脸，排查无从下手（0.2.28 修）。
+ * 从 dws 调用结果提炼人话错误：优先两侧 stdout/stderr 里 dws 的 error.message
+ *（业务错：无权限/token 过期/缺命令；2026-10-20 实测 stderr 也带 JSON），退
+ * stderr 尾行（网络层），兜底退出码。旧登录态刷新失败（authCode.notFound 类）
+ * 映射为固定重新登录指引；其余业务错原文保留、上限 220 字。
  */
 export function errOf(result: { code: number; stdout: string; stderr: string }): string {
-  const parsed = extractJson(result.stdout) as { error?: { message?: unknown; reason?: unknown } } | null;
-  const bizMsg = typeof parsed?.error?.message === 'string' ? parsed.error.message.trim() : '';
-  if (bizMsg) return bizMsg.slice(0, 120);
+  // dws 的业务错误 JSON 可能落在 stdout 也可能落在 stderr（2026-10-20 实测：
+  // 旧登录态刷新失败时 stdout 空、stderr 是完整 JSON）。两侧都先按 JSON 解析
+  // 取 error.message，再退 stderr 尾行（网络层文本），兜底退出码。
+  for (const text of [result.stdout, result.stderr]) {
+    const parsed = extractJson(text) as { error?: { message?: unknown; reason?: unknown } } | null;
+    const bizMsg = typeof parsed?.error?.message === 'string' ? parsed.error.message.trim() : '';
+    if (bizMsg) {
+      // 旧登录态刷新失败：原文 200+ 字（含 profile 标识与内部错误码），卡片只给
+      // 可行动作，原文仍留在主进程诊断日志里
+      if (/authCode\.notFound|登录态已无法|重新授权/.test(bizMsg)) {
+        return '钉钉登录态已失效，请重新登录（钉钉工作台面板点「开始登录」）';
+      }
+      return bizMsg.slice(0, 220);
+    }
+  }
   const tail = result.stderr
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -292,6 +306,12 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       push();
       return snapshot();
     }
+    // 命中哪个 dws 二进制只报一次（npm 包装 v1.0.x 与 ~/.local/bin 可能并存且版本不同，
+    // 2026-10-20 排查靠这条才没走偏）；每轮都打会刷屏
+    if (!loggedInvocation) {
+      loggedInvocation = true;
+      console.log('[fundet:dws] 聚合器命中 dws 调用方式', { command: dws.psCommand });
+    }
     // 版本探测（审批卡错误文案增强用；探测失败 null 不阻断）
     let dwsVersion: string | null = null;
     try {
@@ -308,6 +328,26 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       execDws(dws, ['oa', 'approval', 'list-pending', '--format', 'json'], QUERY_TIMEOUT_MS),
       execDws(dws, ['chat', 'message', 'list-unread-conversations', '--format', 'json'], QUERY_TIMEOUT_MS),
     ]);
+    // 失败诊断（只在有失败时输出）：UI 只挂角标时看不到是哪一路、为什么挂
+    for (const [name, res] of [
+      ['profile', profile],
+      ['calendar', cal],
+      ['todo', todo],
+      ['oa', oa],
+      ['unread', unread],
+    ] as const) {
+      if (res.code === 0) continue;
+      const stderrTail = res.stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).pop() ?? '';
+      console.warn('[fundet:dws] 组件查询失败', {
+        name,
+        code: res.code,
+        stdoutLen: res.stdout.length,
+        stderrLen: res.stderr.length,
+        stdoutHead: res.stdout.replace(/\s+/g, ' ').slice(0, 160),
+        stderrHead: res.stderr.replace(/\s+/g, ' ').slice(0, 160),
+        stderrTail: stderrTail.slice(0, 160),
+      });
+    }
     // profile 命令本身失败 ≠ 未登录：token 过期给可操作提示；网络/代理抖动
     // 保住登录态与旧数据，四卡挂失败角标等下轮重试（此前一律误判"还没登录"，
     // 整板直接消失——部分用户「加载失败」的来源）。
@@ -327,9 +367,18 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       push();
       return snapshot();
     }
-    const profiles = extractJson(profile.stdout) as { profiles?: unknown } | null;
-    if (!Array.isArray(profiles?.profiles) || (profiles?.profiles as unknown[]).length === 0) {
+    const profiles = parseProfileList(profile.stdout);
+    if (profiles.length === 0) {
       disabled = { reason: '还没登录钉钉（钉钉工作台面板点「开始登录」）' };
+      lastCycleAt = Date.now();
+      push();
+      return snapshot();
+    }
+    // profile list 不需有效 token 也能返回：status=expired 时四路查询注定全部
+    // authCode.notFound（2026-10-20 实报，旧登录态服务端刷新通道已关闭）。此时
+    // 直接给「重新登录」横幅，不让四卡各挂一条天书错误。
+    if (!hasActiveLogin(profiles)) {
+      disabled = { reason: '钉钉登录态已过期（旧登录态服务端不再支持自动刷新）：钉钉工作台面板点「开始登录」重新授权一次即可' };
       lastCycleAt = Date.now();
       push();
       return snapshot();
