@@ -216,6 +216,10 @@ export function ChatPage(): React.JSX.Element {
   const slice = useSessionSlice(activeId);
   // durable outbox 队列快照（排队/自动重试/失败重试都在主进程，渲染层只展示）
   const outboxItems = useSessionOutbox(activeId);
+  // 只把「需要用户注意」的条目挂成 chip：发送中已有乐观气泡 + Working… 状态行，
+  // 再挂一条「发送中：你好」是重复噪声（2026-10-20 用户点名去掉）。排队/自动
+  // 重试/失败/结果未知仍需可见——那是用户唯一能看到队列状态的地方。
+  const outboxNotices = outboxItems.filter((item) => item.state !== 'sending');
 
   const outboxStateLabel = (item: SessionOutboxItem): string => {
     switch (item.state) {
@@ -1276,9 +1280,9 @@ export function ChatPage(): React.JSX.Element {
                   />
                 ) : (
                   <>
-                    {outboxItems.length > 0 && (
+                    {outboxNotices.length > 0 && (
                       <div className="mb-2 flex flex-col gap-1.5">
-                        {outboxItems.map((item) => (
+                        {outboxNotices.map((item) => (
                           <div
                             key={item.id}
                             className="inline-flex max-w-full flex-wrap items-center gap-1.5 self-start rounded-xl border border-board bg-card py-1 pl-2.5 pr-1.5 text-12 text-secondary"
