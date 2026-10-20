@@ -2004,6 +2004,10 @@ ${input.text}`;
           payload.text.trim() || (payload.attachments ?? []).map((a) => a.name).join(' ') || '',
         );
         promotePrewarm(row.sessionId);
+        // 首条消息落库 = 草稿转正 + 自动标题改名：广播让侧栏立刻换 DB 行
+        //（outbox 批丢了 pending 版 send 成功后的 refreshSessionList，渲染层
+        // 要等轮末才刷新——草稿行在此期间与 DB 行并存，2026-10-20 实报）
+        broadcast(FUNDET_PUSH.SESSION_LIST_CHANGED, null);
       }
       return inserted;
     },

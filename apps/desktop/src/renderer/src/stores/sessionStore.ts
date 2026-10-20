@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
 import { isComposerTypingRecently } from '../lib/composerTypingActivity';
+import { promotableDraftIds } from '../lib/draftPromotion';
 import { toast } from '../components/ui/toast';
 import { playCompletionChime } from '../lib/chime';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
@@ -140,8 +141,12 @@ function draftHasDialogue(id: string): boolean {
 }
 
 function rebuildCombinedList(): void {
+  // DB 已有同 id 行 = 草稿已落库（prewarm 预落行，或首条消息 lazy-create 完成）：
+  // 以 DB 行为准，草稿行不再参与渲染。缺这道闸，首条消息一有内容就是两行
+  //（草稿「新对话」+ DB 行），2026-10-20 用户实报。
+  const dbIds = new Set(sessionList.map((s) => s.id));
   const visibleDrafts = Array.from(drafts.values())
-    .filter((d) => draftHasDialogue(d.item.id))
+    .filter((d) => draftHasDialogue(d.item.id) && !dbIds.has(d.item.id))
     .map((d) => d.item);
   // 置顶段最前（服务端已按 pinned/sortOrder 排好），草稿其次，其余按更新时间
   const pinned = sessionList.filter((s) => s.pinned);
@@ -705,10 +710,29 @@ export function initGlobalListeners(): void {
 export async function refreshSessionList(): Promise<void> {
   try {
     sessionList = await window.fundet.listSessions();
+    // 草稿转正：首条消息派发后 DB 行已存在（并被自动标题改名），同 id 草稿必须
+    // 摘掉，否则侧栏同 id 两行（草稿「新对话」+ DB「你好」）；isDraftSession 也会
+    // 永远为 true，弹窗/分叉/回滚入口全被误禁。0.3.48 outbox 批丢了 pending 版
+    // 本的 drafts.delete，2026-10-20 用户实报。
+    dropPromotedDrafts(sessionList);
     rebuildCombinedList();
     notifyList();
   } catch {
     // 列表拉取失败不致命，保持旧值
+  }
+}
+
+/** DB 列表为权威：有对话内容的草稿一旦同名落库，就地摘除（纯判定见 lib/draftPromotion） */
+function dropPromotedDrafts(rows: SessionListItem[]): void {
+  const dbIds = new Set(rows.map((r) => r.id));
+  const promoted = promotableDraftIds({
+    draftIds: drafts.keys(),
+    hasDialogue: draftHasDialogue,
+    dbIds,
+  });
+  for (const id of promoted) {
+    drafts.delete(id);
+    // 草稿转正后历史由 DB 承担；slice 保留（直播态不能重建，覆盖会丢流式内容）
   }
 }
 
