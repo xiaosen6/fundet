@@ -431,8 +431,19 @@ function Preview({
       {!error && artifact.kind === 'other' && (
         <p className="text-12 text-muted">这种文件不能内嵌预览，点右上角用系统打开。</p>
       )}
+      {/* 三态各说各话：pending 时签发还没回来（说「不在工作目录」是冤枉），
+          denied 时把主进程的真实原因亮出来（deny-list/读取失败/路径越界都不同） */}
       {!error && !mediaUrl && (artifact.kind === 'video' || artifact.kind === 'html' || artifact.kind === 'pdf') && (
-        <p className="text-12 text-muted">文件不在当前工作目录内，无法内嵌预览。点右上角用系统打开。</p>
+        preview.status === 'pending' ? (
+          <p className="text-12 text-muted">正在准备预览…</p>
+        ) : (
+          <p className="text-12 text-muted">
+            {preview.status === 'denied' && preview.error
+              ? `无法内嵌预览：${preview.error}`
+              : '无法内嵌预览。'}
+            点右上角用系统打开。
+          </p>
+        )
       )}
     </div>
   );

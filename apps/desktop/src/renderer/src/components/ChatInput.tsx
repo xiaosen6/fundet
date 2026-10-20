@@ -99,6 +99,38 @@ export function ChatInput({
   const imeGuard = useImeEnterGuard();
   /** 提示词模板浮层开合（工具行灯泡入口） */
   const [templatePaletteOpen, setTemplatePaletteOpen] = useState(false);
+  const templatePaletteRef = useRef<HTMLDivElement>(null);
+  const templateBtnRef = useRef<HTMLButtonElement>(null);
+
+  // 浮层里写着「关闭（Esc）」就真的要能关：此前只有底部那个按钮，
+  // Esc 和外点都没人接（点别处浮层一直悬着，只能再点灯泡）
+  useEffect(() => {
+    if (!templatePaletteOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node;
+      if (templatePaletteRef.current?.contains(t)) return;
+      // 灯泡自身交给它的 onClick 切换，否则 mousedown 关、click 又开，永远关不掉
+      if (templateBtnRef.current?.contains(t)) return;
+      // 浮层之上弹出的确认框（删除模板等）里点击不该把浮层关掉——流程会中断
+      const target = e.target as Element | null;
+      if (target?.closest?.('[role="dialog"]')) return;
+      setTemplatePaletteOpen(false);
+    };
+    // 捕获阶段拦下 Esc：浮层开着时它只关浮层，不该顺带触发外层的 Esc 语义。
+    // 但浮层之上还可能弹确认框（删除模板等，role=dialog）——那时 Esc 归它。
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('[role="dialog"]')) return;
+      e.stopPropagation();
+      setTemplatePaletteOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [templatePaletteOpen]);
 
   // 语音输入（0.3.14）：常显（用户拍板不设开关）；转写文本插到光标处
   const insertAtCursor = useCallback(
@@ -290,10 +322,12 @@ export function ChatInput({
         />
       )}
       {templatePaletteOpen && (
-        <PromptTemplatePalette
-          onClose={() => setTemplatePaletteOpen(false)}
-          onPick={(t) => dispatchPromptInsert(t.content, t.id)}
-        />
+        <div ref={templatePaletteRef}>
+          <PromptTemplatePalette
+            onClose={() => setTemplatePaletteOpen(false)}
+            onPick={(t) => dispatchPromptInsert(t.content, t.id)}
+          />
+        </div>
       )}
       {mention && mentionCtx && (
         <FileMentionPanel
@@ -541,8 +575,10 @@ export function ChatInput({
             )}
             <Tooltip label="提示词模板" side="top">
               <button
+                ref={templateBtnRef}
                 type="button"
                 disabled={disabled}
+                aria-expanded={templatePaletteOpen}
                 aria-label="提示词模板"
                 onClick={() => setTemplatePaletteOpen((v) => !v)}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-primary disabled:opacity-40"
@@ -596,7 +632,19 @@ export function ChatInput({
               </span>
             </button>
             {isRunning ? (
-              <SendButton disabled={false} onClick={onAbort} isStreaming />
+              <>
+                {/* 运行中不是「不能发」而是「排队」：outbox 会在轮末自动派发。
+                    此前只剩一个停止键，想追加消息只能干等——回车其实也能排队，
+                    但按钮层没告诉任何人。有内容才亮，空输入不占位。 */}
+                {canSend && (
+                  <SendButton
+                    disabled={false}
+                    onClick={onSend}
+                    title="排队发送（当前回合结束后自动发出）"
+                  />
+                )}
+                <SendButton disabled={false} onClick={onAbort} isStreaming />
+              </>
             ) : (
               <SendButton disabled={!canSend} onClick={onSend} />
             )}

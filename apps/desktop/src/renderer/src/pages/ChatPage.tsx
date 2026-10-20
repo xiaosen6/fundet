@@ -257,6 +257,18 @@ export function ChatPage(): React.JSX.Element {
   // 重试/失败/结果未知仍需可见——那是用户唯一能看到队列状态的地方。
   const outboxNotices = outboxItems.filter((item) => item.state !== 'sending');
 
+  /** 自动重试倒计时的时钟。主进程只在状态变化时 push，倒计时本身没有
+   *  任何 render 触发点——不加这个 ticker，文案会定格在入队那一刻的读数
+   *  （「43 秒后」一直挂着，实际早已重试或已失败）。 */
+  const retryPending = outboxItems.some((item) => item.state === 'queued' && item.nextAttemptAt != null);
+  const [retryNow, setRetryNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!retryPending) return undefined;
+    setRetryNow(Date.now());
+    const t = setInterval(() => setRetryNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [retryPending]);
+
   const outboxStateLabel = (item: SessionOutboxItem): string => {
     switch (item.state) {
       case 'sending': return '发送中';
@@ -264,8 +276,10 @@ export function ChatPage(): React.JSX.Element {
       case 'outcome_unknown': return '结果未知（可能已执行，重试需谨慎）';
       case 'queued':
         if (item.nextAttemptAt != null) {
-          const remain = Math.max(0, Math.round((item.nextAttemptAt - Date.now()) / 1000));
-          return `自动重试（${remain} 秒后，第 ${item.autoRetryCount}/3 次）`;
+          const remain = Math.max(0, Math.ceil((item.nextAttemptAt - retryNow) / 1000));
+          return remain > 0
+            ? `自动重试（${remain} 秒后，第 ${item.autoRetryCount}/3 次）`
+            : `正在重试（第 ${item.autoRetryCount}/3 次）`;
         }
         return `排队 ${item.seq}`;
       default: return item.state;
@@ -1052,7 +1066,13 @@ export function ChatPage(): React.JSX.Element {
               )}
               <div className="flex w-full min-h-0 flex-1 flex-col">
                 {dwsEnabled && (
-                  <DwsWidgets snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} expandMode="popover" />
+                  <DwsWidgets
+                    snapshot={dwsWidgets}
+                    onAskAgent={askDwsAgent}
+                    onRefresh={refreshDwsWidgets}
+                    expandMode="popover"
+                    onOpenPanel={() => setActivePanel('dws')}
+                  />
                 )}
               </div>
             </div>
@@ -1225,7 +1245,12 @@ export function ChatPage(): React.JSX.Element {
               )}
               {/* 灵动岛：驻进会话头部尾部（与标题同层，不再是悬浮异物）；钉钉总开关关=隐藏 */}
               {dwsEnabled && (
-                <DynamicIsland snapshot={dwsWidgets} onAskAgent={askDwsAgent} onRefresh={refreshDwsWidgets} />
+                <DynamicIsland
+                  snapshot={dwsWidgets}
+                  onAskAgent={askDwsAgent}
+                  onRefresh={refreshDwsWidgets}
+                  onOpenPanel={() => setActivePanel('dws')}
+                />
               )}
             </header>
 

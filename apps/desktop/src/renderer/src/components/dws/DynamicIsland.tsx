@@ -5,9 +5,10 @@
  * 数据面与欢迎页组件板（DwsWidgets）完全复用。
  */
 import { useEffect, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown } from 'lucide-react';
+import { CalendarDays, ChevronDown, TriangleAlert } from 'lucide-react';
 import type { DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
+import { dwsConnectionBroken } from '../../lib/dwsState';
 import { DwsWidgets } from './DwsWidgets';
 
 function fmtCountdown(ms: number): string {
@@ -25,9 +26,10 @@ export interface DynamicIslandProps {
   snapshot: DwsWidgetsSnapshot | null;
   onAskAgent?: (prompt: string) => void;
   onRefresh?: () => void;
+  onOpenPanel?: () => void;
 }
 
-export function DynamicIsland({ snapshot, onAskAgent, onRefresh }: DynamicIslandProps): React.JSX.Element | null {
+export function DynamicIsland({ snapshot, onAskAgent, onRefresh, onOpenPanel }: DynamicIslandProps): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +57,36 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh }: DynamicIsland
     };
   }, [open]);
 
-  if (!snapshot || snapshot.state !== 'ready') return null;
+  if (!snapshot) return null;
+  if (snapshot.state !== 'ready') {
+    // 只有「本来能用、现在断了」（过期/授权失效）才亮警示：整颗消失会让用户
+    // 以为「今天真没事」。从没装/从没登录属于没配置，静默——否则常驻噪音。
+    if (!dwsConnectionBroken(snapshot)) return null;
+    const className =
+      'flex h-7 items-center gap-1.5 rounded-full bg-hover-soft px-2.5 text-11 text-warning';
+    return (
+      <div className="mr-3 flex shrink-0 items-center">
+        {/* 没有跳转目标就不要做成按钮——点了没反应的按钮比没有按钮更糟
+            （AskChip 死按钮是同一类问题） */}
+        {onOpenPanel ? (
+          <button
+            type="button"
+            title={snapshot.reason ?? '钉钉连接已失效'}
+            className={cn(className, 'transition-colors hover:text-primary')}
+            onClick={onOpenPanel}
+          >
+            <TriangleAlert size={12} className="shrink-0" />
+            钉钉未连接
+          </button>
+        ) : (
+          <span title={snapshot.reason ?? '钉钉连接已失效'} className={className}>
+            <TriangleAlert size={12} className="shrink-0" />
+            钉钉未连接
+          </span>
+        )}
+      </div>
+    );
+  }
   const s = snapshot;
   const nextEvent = s.calendar.find((e) => (e.startMs ?? Infinity) > now) ?? s.calendar[0];
   const todoCount = s.todos.length;
@@ -113,7 +144,7 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh }: DynamicIsland
 
       {open && (
         <div className="animate-float-in absolute top-full right-0 z-30 mt-1.5 w-[min(700px,calc(100vw-220px))] rounded-container border border-board bg-card p-4 shadow-sm print:hidden">
-          <DwsWidgets snapshot={s} onAskAgent={onAskAgent} onRefresh={onRefresh} />
+          <DwsWidgets snapshot={s} onAskAgent={onAskAgent} onRefresh={onRefresh} onOpenPanel={onOpenPanel} />
         </div>
       )}
     </div>

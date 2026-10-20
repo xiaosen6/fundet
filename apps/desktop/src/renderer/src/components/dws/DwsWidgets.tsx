@@ -19,11 +19,14 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
+  TriangleAlert,
+  Unplug,
   User,
   X,
 } from 'lucide-react';
 import type { DwsChatMessageView, DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
+import { dwsConnectionBroken, dwsDisabledTitle } from '../../lib/dwsState';
 
 function fmtTime(ms: number | null | undefined): string {
   if (!ms) return '';
@@ -68,14 +71,17 @@ function Reveal({ open, children }: { open: boolean; children: React.ReactNode }
   );
 }
 
-function AskChip({ label, onClick }: { label: string; onClick: () => void }): React.JSX.Element {
+/** 行内 AI 入口。没有 onAskAgent 时整颗不渲染——否则点了毫无反应
+ *  （设置页钉钉面板就曾经这样：卡片头的「交给智能体」正确隐藏了，行内 chip 没有） */
+function AskChip({ ctx, label, prompt }: { ctx: ListCtx; label: string; prompt: string }): React.JSX.Element | null {
+  if (!ctx.onAskAgent) return null;
   return (
     <button
       type="button"
       className="mt-1 flex h-6 items-center gap-1 rounded-full bg-chip px-2 text-11 text-secondary transition-colors hover:bg-hover hover:text-primary"
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        ctx.onAskAgent?.(prompt);
       }}
     >
       <Sparkles size={11} />
@@ -237,6 +243,26 @@ interface ListCtx {
   toggle: (key: string) => void;
   openPopover: (kind: CardKind, e: React.MouseEvent) => void;
   onAskAgent?: (prompt: string) => void;
+  /** 「还有 N 场/项/个…」点击展开全量（板面密度生效；null = 不支持展开）。
+   *  inline 模式列表就地长全；popover 模式交给详情浮层（那里本就全量可滚） */
+  showAll?: ((e: React.MouseEvent) => void) | null;
+}
+
+/** 「还有 N …」溢出行。可点时必须真的能展开——旧版是纯文本，
+ *  灵动岛（固定 sliced，全量列表只在欢迎页浮层里）第 4 条以后永远看不到 */
+function MoreRow({ ctx, remainder, unit }: { ctx: ListCtx; remainder: number; unit: string }): React.JSX.Element {
+  const text = `还有 ${remainder} ${unit}…`;
+  if (!ctx.showAll) return <p className="px-1 pt-1 text-11 text-muted select-none">{text}</p>;
+  return (
+    <button
+      type="button"
+      onClick={ctx.showAll}
+      className="mt-0.5 flex items-center gap-1 rounded-inner px-1 py-0.5 text-11 text-muted transition-colors hover:text-primary"
+    >
+      {text}
+      <ChevronRight size={11} className="shrink-0 rotate-90" />
+    </button>
+  );
 }
 
 function rowClick(ctx: ListCtx, kind: CardKind, key: string): (e: React.MouseEvent) => void {
@@ -328,14 +354,11 @@ function CalendarBody({
                     )}
                     {e.description && <p className="mt-1 text-12 leading-relaxed text-muted">{e.description}</p>}
                     <AskChip
+                      ctx={ctx}
                       label="准备这场"
-                      onClick={() =>
-                        ctx.onAskAgent?.(
-                          `帮我准备钉钉会议「${e.title}」${e.roomName ? `（会议室：${e.roomName}）` : ''}${
-                            e.startMs ? `，${fmtTime(e.startMs)} 开始` : ''
-                          }${e.attendees.length > 0 ? `，参会人：${e.attendees.join('、')}` : ''}。收集背景，给我议题和材料清单。`,
-                        )
-                      }
+                      prompt={`帮我准备钉钉会议「${e.title}」${e.roomName ? `（会议室：${e.roomName}）` : ''}${
+                        e.startMs ? `，${fmtTime(e.startMs)} 开始` : ''
+                      }${e.attendees.length > 0 ? `，参会人：${e.attendees.join('、')}` : ''}。收集背景，给我议题和材料清单。`}
                     />
                   </div>
                 </Reveal>
@@ -344,7 +367,7 @@ function CalendarBody({
           );
         })}
         {ctx.sliced && s.calendar.length > 3 && (
-          <p className="px-1 pt-1 text-11 text-muted">还有 {s.calendar.length - 3} 场…</p>
+          <MoreRow ctx={ctx} remainder={s.calendar.length - 3} unit="场" />
         )}
       </div>
     </>
@@ -376,12 +399,9 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     {a.createTimeMs && <p className="text-12 text-muted">发起于 {fmtAgo(a.createTimeMs)}</p>}
                     <AskChip
+                      ctx={ctx}
                       label="拉详情给意见"
-                      onClick={() =>
-                        ctx.onAskAgent?.(
-                          `拉取钉钉审批单「${a.title ?? a.id}」的详情，给我建议（同意/拒绝）和理由，先别提交。`,
-                        )
-                      }
+                      prompt={`拉取钉钉审批单「${a.title ?? a.id}」的详情，给我建议（同意/拒绝）和理由，先别提交。`}
                     />
                   </div>
                 </Reveal>
@@ -445,12 +465,9 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
                       {t.dueMs !== null ? ` · 截止 ${new Date(t.dueMs).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                     </p>
                     <AskChip
+                      ctx={ctx}
                       label="处理这条"
-                      onClick={() =>
-                        ctx.onAskAgent?.(
-                          `帮我处理这条钉钉待办：「${t.subject}」（优先级 ${t.priority}${t.dueMs !== null ? `，截止 ${new Date(t.dueMs).toLocaleString('zh-CN')}` : ''}）。判断需要做什么，能直接办的就办（用 dws），办不了给我行动建议。`,
-                        )
-                      }
+                      prompt={`帮我处理这条钉钉待办：「${t.subject}」（优先级 ${t.priority}${t.dueMs !== null ? `，截止 ${new Date(t.dueMs).toLocaleString('zh-CN')}` : ''}）。判断需要做什么，能直接办的就办（用 dws），办不了给我行动建议。`}
                     />
                   </div>
                 </Reveal>
@@ -459,7 +476,7 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
           );
         })}
         {ctx.sliced && s.todos.length > 3 && (
-          <p className="px-1 pt-1 text-11 text-muted">还有 {s.todos.length - 3} 项…</p>
+          <MoreRow ctx={ctx} remainder={s.todos.length - 3} unit="项" />
         )}
       </div>
     </>
@@ -499,12 +516,9 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     <UnreadDetail convId={c.id} />
                     <AskChip
+                      ctx={ctx}
                       label="总结这个会话"
-                      onClick={() =>
-                        ctx.onAskAgent?.(
-                          `总结钉钉会话「${c.title}」的最近消息（约 ${c.unread} 条未读），给我要点和需要我回应的事项。`,
-                        )
-                      }
+                      prompt={`总结钉钉会话「${c.title}」的最近消息（约 ${c.unread} 条未读），给我要点和需要我回应的事项。`}
                     />
                   </div>
                 </Reveal>
@@ -513,7 +527,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
           );
         })}
         {ctx.sliced && s.unread.length > 3 && (
-          <p className="px-1 pt-1 text-11 text-muted">还有 {s.unread.length - 3} 个会话…</p>
+          <MoreRow ctx={ctx} remainder={s.unread.length - 3} unit="个会话" />
         )}
       </div>
     </>
@@ -528,6 +542,44 @@ export interface DwsWidgetsProps {
   onRefresh?: () => void | Promise<void>;
   /** popover=主页欢迎页（板静态，点击弹浮层）；inline=灵动岛弹层（原地展开） */
   expandMode?: 'inline' | 'popover';
+  /** 「去钉钉工作台」：未装/未登录/过期时占位卡的入口。缺省（设置页自身）不渲染 */
+  onOpenPanel?: () => void;
+}
+
+/** 禁用态占位卡。此前对非 ready 一律 return null——整块凭空消失，
+ *  用户分不清「今天真没事」还是「钉钉断了」；工作台入口也随之无处可点。 */
+function DisabledCard({
+  snapshot,
+  onOpenPanel,
+}: {
+  snapshot: DwsWidgetsSnapshot;
+  onOpenPanel?: () => void;
+}): React.JSX.Element {
+  const broken = dwsConnectionBroken(snapshot);
+  const title = dwsDisabledTitle(snapshot);
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-container border border-board bg-card px-6 py-8 text-center select-none">
+      <span
+        className={cn(
+          'flex h-9 w-9 items-center justify-center rounded-full',
+          broken ? 'bg-hover-soft text-warning' : 'bg-chip text-muted',
+        )}
+      >
+        {broken ? <TriangleAlert size={16} strokeWidth={1.8} /> : <Unplug size={16} strokeWidth={1.8} />}
+      </span>
+      <p className="text-14 font-medium text-primary">{title}</p>
+      {snapshot.reason && <p className="max-w-[420px] text-12 leading-relaxed text-muted">{snapshot.reason}</p>}
+      {onOpenPanel && (
+        <button
+          type="button"
+          className="mt-1 h-8 rounded-full bg-accent px-3.5 text-12 font-medium text-accent-fg"
+          onClick={onOpenPanel}
+        >
+          去钉钉工作台
+        </button>
+      )}
+    </div>
+  );
 }
 
 const CARD_META: Record<CardKind, { title: string; Icon: typeof CalendarDays }> = {
@@ -537,8 +589,16 @@ const CARD_META: Record<CardKind, { title: string; Icon: typeof CalendarDays }> 
   unread: { title: '未读消息', Icon: MessageSquare },
 };
 
-export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inline' }: DwsWidgetsProps): React.JSX.Element | null {
+export function DwsWidgets({
+  snapshot,
+  onAskAgent,
+  onRefresh,
+  expandMode = 'inline',
+  onOpenPanel,
+}: DwsWidgetsProps): React.JSX.Element | null {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  /** 已点过「还有 N…」的卡片：该卡改渲染全量列表（列表区本就可滚动） */
+  const [showAllCards, setShowAllCards] = useState<ReadonlySet<CardKind>>(() => new Set());
   const [pop, setPop] = useState<{ kind: CardKind; top: number; left: number; width: number; height: number } | null>(null);
   /** 板级手动刷新中：图标转起来直到查询完成（点击无反馈是用户实报的「不管用」） */
   const [refreshing, setRefreshing] = useState(false);
@@ -553,15 +613,27 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
     return () => window.removeEventListener('keydown', onKey);
   }, [pop]);
 
-  if (!snapshot || snapshot.state !== 'ready') return null;
+  if (!snapshot) return null;
+  if (snapshot.state !== 'ready') return <DisabledCard snapshot={snapshot} onOpenPanel={onOpenPanel} />;
   const s = snapshot;
   const now = Date.now();
   const toggle = (key: string): void => setExpandedKey((k) => (k === key ? null : key));
+  const showAll = (kind: CardKind): void =>
+    setShowAllCards((prev) => new Set(prev).add(kind));
 
-  const boardCtx: ListCtx =
-    expandMode === 'popover'
-      ? { sliced: true, expandable: false, expandedKey: null, toggle, openPopover, onAskAgent }
-      : { sliced: true, expandable: true, expandedKey, toggle, openPopover, onAskAgent };
+  /** 板面 ctx 按卡片生成：每张卡的「展开全部」是各自的状态位。
+   *  popover 模式点「还有 N」= 打开该卡详情浮层（全量可滚，主页布局不动）；
+   *  inline（灵动岛）没有浮层，就地改渲染全量列表。 */
+  const boardCtxOf = (kind: CardKind): ListCtx => ({
+    sliced: !showAllCards.has(kind),
+    expandable: expandMode !== 'popover',
+    expandedKey: expandMode === 'popover' ? null : expandedKey,
+    toggle,
+    openPopover,
+    onAskAgent,
+    showAll:
+      expandMode === 'popover' ? (e: React.MouseEvent) => openPopover(kind, e) : () => showAll(kind),
+  });
   const detailCtx: ListCtx = { sliced: false, expandable: true, expandedKey, toggle, openPopover, onAskAgent };
 
   function openPopover(kind: CardKind, e: React.MouseEvent): void {
@@ -636,10 +708,10 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           onRefresh={onRefresh}
           index={0}
         >
-          <CalendarBody s={s} now={now} ctx={boardCtx} />
+          <CalendarBody s={s} now={now} ctx={boardCtxOf('calendar')} />
         </CardShell>
         <CardShell title="待我审批" Icon={Inbox} error={s.errors.approvals} onRefresh={onRefresh} index={1}>
-          <ApprovalsBody s={s} ctx={boardCtx} />
+          <ApprovalsBody s={s} ctx={boardCtxOf('approvals')} />
         </CardShell>
         <CardShell
           title="我的待办"
@@ -649,7 +721,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           index={2}
           onAsk={cardAsk.todos}
         >
-          <TodosBody s={s} now={now} ctx={boardCtx} />
+          <TodosBody s={s} now={now} ctx={boardCtxOf('todos')} />
         </CardShell>
         <CardShell
           title="未读消息"
@@ -659,7 +731,7 @@ export function DwsWidgets({ snapshot, onAskAgent, onRefresh, expandMode = 'inli
           index={3}
           onAsk={cardAsk.unread}
         >
-          <UnreadBody s={s} ctx={boardCtx} />
+          <UnreadBody s={s} ctx={boardCtxOf('unread')} />
         </CardShell>
         </div>
       </div>

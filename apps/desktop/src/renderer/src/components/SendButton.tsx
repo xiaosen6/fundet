@@ -14,16 +14,24 @@ interface SendButtonProps {
   onClick: () => void;
   /** true 时渲染流式 Stop 变体 */
   isStreaming?: boolean;
+  /** 悬浮文案（运行中的排队发送要说明「不是立刻发」，否则会被当成第二个停止键） */
+  title?: string;
 }
 
-export function SendButton({ disabled, onClick, isStreaming = false }: SendButtonProps): React.JSX.Element {
+export function SendButton({
+  disabled,
+  onClick,
+  isStreaming = false,
+  title,
+}: SendButtonProps): React.JSX.Element {
+  const label = title ?? (isStreaming ? '中断当前回合' : '发送');
   return (
     <button
       type="button"
       disabled={disabled && !isStreaming}
       onClick={onClick}
-      title={isStreaming ? '中断当前回合' : '发送'}
-      aria-label={isStreaming ? '中断当前回合' : '发送'}
+      title={label}
+      aria-label={label}
       className={cn(
         // transform 进过渡集：承载 active 按压缩放
         'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform]',

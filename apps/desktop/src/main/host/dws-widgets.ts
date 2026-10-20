@@ -201,7 +201,7 @@ const cache: {
   unread?: WidgetCacheEntry<UnreadParseResult>;
 } = {};
 
-let disabled: { reason: string } | null = null;
+let disabled: { reason: string; kind: NonNullable<DwsWidgetsSnapshot['disabledKind']> } | null = null;
 let lastCycleAt = 0;
 let busy = false;
 let timer: NodeJS.Timeout | null = null;
@@ -211,6 +211,7 @@ function snapshot(): DwsWidgetsSnapshot {
   if (disabled) {
     return {
       state: 'disabled',
+      disabledKind: disabled.kind,
       reason: disabled.reason,
       fetchedAt: lastCycleAt,
       calendar: [],
@@ -301,7 +302,7 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
   try {
     const dws = await resolveDws();
     if (!dws) {
-      disabled = { reason: '还没安装 dws（钉钉工作台面板可一键安装）' };
+      disabled = { kind: 'not-installed', reason: '还没安装 dws（钉钉工作台面板可一键安装）' };
       lastCycleAt = Date.now();
       push();
       return snapshot();
@@ -354,7 +355,7 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
     if (profile.code !== 0) {
       const msg = errOf(profile);
       if (AUTH_FAIL_RE.test(msg)) {
-        disabled = { reason: `钉钉登录态失效：${msg}（到钉钉工作台重新登录）` };
+        disabled = { kind: 'auth-failed', reason: `钉钉登录态失效：${msg}（到钉钉工作台重新登录）` };
       } else {
         disabled = null;
         const err = `钉钉连接失败：${msg}`;
@@ -369,7 +370,7 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
     }
     const profiles = parseProfileList(profile.stdout);
     if (profiles.length === 0) {
-      disabled = { reason: '还没登录钉钉（钉钉工作台面板点「开始登录」）' };
+      disabled = { kind: 'not-logged-in', reason: '还没登录钉钉（钉钉工作台面板点「开始登录」）' };
       lastCycleAt = Date.now();
       push();
       return snapshot();
@@ -378,7 +379,7 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
     // authCode.notFound（2026-10-20 实报，旧登录态服务端刷新通道已关闭）。此时
     // 直接给「重新登录」横幅，不让四卡各挂一条天书错误。
     if (!hasActiveLogin(profiles)) {
-      disabled = { reason: '钉钉登录态已过期（旧登录态服务端不再支持自动刷新）：钉钉工作台面板点「开始登录」重新授权一次即可' };
+      disabled = { kind: 'expired', reason: '钉钉登录态已过期（旧登录态服务端不再支持自动刷新）：钉钉工作台面板点「开始登录」重新授权一次即可' };
       lastCycleAt = Date.now();
       push();
       return snapshot();

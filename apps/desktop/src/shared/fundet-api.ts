@@ -226,6 +226,9 @@ export interface DwsUnreadConversationView {
 export interface DwsWidgetsSnapshot {
   /** disabled=未安装/未登录（reason 说明）；ready=数据面可用 */
   state: 'disabled' | 'ready';
+  /** disabled 的类别：UI 据此给不同入口——未装/未登录 → 去工作台；
+   *  失效/过期 → 灵动岛亮警示（原本能用、突然没了最容易被误读成「今天没事」） */
+  disabledKind?: 'not-installed' | 'not-logged-in' | 'expired' | 'auth-failed';
   reason?: string;
   fetchedAt: number;
   calendar: DwsCalendarEventView[];

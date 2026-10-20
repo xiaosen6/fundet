@@ -300,6 +300,9 @@ export function DwsPanel(): React.JSX.Element {
         {notice && !error && <p className="mt-3 text-12 text-secondary">{notice}</p>}
       </div>
 
+      {/* 未就绪时整块不挂：这里是工作台本体，上面四步引导已经把「为什么」说全了，
+          再摆一张「去钉钉工作台」占位卡纯属自指 */}
+      {widgets?.state === 'ready' && (
       <DwsWidgets
         snapshot={widgets}
         onRefresh={async () => {
@@ -319,6 +322,7 @@ export function DwsPanel(): React.JSX.Element {
           setNotice(`已刷新（${time}）：${parts.join(' · ')}${errs.length > 0 ? `；失败：${errs.join('/')}` : ''}`);
         }}
       />
+      )}
 
       <p className="text-12 text-muted">
         安全：dws 以你的 OAuth 身份调用钉钉开放平台（全链路可审计）；{brand.name}
