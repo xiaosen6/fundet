@@ -694,9 +694,11 @@ describe.skipIf(!piAvailable)('PiAgent integration (real pi binary + fake gatewa
     'forwards an image attachment through pi to the gateway (multimodal image)',
     { timeout: 60_000 },
     async () => {
-      // 合法 1x1 透明 PNG —— pi 不会因非法图片拒收;其 base64 应原样出现在网关请求体。
+      // 合法 1x1 灰度+alpha PNG。旧夹具 IDAT 截断且 CRC 错误，0.84.4 RPC 的透传
+      // 掩盖了它，0.87+ 解码时才暴露（上游 pi#10645 已定位并关闭）；换成逐块
+      // 校验过 CRC/zlib 的有效数据，避免把夹具损坏误判成运行时回归。
       const PNG_1x1_B64 =
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAbitOmMAAAAASUVORK5CYII=';
       const agent = new PiAgent(buildDeps());
       const workingDir = mkdtempSync(path.join(tmpdir(), 'pi-img-cwd-'));
       let handle: AgentSessionHandle | null = null;
@@ -738,7 +740,7 @@ describe.skipIf(!piAvailable)('PiAgent integration (real pi binary + fake gatewa
     { timeout: 60_000 },
     async () => {
       const pngBase64 =
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAbitOmMAAAAASUVORK5CYII=';
       const agent = new PiAgent(buildDeps());
       const workingDir = mkdtempSync(path.join(tmpdir(), 'pi-review-formats-'));
       const markdownPath = path.join(workingDir, 'launch.md');
