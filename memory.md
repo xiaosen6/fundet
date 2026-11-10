@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-11-10（**上游跟进完成**：Pi 1.5.1 门禁全绿并本地提交，dws 1.0.67 在当前「牛马动力智能」组织下五路查询全过；Cindy 7578 提交已完成标题分桶与同构候选初审；均未发新版）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
+> 最后更新：2026-11-10（**上游跟进完成**：Pi 1.5.1 门禁全绿，dws 1.0.67 五路查询全过；Cindy 7578 提交经标题分桶与同构候选 diff 复核，**当前无确认必须移植项**，未为追提交数硬搬代码）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
 > 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
@@ -777,3 +777,5 @@ pnpm -r --if-present run test
 > **在途事项（2026-11-10 八，Cindy 上游 7578 提交标题分桶 + 同构候选初审，dws 正确组织授权待完成）**：①**Cindy 初审**——同步点 `aca5fbdea`→`origin/main` 共 **7578** 提交；标题分桶 redline 3770 / relevant 1375 / other 2433，关键词候选 987（关键词只是初筛，不等于 P1）。逐个看 diff 后：`029a518fc1`（schema 披露指纹落盘）与 `962cd47d17`（call_tool 信封自愈）**不适用**——本仓 bridge 没有上游那套披露门/registry 型 CindyMcpGateway；`cbef399082`（Pi tokenSpeed 校准）**当前不直接适用**——本仓 RunningStatus 使用 `generationDurationMs/outputTokens`，未接上游 TokenSpeedMeter；`1ab32368d3` 是 Cindy 多项目侧栏架构，与本仓刚完成的 Sidebar memo 不同构；`d3de89b059` 是 Cindy 插件搜索 UI，非本仓技能搜索。**留作后续候选而非立即移植**：`c34ef39760`（技能发现源去重，出现重复技能时查）、`8aba192d81`（Windows 盘根链接解析，路径 chip 同类报障时查）、`0870dd086`（完整的生成速度校准体系，若要升级速度展示再专项评估）。本次是标题分桶+同构候选初审，**不宣称 7578 个提交已逐条代码裁决**。②**dws 1.0.67** 已装，五路查询中的 todo/oa 过；profile/calendar/unread 初次失败，经外部 WMI 验证再次确认双身份问题（Claude 进程树=代理身份，个人 token 过期）。第一次外部授权误选「牛马动力智能」，未用于验收；随后指定正确 corpId 并改设备码流，等待用户完成山东未来互联授权后复测。
 
 > **在途事项（2026-11-10 九，dws 1.0.67 升级验收完成）**：官方 zip + checksums.txt SHA256 全等（3cb83986…184e），安装前备份 `~/.local/bin/dws-1.0.63-backup.exe`，当前官方落点 `dws.exe version=v1.0.67`（build 2026-11-04/commit 63a7c490）。**用户明确目前只有「牛马动力智能」这个组织**，故最终按该组织验收，不再要求山东未来互联；设备码 OAuth 返回 token_valid + refresh_token_valid。通过 WMI 从 Claude 进程链外执行五路查询，**profile/calendar/todo/oa/unread 全 PASS**（不是只看子进程代理身份）。此前失败反复来自：个人 token 过期、Claude 进程树双身份、初次授权组织不符；以后验收仍必须外部 WMI + 看实际 corp_name，不能仅看 profile active。**未做**：dws 技能包未重装（不需要为本查询面升级）；Gitee dws 镜像未手动同步，定时任务仍按 11-16 09:30 计划；未发新版应用。
+
+> **在途事项（2026-11-10 十，Cindy 小候选复核完成：当前无必移植项）**：继续对初审留下的三个小候选做代码级对照：①`c34ef39760` 技能发现去重——上游针对 managed packages + 文件别名重叠；本仓 `listAgentSkills` 仅 `scanPiCustomizations` 文件系统扫描，无该数据链，**不适用**。②`8aba192d81` Windows 盘根目录链接 `/E:/`——本仓 artifactPathChips 只接受带扩展名的产物文件，目录链接无入口，**不适用**。③`d3de89b059` 中文搜索打断——上游搜索同步路由状态，本仓 SkillsPanel 是受控本地 query + 300ms 防抖，输入框不卸载、不跳路由，**不复现该机制，不搬**。结合此前 029a/962/cbef 等 diff 复核，Cindy 当前**没有确认必须移植项**；速度展示如将来再改，可单独立项评估 `0870dd086` 的完整体系，不把大补丁当 hotfix。
