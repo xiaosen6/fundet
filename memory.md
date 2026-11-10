@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-11-10（**0.3.52 已发**：Pi 1.5.0 + C+D 体验/性能优化，三资产齐、树外冒烟 10/10、双通道验证通过，详见 §3.5 0.3.52 行）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
+> 最后更新：2026-11-10（**0.3.52 已发；后续上游跟进中**：Pi 1.5.1 门禁全绿待本地提交，dws 1.0.67 已安装，正确组织的重新授权与五路查询验收进行中；Cindy 7578 提交完成标题分桶与候选初审）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
 > 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
@@ -32,7 +32,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 **Fundet** = 本地优先桌面 Agent：聊天/Agent + 技能 + BYOK + 浏览器自动化 + 电脑操作 + IM 机器人。模型请求走用户自己的 Key，不经过任何厂商云。
 
 - Electron 37 + electron-vite + React 19 + Tailwind 4。
-- Agent 底座只有 **Pi v1.5.0**（`earendil-works/pi`，bun 单二进制，`--mode rpc`；2026-11-10 从 0.84.4 升级，门禁见尾部在途事项）。
+- Agent 底座只有 **Pi v1.5.1**（`earendil-works/pi`，bun 单二进制，`--mode rpc`；2026-11-10 从 1.5.0 升级，门禁见尾部在途事项）。
 - UI 视觉对齐 Cindy（0.3.0 起亮色=Cindy Light 原值冷灰白、暗色=CINDY Dark 原值；新会话空消息态=Cindy 首页布局），品牌是小宇航员圆形 Logo + FunDet 斜体红字标，文案中文。自我介绍：**「你是 Fundet，一个运行在本地的 AI 助手」**。
 - **不要做成 Cindy fork。** 不搬：账号/OAuth、Ghost 插件、Office、设备互联、IM 云、语音、Claude Code/Codex harness。（原「不搬」清单里的定时任务、SkillHub 市场已在 0.3.0 按用户要求实现——自动化=宿主层调度非插件沙箱，技能集市=接 skillhub.cn 公共市场。）
 
@@ -348,7 +348,7 @@ Fundet/
 | mac 未签名 | electron-updater 只检测不安装；用户 xattr -cr 或跳 Release 下载 |
 | Windows 图标缓存 | 用户报「图标还是旧的」先答 `ie4uinit.exe -show` + 重启 explorer |
 
-环境：pi pin 1.5.0（版本只写在 `tools/pi/latest.json`，升级只改这一个文件；0.83.0 曾因智谱新模型不识别导致视觉发图 1210，见 §5.5）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
+环境：pi pin 1.5.1（版本只写在 `tools/pi/latest.json`，升级只改这一个文件；0.83.0 曾因智谱新模型不识别导致视觉发图 1210，见 §5.5）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
 
 ### 5.5 v0.2.10 发版实录：视觉发图 1210 三层根因（2026-09-03，commit 0d98b3b/4a434c9/0f9d804/2524b49）
 
@@ -562,7 +562,7 @@ pnpm -r --if-present run test
 | **Cindy**（github.com/makecindy/cindy，XD Inc.，Apache-2.0） | 桌面 Agent 产品。UI 视觉、交互形态与多功能的对标/移植来源 | **GitLab 仓不含 Cindy 源码**（zip 打包时排除了 `cindy/`）。完整只读克隆在初始开发机 `D:\AI\Fundet\cindy`（blobless，08-29 @ a971f9e）；内网跟进方式见 §9.5。已移植：浏览器自动化（browser-control-runtime 整包 + browser-mcp 门面）、电脑操作形态、用量历史页、登录态拷贝、视觉勾选、错误重发。**禁止修改/fork 进本仓**；不搬 Ghost/账号云/Office/官方 IM Hook |
 | **openclaw**（github.com/openclaw/openclaw，MIT） | browser-runtime 的更上游 vendored 浏览器内核 | `packages/browser-runtime/upstream/browser-runtime.lock.json` 钉 commit |
 | **trycua/cua**（MIT） | cua-driver Rust 二进制（电脑操作引擎，stdio MCP） | `tools/cua-driver/update.mjs` 现下；注意其删 release 留 tag 的前科 |
-| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 1.5.0；AVX2 硬要求 |
+| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 1.5.1；AVX2 硬要求 |
 | **Tencent openclaw-weixin**（MIT） | 微信 iLink 协议工具 | `apps/desktop/src/main/im/wechat-ilink/` |
 | **Auriti-Labs/geo-optimizer-skill**（MIT） | GEO 技能封装的 CLI 上游 | 不 vendor，运行时 `uvx` |
 
@@ -771,3 +771,5 @@ pnpm -r --if-present run test
 > **在途事项（2026-11-10 五，CC-Buddy 已同步优化批并修正一次快照路径错误）**：C+D 优化主仓 commit `904d0f1` 已同步 Gitee；首次同步误在 `apps/desktop` 子目录执行 `git archive`，产生 `d6b4ab9` 错误根目录结构，随后用 **`git -C D:/Go/fundet-buddy archive HEAD`** 全量重建并追加修正 commit `3be3bb7`（普通 push，未改历史）。最终验证：Gitee 与主仓 `git ls-files` 清单一致，除 Gitee 定制 README 外 `diff -qr` 内容零差异。**后续快照命令必须显式 `git -C <主仓根> archive`，不能依赖 shell cwd**。Gitee 当前最新 `3be3bb7`；GitHub 主仓仍待后续推送/发版决策。
 
 > **在途事项（2026-11-10 六，0.3.52 已发）**：用户明确「推，发版」后完成全链：GitHub main 推送（绕过失效的本地 7897 代理）→ 全仓 typecheck / desktop 531 / agent-core 904 / browser-runtime 48 / browser-mcp 92 / shared 48 / IPC 153:0 → 版本 0.3.52 + tag `8a26124` 推送 → build+dist:win 一次成功 → 树外隔离冒烟 10/10（新增随包 `pi.exe --version=1.5.0` 实证）→ draft release + detached 带日志上传三资产 → 发布 → latest.yml 直连重试 200 / gh-proxy 200 / exe Range 206 / sha512 全等。安装包 `D:\Fundet-Setup-0.3.52-x64.exe`，Release：https://github.com/xiaosen6/fundet/releases/tag/v0.3.52。后续 CC-Buddy 仍按完整项目树同步，使用 `git -C` 固定主仓根目录，保留其定制详细 README。
+
+> **在途事项（2026-11-10 七，Pi 1.5.1 跟版门禁全绿，本地提交未发版）**：在上版 1.5.0 之后按上游例行跟进升到 1.5.1。win zip 61,939,366B，sha256=ee0c0d97…18e2810c 与 release API 全等；gh-proxy/update.mjs 再次断流后，用 curl 重试下载 + loopback 喂官方 update.mjs（`install-local.mjs` 已改成版本参数化），实际 `pi.exe --version=1.5.1`。**重点复验**：图片附件、review 图片、GLM 未设档 `reasoning_effort` 回落、host-managed offline grep/find（1.5.1 的 `GrepOperations.readFile` 行为变化）均过；agent-core **904/904**、desktop **531/531**、browser-runtime 48、browser-mcp 92、shared 48；全仓 typecheck ✓、IPC **153/0**。上游还带来 OpenAI 兼容端点空 tools 400、RPC 关闭清理、steering 图片排队、MCP `$defs/$ref`、thinking 恢复等修复；Anthropic message threads 默认仅官方 api.anthropic.com，集成假网关与 BYOM 路由回归未受影响。**未推未发**；macOS/Linux 仍只更新 digest，未实机验证。
