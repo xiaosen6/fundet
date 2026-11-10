@@ -14,6 +14,13 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 
 const FADE_MS = 400;
 
+/** 引擎事件里的状态名保持英文契约不变，只在展示层中文化。 */
+const STATUS_LABELS: Record<string, string> = {
+  'Working…': '正在处理…',
+  Done: '已完成',
+  'Compacting context…': '正在压缩上下文…',
+};
+
 interface RunningStatusProps {
   visible: boolean;
   status: string;
@@ -147,7 +154,7 @@ export function RunningStatus({
         ) : (
           <Sparkles size={14} className="shrink-0 -translate-y-px" />
         )}
-        <span className="truncate text-13 font-medium">{status || 'Working…'}</span>
+        <span className="truncate text-13 font-medium">{STATUS_LABELS[status] ?? (status || '正在处理…')}</span>
       </div>
       <div
         className="flex min-w-0 items-center justify-self-end gap-[6px]"

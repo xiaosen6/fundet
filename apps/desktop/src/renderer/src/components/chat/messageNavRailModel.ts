@@ -139,6 +139,18 @@ export function deriveNavRailEntries(items: readonly DisplayItem[]): NavRailEntr
   return entries;
 }
 
+/** 条目 → 虚拟行下标。用一次 Map 建索引，避免逐条 find 的 O(n²)，
+ *  也避免双指针在中间条目缺失后把后续目标一并误判为缺失。
+ *  独立成纯函数让组件可以把「历史预览派生」与「虚拟行变化」分开 memo：
+ *  32ms 合帧只换 rows 时，不必重算全部历史提问和回答摘要。 */
+export function deriveNavRailRowIndexes(
+  entries: readonly NavRailEntry[],
+  rows: ReadonlyArray<{ id: string }>,
+): number[] {
+  const indexById = new Map(rows.map((row, index) => [row.id, index]));
+  return entries.map((entry) => indexById.get(entry.id) ?? -1);
+}
+
 /**
  * 提问（可见正文）→ 单行预览。优先取引用块（`> ` 前缀行）之外用户自己的话；
  * 全引用消息退回引用文字本身（去引用前缀）。

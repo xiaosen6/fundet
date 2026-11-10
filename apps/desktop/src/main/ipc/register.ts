@@ -147,6 +147,7 @@ import {
 import type { AutomationInput } from '../../shared/automations.ts';
 import { probeMcpServer } from '../host/mcp-bridge.js';
 import { getPiVersionInfo } from '../host/pi-version.js';
+import { autoSessionTitle } from '../host/session-title.ts';
 import { COMPLETION_NOTIFY_SETTING, notifyTurnFinished } from '../host/completion-notify.js';
 import {
   createKnowledgeBase,
@@ -643,7 +644,7 @@ function autoTitleFromFirstMessage(sessionId: string, text: string): void {  try
       .where(eq(sessions.id, sessionId))
       .get();
     if (!row || !PLACEHOLDER_TITLES.has(row.title)) return;
-    const title = text.replace(/\s+/g, ' ').trim().slice(0, 20);
+    const title = autoSessionTitle(text);
     if (!title) return;
     getDb().update(sessions).set({ title, updatedAt: Date.now() }).where(eq(sessions.id, sessionId)).run();
   } catch (err) {

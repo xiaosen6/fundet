@@ -875,6 +875,28 @@ export function ChatPage(): React.JSX.Element {
     if (activeId) await abortSession(activeId);
   }, [activeId]);
 
+  // Sidebar memo 的前提是这些回调不随消息帧换引用；处理逻辑本身不变。
+  const selectSidebarSession = useCallback((id: string): void => {
+    setActivePanel(null);
+    setActiveId(id);
+  }, []);
+  const createSidebarSession = useCallback((): void => {
+    setActivePanel(null);
+    void createSession();
+  }, [createSession]);
+  const deleteSidebarSession = useCallback((id: string): void => {
+    void deleteSession(id);
+  }, []);
+  const renameSidebarSession = useCallback(async (id: string, title: string): Promise<void> => {
+    try {
+      await renameSession(id, title);
+    } catch (err) {
+      setNotice(`重命名失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  const closeCanvas = useCallback((): void => setCanvasOpen(false), []);
+
   // ---------- composer chips ----------
 
   const selectModel = useCallback(
@@ -954,22 +976,10 @@ export function ChatPage(): React.JSX.Element {
         sessions={sessions}
         activeId={activeId}
         runningIds={runningIds}
-        onSelect={(id) => {
-          setActivePanel(null);
-          setActiveId(id);
-        }}
-        onCreate={() => {
-          setActivePanel(null);
-          void createSession();
-        }}
-        onDelete={(id) => void deleteSession(id)}
-        onRename={async (id, title) => {
-          try {
-            await renameSession(id, title);
-          } catch (err) {
-            setNotice(`重命名失败：${err instanceof Error ? err.message : String(err)}`);
-          }
-        }}
+        onSelect={selectSidebarSession}
+        onCreate={createSidebarSession}
+        onDelete={deleteSidebarSession}
+        onRename={renameSidebarSession}
         showNewHint={sessions.length === 0 && !activeId}
         width={sidebarWidth}
         onResizeStart={startSidebarResize}
@@ -1518,7 +1528,7 @@ export function ChatPage(): React.JSX.Element {
                 artifacts={artifacts}
                 activePath={canvasPath}
                 onSelect={setCanvasPath}
-                onClose={() => setCanvasOpen(false)}
+                onClose={closeCanvas}
                 turnActive={slice.isRunning}
               />
             )}

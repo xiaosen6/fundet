@@ -49,6 +49,7 @@ import { editSubmitSettles, errorRetriable } from '../lib/sessionEditState';
 import {
   NAV_RAIL_JUMP_TOP_OFFSET_PX,
   deriveNavRailEntries,
+  deriveNavRailRowIndexes,
   promptPreviewLine,
 } from './chat/messageNavRailModel';
 
@@ -791,18 +792,12 @@ export function MessageStream({
   // 条目覆盖全量已加载 items（导航条要给整段历史画刻度）；目标可能在虚拟渲染
   // 窗口外，跳转走下面的两段式 layout effect：先 scrollToIndex 扩窗，下一轮再
   // 按 Cindy 落点（提问顶边停在容器顶下方 12px）平滑精滚。
-  const navRail = useMemo(() => {
-    const entries = deriveNavRailEntries(slice.items);
-    // 条目 → 虚拟行下标（两者同为文档序，双指针一次对齐）
-    const rowIndexes: number[] = [];
-    let r = 0;
-    for (const e of entries) {
-      while (r < rows.length && rows[r]!.id !== e.id) r++;
-      rowIndexes.push(r < rows.length ? r : -1);
-    }
-    return { entries, rowIndexes };
-  }, [slice.items, rows]);
-  const navRailEntries = navRail.entries;
+  const navRailEntries = useMemo(() => deriveNavRailEntries(slice.items), [slice.items]);
+  // 虚拟 rows 变化只重排下标；不重跑历史提问/回答摘要的 Markdown 清洗。
+  const navRailRowIndexes = useMemo(
+    () => deriveNavRailRowIndexes(navRailEntries, rows),
+    [navRailEntries, rows],
+  );
 
   // 入口去重：导航条完整覆盖导航（出场且刻度未截断）时抑制「跳到上一条提问」
   // chip —— 同一个导航任务只保留一套入口；导航条缺席或截断了更早刻度时 chip
@@ -812,7 +807,6 @@ export function MessageStream({
   // 条目相对虚拟渲染窗口的方位：TanStack 是居中窗口（Cindy 是「锚点→末尾」
   // 后缀切片，未挂载必在视口上方），未挂载可能在视口下方 —— 喂给 rail 的 top
   // 序列必须单调，下方的未挂载条目由 rail 记 +∞。
-  const navRailRowIndexes = navRail.rowIndexes;
   const getNavRailEntrySide = useCallback(
     (entryIndex: number): 'above' | 'below' | null => {
       const rowIndex = navRailRowIndexes[entryIndex];

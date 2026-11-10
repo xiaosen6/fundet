@@ -17,6 +17,7 @@ import {
   NAV_RAIL_TICK_MIN_PITCH_PX,
   NAV_RAIL_TICK_PITCH_PX,
   deriveNavRailEntries,
+  deriveNavRailRowIndexes,
   hasNavRailRoom,
   normalizeExcerpt,
   pickActiveNavId,
@@ -79,6 +80,13 @@ test('deriveNavRailEntries：只收真实用户提问，跳过 assistant / think
 
 test('deriveNavRailEntries：空输入返回空数组', () => {
   assert.deepEqual(deriveNavRailEntries([]), []);
+});
+
+test('deriveNavRailRowIndexes：id 索引对齐虚拟行，缺失目标记 -1', () => {
+  const entries = deriveNavRailEntries([user('u1', '一'), user('u2', '二'), user('u3', '三')]);
+  const rows = [{ id: 'u1' }, { id: 'a1' }, { id: 'u3' }];
+  assert.deepEqual(deriveNavRailRowIndexes(entries, rows), [0, -1, 2]);
+  assert.deepEqual(deriveNavRailRowIndexes(entries, []), [-1, -1, -1]);
 });
 
 test('deriveNavRailEntries：无文本也无附件的 user 消息不产生刻度', () => {

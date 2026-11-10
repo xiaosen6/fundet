@@ -129,8 +129,8 @@ export function DwsPanel(): React.JSX.Element {
         <div>
           <h2 className="text-16 leading-[1.2] font-medium text-primary">钉钉工作台</h2>
           <p className="mt-1 text-13 text-secondary">
-            装上钉钉官方 CLI（dws）后，{brand.name} 能用<strong>你本人的钉钉身份</strong>替你干活：订会议室、请假/外出、查通讯录、发消息、写文档、待办、审批……
-            都在这台电脑上跑，凭证不出本机。和「IM 机器人」互补：那边是钉钉里指挥 {brand.name}，这边是 {brand.name} 替你操作钉钉。
+            装上钉钉官方 CLI（dws）后，{brand.name} 可以用<strong>你本人的钉钉身份</strong>查日程、待办、审批和通讯录，并在你确认后处理写操作。命令都在本机执行，凭证不出本机。
+            与「IM 机器人」的区别：那边是在钉钉里指挥 {brand.name}，这边是 {brand.name} 替你操作钉钉。
           </p>
         </div>
         <button

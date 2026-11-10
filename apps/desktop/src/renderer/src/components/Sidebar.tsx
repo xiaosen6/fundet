@@ -12,7 +12,7 @@
  * - 底部：设置入口做成「用户胶囊」同款（icon 圆 + 文字的 pill 卡，对齐 Cindy
  *   UserInfoSection 的 Not-signed-in 胶囊位）。
  */
-import { Fragment, forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, forwardRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BookOpen, Bot, Brain, Briefcase, CalendarClock, ChevronRight, CirclePlus, MessageSquare, Pencil, Pin, PinOff, Search, Trash2, UserRound, X, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { SessionListItem, SessionSearchHit } from '../../../shared/fundet-api.js';
@@ -332,7 +332,7 @@ const SessionRow = forwardRef<HTMLDivElement, SessionRowProps>(function SessionR
   );
 });
 
-export function Sidebar({
+function SidebarImpl({
   sessions,
   activeId,
   runningIds,
@@ -778,3 +778,7 @@ export function Sidebar({
     </aside>
   );
 }
+
+/** 流式期间会话列表 / runningIds / 回调引用都稳定时，整块侧栏无需随消息帧
+ *  重渲染。真正的列表、运行态、关注态、面板切换仍会按 props 正常更新。 */
+export const Sidebar = memo(SidebarImpl);
