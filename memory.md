@@ -1,6 +1,6 @@
 # Fundet 项目记忆（memory.md）
 
-> 最后更新：2026-10-20（**0.3.51 已发**：UI/交互走查 A+B 两组 12 条修复，详见 §3.5 0.3.51 行）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
+> 最后更新：2026-11-10（**Pi 0.84.4→1.5.0 跟版门禁全绿，本地已提交待用户实测，未发版**：上游 #10645 已闭环为损坏 PNG 夹具；两条图片门禁与 GLM 档位回归均过。线上有效最新 = 0.3.51）。给任何接手的人/AI：**先通读本文再动手**——版本历史（§3.5）按时间记录每个版本的决策与教训，尾部「在途事项」段记录最新状态；再读 README.md（用户向）。
 >
 > 仓库路径：工作副本 `D:\Go\fundet-buddy`。**主远端 GitHub `xiaosen6/fundet`（remote 名 `github`，2026-09-16 起单线）；GitLab remote `origin`（172.16.56.11）已弃用但保留**——推送一律 `git push github`，别推 origin（会静默失败或断连）。**活跃分支 `main`**；`master` 是收编的落后占位历史，不要在上面开发。
 >
@@ -32,7 +32,7 @@ WSL 里可以改代码、跑 `pnpm --filter fundet-desktop test` / `typecheck`�
 **Fundet** = 本地优先桌面 Agent：聊天/Agent + 技能 + BYOK + 浏览器自动化 + 电脑操作 + IM 机器人。模型请求走用户自己的 Key，不经过任何厂商云。
 
 - Electron 37 + electron-vite + React 19 + Tailwind 4。
-- Agent 底座只有 **Pi v0.84.4**（`earendil-works/pi`，bun 单二进制，`--mode rpc`）。
+- Agent 底座只有 **Pi v1.5.0**（`earendil-works/pi`，bun 单二进制，`--mode rpc`；2026-11-10 从 0.84.4 升级，门禁见尾部在途事项）。
 - UI 视觉对齐 Cindy（0.3.0 起亮色=Cindy Light 原值冷灰白、暗色=CINDY Dark 原值；新会话空消息态=Cindy 首页布局），品牌是小宇航员圆形 Logo + FunDet 斜体红字标，文案中文。自我介绍：**「你是 Fundet，一个运行在本地的 AI 助手」**。
 - **不要做成 Cindy fork。** 不搬：账号/OAuth、Ghost 插件、Office、设备互联、IM 云、语音、Claude Code/Codex harness。（原「不搬」清单里的定时任务、SkillHub 市场已在 0.3.0 按用户要求实现——自动化=宿主层调度非插件沙箱，技能集市=接 skillhub.cn 公共市场。）
 
@@ -347,7 +347,7 @@ Fundet/
 | mac 未签名 | electron-updater 只检测不安装；用户 xattr -cr 或跳 Release 下载 |
 | Windows 图标缓存 | 用户报「图标还是旧的」先答 `ie4uinit.exe -show` + 重启 explorer |
 
-环境：pi pin 0.84.4（版本只写在 `tools/pi/latest.json`，升级只改这一个文件；0.83.0 曾因智谱新模型不识别导致视觉发图 1210，见 §5.5）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
+环境：pi pin 1.5.0（版本只写在 `tools/pi/latest.json`，升级只改这一个文件；0.83.0 曾因智谱新模型不识别导致视觉发图 1210，见 §5.5）；userData `%APPDATA%\Fundet`；GitHub 资产下载优先 gh-proxy.com 镜像（直连常断，实测 ~9MB/s）。
 
 ### 5.5 v0.2.10 发版实录：视觉发图 1210 三层根因（2026-09-03，commit 0d98b3b/4a434c9/0f9d804/2524b49）
 
@@ -561,7 +561,7 @@ pnpm -r --if-present run test
 | **Cindy**（github.com/makecindy/cindy，XD Inc.，Apache-2.0） | 桌面 Agent 产品。UI 视觉、交互形态与多功能的对标/移植来源 | **GitLab 仓不含 Cindy 源码**（zip 打包时排除了 `cindy/`）。完整只读克隆在初始开发机 `D:\AI\Fundet\cindy`（blobless，08-29 @ a971f9e）；内网跟进方式见 §9.5。已移植：浏览器自动化（browser-control-runtime 整包 + browser-mcp 门面）、电脑操作形态、用量历史页、登录态拷贝、视觉勾选、错误重发。**禁止修改/fork 进本仓**；不搬 Ghost/账号云/Office/官方 IM Hook |
 | **openclaw**（github.com/openclaw/openclaw，MIT） | browser-runtime 的更上游 vendored 浏览器内核 | `packages/browser-runtime/upstream/browser-runtime.lock.json` 钉 commit |
 | **trycua/cua**（MIT） | cua-driver Rust 二进制（电脑操作引擎，stdio MCP） | `tools/cua-driver/update.mjs` 现下；注意其删 release 留 tag 的前科 |
-| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 0.84.4；AVX2 硬要求 |
+| **earendil-works/pi** | Agent 底座（bun 单二进制，`--mode rpc`） | `tools/pi/update.mjs` + pin 1.5.0；AVX2 硬要求 |
 | **Tencent openclaw-weixin**（MIT） | 微信 iLink 协议工具 | `apps/desktop/src/main/im/wechat-ilink/` |
 | **Auriti-Labs/geo-optimizer-skill**（MIT） | GEO 技能封装的 CLI 上游 | 不 vendor，运行时 `uvx` |
 
@@ -758,3 +758,5 @@ pnpm -r --if-present run test
 > **在途事项（2026-10-22，GitLab 快照同步 v0.3.51）**：用户令「SSH 克隆再提交项目，不要提交 memory.md/AGENTS.md，不要透露目前的方案，只提交代码，README 也要很简洁」。流程：SSH 克隆到 `C:\temp\fundet-gitlab-snapshot` → checkout main（旧快照 56eef2d）→ `git archive main` 从工作仓导出（排除 memory.md/AGENTS.md/C/）→ 覆盖解包 → README 换极简版（一句话介绍+环境+启动+许可，按用户点「README 再精简」）→ 普通 commit（a106030，**非 force push**——叠在旧快照上，0.3.46→0.3.51 可见 diff；提交信息按用户选择去掉「开发历史见 GitHub」提及）→ push 成功（56eef2d..a106030）。**本次顺带清掉 `C/temp/button-test-v2/` 222MB 误提交垃圾**（119f716 带入，净删 5137 文件；**注意：GitHub 主仓的 git 历史里这批垃圾还在**，要清需 force push 重写历史，会影响 tag——未动，用户决定）。快照安全扫描：无 token/内部 IP/个人路径（D:\Go、C:\Users\16086）命中；两文件检索 0 命中。GitLab 分支现状：main=a106030（最新快照），master=0e29060 初始存根未动（默认分支仍是 master，GitLab 网页首页显示的是 master 的模板 README——要不要把 main 合过去或切默认分支，待用户定）。
 
 > **在途事项（2026-10-22 二，C/ 垃圾目录从 git 历史清除 + GitLab 快照重建）**：①**`C/temp/button-test-v2/` 222MB 误提交垃圾从 git 历史全程清除**——119f716（10-04 权限切换修复提交）误带入，5137 文件（一个测试残留的 Electron user-data，含整套随包 git runtime）。处置：先 `git bundle create` 全量备份到 `C:\temp\fundet-pre-purge-20261022.bundle`（97M），再 `git filter-repo --path C/ --invert-paths --force`（anaconda python 装的 git-filter-repo 2.47），`.git` 134M→38M，磁盘残留目录删除；main force push（2203231→e759ef8），74 个 tag 全量重写 force push（v0.3.34 起 17 个含垃圾的 tag SHA 变了——**Release 资产全在**，gh api 复核 0.3.51/0.3.46 三资产齐、非 draft；GitHub 上 C/ 路径 404 实证消失）。**记档教训：commit 前 `git status` 看到非预期大目录必须拦下**——这次是「修 UI 时 C:\temp 下的测试目录被 add 全量」。②GitLab 快照按用户拍板重建为**孤儿提交**（f874941）——在上次基础上再排除 `packages/browser-runtime/upstream/` 的 4 个文档（BUILD-PLAN/MAINTAINING/STATUS/shim-spec，含 vendor 关系与同步管线描述），force push main。GitLab 现状：main=f874941（v0.3.51 快照，无 memory/AGENTS/C/垃圾/无 upstream 维护文档），master=0e29060 存根。filter-repo 会把 `origin` remote 删掉（GitLab origin 反正已弃用），github remote 保留。
+
+> **在途事项（2026-11-10，Pi 0.84.4→1.5.0 跟版门禁全绿，本地提交待用户实测，未发版）**：**①上游 #10645 正式闭环**——维护者 10-28 关闭 issue，定位不是 Pi 通用图片回归，而是我们集成测试的 1×1 gray+alpha PNG **IDAT 截断 + CRC 错误**；0.84.4 RPC 透传掩盖，0.87+ 解码后 omission。已用独立脚本生成并逐块验证合法 PNG（68B、gray+alpha、CRC/zlib 全有效），替换 `pi-agent.integration.test.ts` 两处夹具（`e18afd5`）；当前 0.84.4 与 1.5.0 各跑一次全量 agent-core 均 **904/904**。**②1.5.0 跟版**——`tools/pi/latest.json` 六平台 URL/digest/size 全更新（win archive 61,890,147B，sha256=12d58a70…0b71af3，与 release API 全等），win32 runtime 实际 `pi.exe --version`=1.5.0。**下载坑与可复用解法**：gh-proxy 两次在 1.7MB 断流、直连超时，curl `-C -` 后台续传最终已下完；后续别再用 update.mjs 重下 59MB，把已校验归档通过**仅 loopback 的临时 HTTP 服务**喂给官方 update.mjs（脚本 `C:\temp\pi-150-gate-tools\install-local.mjs`），官方脚本仍负责 digest 校验/解压/promote/六平台 pin。**③验证**——关键三门（图片附件/review 图片/GLM 未显式档 `reasoning_effort` 回落）全过；agent-core 50 文件 904 过；desktop **525**/525、browser-runtime 48（1 skip）、browser-mcp 92、shared 48；全仓 typecheck ✓、IPC **153/0**。1.5.0 的 pi-schema 工具参数校验、模型目录与 thinking 行为变更由上述真 RPC 集成套件覆盖，未发现回归。**④当前状态**——本地 `e18afd5`（夹具）+ 本次 pin/记档提交，未推未发；win32-x64 实跑，**macOS/Linux 仅 pin digest 未实机验证**。补做隔离 userData 的 dev 启动检查：主窗与 Fundet Pet 均创建、`window.fundet` 可用、宿主 `getPiVersionInfo().bundled='1.5.0'`、页面无 Error；检测时上游已出 v1.5.1（本批不追，留下次例行跟版）。**待用户实测**：dev 里新会话发一张真实截图并让模型描述、纯文本多轮、glm-5.3 未设档会话、一次工具写文件/命令审批；没问题再说「发」才随下版应用发布。
