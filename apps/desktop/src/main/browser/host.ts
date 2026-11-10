@@ -33,6 +33,8 @@ export function buildManagedConfig(): BrowserRuntimeConfig {
       enabled: true,
       defaultProfile: MANAGED_PROFILE,
       headless: false, // 有头：用户看得到、能登录
+      // 正常关闭后由 Chrome 自己恢复上次会话；不改变固定 Fundet profile/目录。
+      extraArgs: ['--restore-last-session'],
       // 只豁免系统代理 fake-IP 两段（Surge/Clash/sing-box 的 DNS 答案），
       // localhost/RFC1918/云 metadata 仍全拦
       ssrfPolicy: {
@@ -197,6 +199,11 @@ export async function stopManagedRuntime(): Promise<void> {
     stop?.ok === true && (stop.data as { stopped?: unknown } | null)?.['stopped'] === true;
   if (!stopped) {
     throw new Error('托管浏览器未能停止，请关闭它打开的窗口后重试。');
+  }
+  // stopped:true 只是服务自报；必须再读 status 确认 running/pid 已归零。
+  const after = await runtime.call({ action: 'status', profile: MANAGED_PROFILE }).catch(() => null);
+  if (!after?.ok || managedRuntimeNeedsStop(after.data)) {
+    throw new Error('无法确认托管浏览器已停止，请稍后重试。');
   }
 }
 

@@ -11,6 +11,11 @@
 > `upstream/browser-runtime.lock.json` 钉的 commit 整目录人工比对 + 重放 LOCAL_PATCHES + 跑 SSRF 契约测试。
 > 托管 profile 名在本仓是 **"Fundet"**（`MANAGED_PROFILE` 常量，勿改）；`cindy_browser` MCP server 名与
 > `CINDY_*` env 是底座机制名，保留勿改。action 数已从 17 增至 23（extract/recipe/siteguide/saveRecipe 等）。
+>
+> **【2026-11-10 手工补丁】** Chrome 停止链按 Cindy a5488d8c91+9750d5567d 语义修正：停止只认真实
+> exitCode/signalCode，不能把 proc.killed 或 CDP 失联当退出；Windows 先 CDP Browser.close，POSIX 保留
+> SIGTERM，超时后才 SIGKILL。本仓无 sync.mjs，按人工重放惯例登记 lock.json，contentHash 留待下次全量同步重算。
+> 主进程 before-quit 还必须通过 quit-lifecycle 有界等待；只改 vendored stop 不足以覆盖应用退出。
 
 ## 1. 这是什么
 

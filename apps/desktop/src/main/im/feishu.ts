@@ -73,9 +73,14 @@ export async function startFeishu(): Promise<void> {
       } catch {
         text = '';
       }
-      if (msgType !== 'text' || !text) return;
       const mentions = Array.isArray(message.mentions) ? message.mentions : [];
       if (chatType === 'group' && mentions.length === 0 && !text.includes('@')) return;
+      if (msgType !== 'text') {
+        // 已通过私聊/群内@门槛的非文本消息必须给用户可见反馈，不能静默丢弃。
+        await reply(connection, chatId, `暂不支持${msgType || '该类型'}消息。`);
+        return;
+      }
+      if (!text) return;
       const senderId = String(nested(sender ?? {}, 'sender_id', 'open_id') ?? message.sender_id ?? 'user');
       const replyText = await handleImMessage({
         channel: 'feishu',

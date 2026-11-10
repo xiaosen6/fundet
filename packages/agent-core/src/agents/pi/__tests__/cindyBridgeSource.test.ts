@@ -605,3 +605,32 @@ describe('cindy-bridge extension source', () => {
     },
   );
 });
+
+describe('MCP structuredContent projection', () => {
+  function convert(content: unknown, structuredContent?: unknown) {
+    const start = CINDY_BRIDGE_EXTENSION_SOURCE.indexOf('function mcpContentToPi(');
+    const end = CINDY_BRIDGE_EXTENSION_SOURCE.indexOf('async function connectServer(', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return runInNewContext(
+      `${ts.transpile(CINDY_BRIDGE_EXTENSION_SOURCE.slice(start, end), { target: ts.ScriptTarget.ES2022 })}; mcpContentToPi`,
+    )(content, structuredContent) as Array<{ type: string; text?: string }>;
+  }
+
+  it('makes structuredContent-only results visible to the model', () => {
+    expect(convert([], { ok: true, count: 2 })).toEqual([
+      { type: 'text', text: '{"ok":true,"count":2}' },
+    ]);
+  });
+
+  it('does not duplicate an identical JSON text block', () => {
+    const json = '{"ok":true}';
+    expect(convert([{ type: 'text', text: json }], { ok: true })).toEqual([{ type: 'text', text: json }]);
+  });
+
+  it('preserves structured errors so the model can see the real failure', () => {
+    expect(convert([], { code: 'INVALID_ARGS', message: 'missing name' })).toEqual([
+      { type: 'text', text: '{"code":"INVALID_ARGS","message":"missing name"}' },
+    ]);
+  });
+});

@@ -45,6 +45,7 @@ import {
   isWebSocketUrl,
   normalizeCdpHttpBaseForJsonEndpoints,
   openCdpWebSocket,
+  withCdpSocket,
 } from "./cdp.helpers.js";
 import { normalizeCdpWsUrl } from "./cdp.js";
 import {
@@ -1138,38 +1139,62 @@ export async function launchOpenClawChrome(
 export async function stopOpenClawChrome(
   running: RunningChrome,
   timeoutMs = CHROME_STOP_TIMEOUT_MS,
+  options: { closeViaCdp?: () => Promise<void> } = {},
 ) {
   const proc = running.proc;
+  const hasExited = () => proc.exitCode !== null || proc.signalCode !== null;
   try {
-    if (proc.killed) {
-      return;
-    }
-    try {
-      proc.kill("SIGTERM");
-    } catch {
-      // ignore
+    if (hasExited()) return;
+    const start = Date.now();
+    // Windows 的 SIGTERM 不是优雅退出；先走 CDP Browser.close，让 Chrome 有机会
+    // 落盘 profile。POSIX 仍保留 SIGTERM。已经发过信号但未退出时不得重复发信号。
+    if (!proc.killed && proc.signalCode === null) {
+      if (process.platform === "win32") {
+        try {
+          await (options.closeViaCdp ?? (async () => {
+            const wsUrl = await getChromeWebSocketUrl(
+              cdpUrlForPort(running.cdpPort),
+              Math.max(1, Math.min(CHROME_STOP_PROBE_TIMEOUT_MS, timeoutMs)),
+            );
+            if (!wsUrl) return;
+            await withCdpSocket(
+              wsUrl,
+              async (send) => {
+                await send("Browser.close");
+              },
+              {
+                handshakeRetries: 0,
+                handshakeTimeoutMs: Math.max(1, Math.min(CHROME_STOP_PROBE_TIMEOUT_MS, timeoutMs)),
+                commandTimeoutMs: Math.max(1, Math.min(CHROME_STOP_PROBE_TIMEOUT_MS, timeoutMs)),
+              },
+            );
+          }))();
+        } catch {
+          // CDP 不可用只表示无法正常关闭，不代表进程已退出；继续等真实 exit。
+        }
+      } else {
+        try {
+          proc.kill("SIGTERM");
+        } catch {
+          // ignore
+        }
+      }
     }
 
-    const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      if (!proc.exitCode && proc.killed) {
-        break;
-      }
-      if (
-        !(await isChromeReachable(cdpUrlForPort(running.cdpPort), CHROME_STOP_PROBE_TIMEOUT_MS))
-      ) {
-        return;
-      }
+      if (hasExited()) return;
       const remainingMs = timeoutMs - (Date.now() - start);
       await new Promise((r) => {
         setTimeout(r, Math.max(1, Math.min(100, remainingMs)));
       });
     }
 
-    try {
-      proc.kill("SIGKILL");
-    } catch {
-      // ignore
+    if (!hasExited()) {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
     }
   } finally {
     // Release the managed-proxy bypass we registered at launch time. Wrapped

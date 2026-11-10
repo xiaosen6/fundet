@@ -202,7 +202,9 @@ function applyUsage(ctx: PiTranslateContext, usage: PiUsage | undefined): void {
   ctx.turnOutput += output;
   ctx.turnCacheRead += cacheRead;
   ctx.turnCacheWrite += cacheWrite;
-  ctx.contextTokens = input + cacheRead + cacheWrite;
+  const requestContextTokens = input + cacheRead + cacheWrite;
+  // 停止/中断后的全 0 usage 不代表上下文真的清空；0 不能覆盖上一帧真实读数。
+  if (requestContextTokens > 0) ctx.contextTokens = requestContextTokens;
   const cost = usage.cost?.total;
   if (typeof cost === 'number' && Number.isFinite(cost)) ctx.costUsd += cost;
 }

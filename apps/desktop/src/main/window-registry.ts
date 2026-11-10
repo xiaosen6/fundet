@@ -5,7 +5,8 @@
  * 会把弹窗误当主窗（通知点击/chime/桌宠新会话打到弹窗上）。所有主窗语义
  * 消费方一律走这里的 getMainWindow()；弹窗只登记、不参与主窗判定。
  */
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, screen, shell } from 'electron';
+import { fitStartupBounds } from './window-bounds.ts';
 import path from 'node:path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -57,11 +58,21 @@ export function openSessionPopoutWindow(sessionId: string): BrowserWindow {
       : process.platform === 'win32'
         ? { frame: false as const }
         : {};
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const layout = fitStartupBounds(
+    {
+      x: area.x + Math.max(0, Math.floor((area.width - 760) / 2)),
+      y: area.y + Math.max(0, Math.floor((area.height - 800) / 2)),
+      width: 760,
+      height: 800,
+    },
+    area,
+    { width: 480, height: 400 },
+  );
   const win = new BrowserWindow({
-    width: 760,
-    height: 800,
-    minWidth: 480,
-    minHeight: 400,
+    ...layout.bounds,
+    minWidth: layout.minWidth,
+    minHeight: layout.minHeight,
     title: '会话',
     show: false,
     backgroundColor: '#1b1b19',

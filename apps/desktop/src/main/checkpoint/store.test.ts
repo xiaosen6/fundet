@@ -135,3 +135,12 @@ test('enqueueSnapshot 后台串行：立即返回、排空后 HEAD 收敛到最�
   const content = execFileSync('git', ['--git-dir', bare, 'show', 'HEAD:queue.txt'], { encoding: 'utf8' });
   assert.equal(content, 'v2\n');
 });
+
+test('后台基线返回本轮真实结果：成功 true，失败 false', { skip: !gitOk }, async () => {
+  const { enqueueSnapshot } = await import('./store.ts');
+  const sid = 'dddd1111-2222-3333-4444-555555555555';
+  fs.writeFileSync(path.join(work, 'baseline-result.txt'), 'ok\n');
+  assert.equal(await enqueueSnapshot(sid, work, '有效基线'), true);
+  const missing = path.join(root, 'definitely-missing-workdir');
+  assert.equal(await enqueueSnapshot(sid, missing, '失败基线'), false);
+});

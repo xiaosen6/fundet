@@ -193,7 +193,7 @@ export function AskUserQuestionPrompt({
     <div ref={rootRef} className="w-full rounded-container border border-board bg-card p-4">
       {/* 标题行：问题 + 多题进度 */}
       <div className="flex items-start justify-between gap-3">
-        <p className="text-15 leading-tight font-semibold text-primary">{currentQ?.question}</p>
+        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-15 leading-tight font-semibold text-primary">{currentQ?.question}</p>
         {total > 1 && (
           <span className="shrink-0 pt-0.5 text-13 tabular-nums text-muted">
             {currentIndex + 1}/{total}

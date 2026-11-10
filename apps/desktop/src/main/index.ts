@@ -1,7 +1,7 @@
 // 浏览器 runtime 的数据目录必须在 @fundet/browser-runtime 求值前种下（eager 常量），
 // 所以这个副作用模块必须是 main 的第一条 import
 import './browser/runtime-env.js';
-import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
 import { cleanupOrphanCheckpoints } from './checkpoint/store.js';
 import { getDb } from './db/client.js';
@@ -31,6 +31,8 @@ import {
   registerFileProtocolHandler,
   registerFileProtocolPrivileges,
 } from './file-protocol.js';
+import { fitStartupBounds } from './window-bounds.ts';
+import { createQuitLifecycle } from './quit-lifecycle.ts';
 import { brand } from '../shared/brand.js';
 
 registerFileProtocolPrivileges();
@@ -75,6 +77,8 @@ function isWsl(): boolean {
 
 /** 托盘「退出」/系统关机时置位，close 拦截据此放行真正退出 */
 let isQuitting = false;
+// Windows 注销/关机不能被异步清理拦截。
+let systemSessionEnding = false;
 /** 首次最小化到托盘时弹一次气泡提示（仅 Windows 支持 displayBalloon） */
 let trayHintShown = false;
 
@@ -120,6 +124,7 @@ function setupTrayAndCloseBehavior(win: BrowserWindow): void {
 
   // Windows 注销/关机会销毁窗口，不能拦截（否则挡住系统关机）
   win.on('session-end', () => {
+    systemSessionEnding = true;
     isQuitting = true;
   });
 
@@ -138,8 +143,10 @@ function setupTrayAndCloseBehavior(win: BrowserWindow): void {
 }
 
 function revealWindow(win: BrowserWindow): void {
-  win.setMinimumSize(960, 640);
-  win.setBounds({ x: 80, y: 80, width: 1280, height: 800 });
+  const current = win.getBounds();
+  const layout = fitStartupBounds(current, screen.getDisplayMatching(current).workArea, { width: 960, height: 640 });
+  win.setMinimumSize(layout.minWidth, layout.minHeight);
+  win.setBounds(layout.bounds);
   win.show();
   win.focus();
 }
@@ -156,13 +163,15 @@ function createWindow(): void {
       : process.platform === 'win32'
         ? { frame: false as const }
         : {};
+  const startup = fitStartupBounds(
+    { x: 80, y: 80, width: 1280, height: 800 },
+    screen.getDisplayMatching({ x: 80, y: 80, width: 1280, height: 800 }).workArea,
+    { width: 960, height: 640 },
+  );
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 960,
-    minHeight: 640,
-    x: 80,
-    y: 80,
+    ...startup.bounds,
+    minWidth: startup.minWidth,
+    minHeight: startup.minHeight,
     show: true,
     title: brand.name,
     icon: resolveAppIcon(),
@@ -336,17 +345,23 @@ function bootstrap(): void {
   });
   });
 
-  app.on('before-quit', () => {
-    isQuitting = true;
-    void stopAllImBots();
+  const quitLifecycle = createQuitLifecycle(async () => {
     stopDwsWidgets();
     stopAutomationScheduler();
     // 回收技能扫描隔离子进程（在途扫描取消，幂等）
     disposeSkillScanHost();
-    // 关闭托管浏览器（用过才发 stop；没用过 stop 反而会拉起服务挂住退出）
-    void disposeBrowserHost();
-    // 关闭所有活跃会话，回收 pi 子进程
-    void shutdownHost();
+    // 浏览器清理、IM 与 pi 宿主并行结算；任何一路失败都不能挡住最终退出。
+    await Promise.allSettled([stopAllImBots(), disposeBrowserHost(), shutdownHost()]);
+  });
+  app.on('before-quit', (event) => {
+    isQuitting = true;
+    if (systemSessionEnding) return; // 不拦截 Windows 注销/关机
+    const state = quitLifecycle.begin();
+    if (state === 'approved') return;
+    event.preventDefault();
+    if (state === 'started') {
+      void quitLifecycle.pending()?.then(() => app.quit());
+    }
   });
 
   app.on('window-all-closed', () => {

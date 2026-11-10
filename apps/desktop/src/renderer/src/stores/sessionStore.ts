@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from 'react';
 import { friendlyError, friendlyProviderError } from '../../../shared/friendly-error.ts';
 import { isComposerTypingRecently } from '../lib/composerTypingActivity';
+import { settleRunningThinking } from '../lib/thinkingSettlement';
 import { promotableDraftIds } from '../lib/draftPromotion';
 import { toast } from '../components/ui/toast';
 import { playCompletionChime } from '../lib/chime';
@@ -567,6 +568,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
       const data = event.data as Partial<UsageSnapshot> & { status?: string; isRunning?: boolean };
       const wasRunning = s.isRunning;
       patchSlice(sessionId, {
+        items: data.isRunning === false ? settleRunningThinking(s.items) : s.items,
         statusText: data.status ?? s.statusText,
         isRunning: data.isRunning ?? s.isRunning,
         usage: {
@@ -620,7 +622,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         items = next;
       }
       patchSlice(sessionId, {
-        items,
+        items: settleRunningThinking(items),
         streamingText: '',
         isRunning: false,
         statusText: 'Done',
@@ -640,7 +642,7 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
       // 不自动重试、不标未读 error（2026-10-09 用户实报对齐 Cindy）
       if (terminal && userAborts.delete(sessionId) && isAbortLike(message)) {
         appendItem(sessionId, { kind: 'notice', id: nextId('n'), text: '已停止' });
-        patchSlice(sessionId, { isRunning: false, streamingText: '', attention: null });
+        patchSlice(sessionId, { items: settleRunningThinking(getSlice(sessionId).items), isRunning: false, streamingText: '', attention: null });
         return 'immediate';
       }
       userAborts.delete(sessionId);
@@ -651,10 +653,10 @@ function applyEvent(sessionId: string, event: AgentEvent): 'immediate' | 'thrott
         if (last && last.kind === 'error') {
           const items = s0.items.slice();
           items[items.length - 1] = { ...last, message };
-          patchSlice(sessionId, { items, streamingText: '', isRunning: false, attention: 'error' });
+          patchSlice(sessionId, { items: settleRunningThinking(items), streamingText: '', isRunning: false, attention: 'error' });
         } else {
           appendItem(sessionId, { kind: 'error', id: nextId('e'), message });
-          patchSlice(sessionId, { isRunning: false, streamingText: '', attention: 'error' });
+          patchSlice(sessionId, { items: settleRunningThinking(getSlice(sessionId).items), isRunning: false, streamingText: '', attention: 'error' });
         }
         // 自动重试已由主进程 outbox 接管（带 nextAttemptAt 快照 + 3 次封顶）；
         // 渲染层只保留终态错误卡作轮记录，重试入口在队列 chip。
@@ -707,8 +709,10 @@ export function initGlobalListeners(): void {
   window.fundet.onStatusChanged(({ sessionId, status }) => {
     if (status !== 'closed' && status !== 'error') return;
     const s = getSlice(sessionId);
-    if (!s.isRunning && !s.pendingInteraction) return;
+    const items = settleRunningThinking(s.items);
+    if (!s.isRunning && !s.pendingInteraction && items === s.items) return;
     patchSlice(sessionId, {
+      items,
       isRunning: false,
       streamingText: '',
       statusText: '',

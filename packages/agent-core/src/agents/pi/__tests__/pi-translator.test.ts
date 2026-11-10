@@ -945,4 +945,24 @@ describe('pi translator finalAssistantText (empty stop)', () => {
     const done = events.find((e) => e.type === 'done');
     expect(done?.data).toEqual(expect.objectContaining({ result: '最终回复' }));
   });
+
+  it('a zero-usage stop frame does not reset the context ring', () => {
+    const ctx = createPiTranslateContext(noopLogger);
+    const { queue, events } = makeQueue();
+    translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+    translatePiEvent(ev({
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'text', text: '回答' }], usage: { input: 1000, cacheRead: 500, cacheWrite: 100, output: 20 } },
+    }), queue, ctx);
+    expect(ctx.contextTokens).toBe(1600);
+    // 中断/停止后的全 0 usage 不是一次真实的上下文测量，不能覆盖旧值。
+    translatePiEvent(ev({
+      type: 'message_end',
+      message: { role: 'assistant', content: [], stopReason: 'aborted', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    }), queue, ctx);
+    translatePiEvent(ev({ type: 'agent_settled' }), queue, ctx);
+    expect(ctx.contextTokens).toBe(1600);
+    const doneStatus = events.find((e) => e.type === 'status' && (e.data as { isRunning?: boolean }).isRunning === false);
+    expect(doneStatus?.data).toMatchObject({ contextTokens: 1600 });
+  });
 });

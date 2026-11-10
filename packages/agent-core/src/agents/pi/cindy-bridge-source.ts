@@ -835,7 +835,7 @@ class McpHttpClient {
   }
 }
 
-function mcpContentToPi(content: unknown): Array<Record<string, unknown>> {
+function mcpContentToPi(content: unknown, structuredContent?: unknown): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
   if (Array.isArray(content)) {
     for (const item of content) {
@@ -849,6 +849,13 @@ function mcpContentToPi(content: unknown): Array<Record<string, unknown>> {
         out.push({ type: 'text', text: JSON.stringify(rec) });
       }
     }
+  }
+  // MCP 允许 content 为空、只给 structuredContent；模型只读 content，必须把结构化
+  // 结果补成 JSON 文本。已有同一 JSON 文本时不重复追加。
+  if (structuredContent !== undefined) {
+    const json = JSON.stringify(structuredContent);
+    const duplicate = out.some((item) => typeof item.text === 'string' && item.text.trim() === json);
+    if (!duplicate) out.push({ type: 'text', text: json });
   }
   if (out.length === 0) out.push({ type: 'text', text: '(empty result)' });
   return out;
@@ -891,7 +898,7 @@ async function connectServer(pi: any, server: McpServerRef, token: string): Prom
             name: tool.name,
             arguments: params ?? {},
           });
-          const content = mcpContentToPi(result?.content);
+          const content = mcpContentToPi(result?.content, result?.structuredContent);
           if (result?.isError) {
             const text = content
               .map((c) => (typeof c.text === 'string' ? c.text : ''))

@@ -494,34 +494,37 @@ async function maintainRepo(sessionId: string, dir: string): Promise<void> {
 }
 
 /** 每会话一条串行链：同一 bare 仓上并发 git 会撞 index.lock */
-const snapshotChains = new Map<string, Promise<void>>();
+const snapshotChains = new Map<string, Promise<boolean>>();
 
 /**
- * 后台快照（fire-and-forget）：立即返回，消息发送零等待。
+ * 后台快照（fire-and-forget）：立即返回本轮 Promise，消息发送零等待。
+ * Promise true=该轮基线已完成，false=失败；调用方仍可不 await。
  * 0.2.28 前这里是 `await createSnapshot`——workDir 大时 git add 全量扫描
  * 直接把首条消息卡 20s+（超时被 SIGTERM），"失败不阻断"实际只对失败成立、
  * 对慢不成立。改为后台串行后：锚点仍在 turn 开始前后落，但不再挡路。
  */
-export function enqueueSnapshot(sessionId: string, workDir: string, label: string): void {
-  const prev = snapshotChains.get(sessionId) ?? Promise.resolve();
+export function enqueueSnapshot(sessionId: string, workDir: string, label: string): Promise<boolean> {
+  const prev = snapshotChains.get(sessionId) ?? Promise.resolve(false);
   const next = prev
-    .catch(() => {})
+    .catch(() => false)
     .then(() => createSnapshot(sessionId, workDir, label))
     .then(
-      () => undefined,
+      () => true,
       (err) => {
         console.warn('[fundet:checkpoint] 后台快照失败（不影响会话）', err);
+        return false;
       },
     );
   snapshotChains.set(sessionId, next);
   void next.finally(() => {
     if (snapshotChains.get(sessionId) === next) snapshotChains.delete(sessionId);
   });
+  return next;
 }
 
 /** 等待某会话的后台快照链排空（轮末 diff 取基准前用；单测也用） */
-export function waitForSnapshotQueue(sessionId: string): Promise<void> {
-  return snapshotChains.get(sessionId) ?? Promise.resolve();
+export function waitForSnapshotQueue(sessionId: string): Promise<boolean> {
+  return snapshotChains.get(sessionId) ?? Promise.resolve(false);
 }
 
 /** 兼容旧名单测引用 */

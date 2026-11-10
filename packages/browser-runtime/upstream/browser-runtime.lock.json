@@ -12,7 +12,8 @@
     "Keep legal/source attribution in this metadata and third-party notices when runtime code is synced.",
     "Do not edit generated runtime sources directly (src/_generated/**); update sync.mjs or src/shim/* instead.",
     "Full extraction live: core + leaf SSRF/security + net-policy + normalization-core + fs-safe dist, with hand-written src/shim/* for the plugin-sdk surface.",
-    "2026-10-15: #5834 (keep agent-read pages in background, Cindy 37385a2b1) applied manually; contentHash not recomputed because sync.mjs lives upstream — recompute on the next full resync."
+    "2026-10-15: #5834 (keep agent-read pages in background, Cindy 37385a2b1) applied manually; contentHash not recomputed because sync.mjs lives upstream — recompute on the next full resync.",
+    "2026-11-10: Chrome graceful-stop/exit-wait fix applied manually (Cindy a5488d8c91+9750d5567d semantics); contentHash intentionally unchanged until the next full resync."
   ],
   "patches": [
     {
@@ -30,6 +31,10 @@
     {
       "file": "extension/src/browser/chrome.ts",
       "desc": "headed managed Chrome launches with --no-startup-window so background agent tabs do not flash a window (#5834 port)"
+    },
+    {
+      "file": "extension/src/browser/chrome.ts",
+      "desc": "stop waits for actual process exit (not proc.killed/CDP silence); Windows uses CDP Browser.close before bounded SIGKILL fallback (Cindy a5488d8c91+9750d5567d)"
     },
     {
       "file": "extension/src/browser/routes/tabs.ts",

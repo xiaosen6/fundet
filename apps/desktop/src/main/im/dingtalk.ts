@@ -173,8 +173,9 @@ export async function startDingTalk(): Promise<void> {
     setImRuntime('dingtalk', 'connected');
   } catch (err) {
     if (gen === generation) {
-      setImRuntime('dingtalk', 'error', err instanceof Error ? err.message : String(err));
+      // stop 会把状态写成 idle；先清理连接，再恢复真实 error，避免失败后显示「未配置」。
       await stopDingTalk();
+      setImRuntime('dingtalk', 'error', err instanceof Error ? err.message : String(err));
     }
   }
 }

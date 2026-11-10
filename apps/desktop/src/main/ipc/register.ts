@@ -203,6 +203,9 @@ const PERMISSION_INTERACTION_TIMEOUT_MS = 10 * 60 * 1000;
  * 终止 error 判定与 events.ts 语义对齐：先看 isTerminal，缺省但有 willRetry
  * 时用 !willRetry 兜底，两者都缺的老事件按终止处理。
  */
+/** 每轮基线的独立结果：失败/无在途记录时不得把旧 HEAD 当本轮撤销点。 */
+const turnBaselineRuns = new Map<string, Promise<boolean>>();
+
 /**
  * 轮末改动统计（后台，fire-and-forget）：base=轮前快照链落完后的 HEAD。
  * baseSha 随 payload 推给渲染层作撤销目标（checkpoint:rewind 到该时点即撤销
@@ -218,6 +221,10 @@ async function captureAndPushTurnChanges(sessionId: string): Promise<void> {
       .get()?.workDir;
     if (!workDir) return;
     await waitForSnapshotQueue(sessionId);
+    const baselineRun = turnBaselineRuns.get(sessionId);
+    // 基线已排队不等于本轮基线成功；失败/结果不明时整块不推，绝不能把旧 HEAD
+    // 包装成「撤销本轮」目标（可能跨缺口回滚用户之前的改动）。
+    if (!baselineRun || !(await baselineRun)) return;
     const base = await currentCheckpointHead(sessionId);
     const files = await captureTurnDiff(sessionId, workDir, base, `turn-end`);
     if (files.length === 0) return;
@@ -496,6 +503,7 @@ export function wireSession(session: Session): void {
     if (status !== 'closed' && status !== 'error') return;
     wiredSessions.delete(session.id);
     turnArtifactSnapshots.delete(session.id);
+    turnBaselineRuns.delete(session.id);
     // 会话关闭/出错时清掉悬挂的审批/问答条目——否则 promise 永不 resolve、
     // pendingInteractions 常驻（渲染层 getPendingInteractions 会一直拿到幽灵卡）
     for (const [requestId, entry] of [...pendingInteractions]) {
@@ -519,7 +527,9 @@ function prepareTurnBaseline(
     create?.workDir ??
     getDb().select({ workDir: sessions.workDir }).from(sessions).where(eq(sessions.id, sessionId)).get()?.workDir;
   if (!workDir) return;
-  if (isCheckpointAvailable()) enqueueSnapshot(sessionId, workDir, text);
+  if (isCheckpointAvailable()) {
+    turnBaselineRuns.set(sessionId, enqueueSnapshot(sessionId, workDir, text));
+  }
   void scanArtifactSnapshot(workDir)
     .then((snap) => turnArtifactSnapshots.set(sessionId, snap))
     .catch(() => undefined);
