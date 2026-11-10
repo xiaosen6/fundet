@@ -14,12 +14,12 @@ if [ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]; then
 
 请关掉这个终端里的进程 (Ctrl+C)，打开 Windows PowerShell：
 
-  cd D:\Go\fundet-buddy
+  cd <仓库路径>
   pnpm dev:win
 
 第一次还要装 Windows 依赖（只需一次）：
 
-  cd D:\Go\fundet-buddy
+  cd <仓库路径>
   pnpm install
   pnpm --filter fundet-desktop rebuild:native
   node tools\pi\update.mjs --platform=win32-x64
