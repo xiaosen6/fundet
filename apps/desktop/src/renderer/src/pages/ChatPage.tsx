@@ -783,17 +783,14 @@ export function ChatPage(): React.JSX.Element {
     if (picked && picked.length > 0) await stagePaths(picked);
   }, [stagePaths]);
 
-  // 编辑（Cindy edit-last-message 同款）：入口只在最后一条 user 消息；点编辑瞬间
-  // 若 turn 还在跑立即中断（点编辑的意图就是"停下来我要改"）；提交 = 截断重发
-  const handleEditStart = useCallback((): void => {
-    if (activeId && slice.isRunning) void abortSession(activeId);
-  }, [activeId, slice.isRunning]);
+  // 编辑入口只在最后一条 user 消息。进入/取消编辑绝不中断当前回合；
+  // 只有真正提交编辑才在下方 await abortSession，再截断重发。
 
   const submitUserEdit = useCallback(
     async (text: string, createdAt: number | undefined, attachments?: SessionAttachment[]): Promise<boolean> => {
       if (!activeId || createdAt === undefined) return false;
       setNotice('');
-      // 运行中（刚点编辑触发的中断还在收尾）：等 abort 收口再截断，防重发被拒
+      // 运行中提交编辑：先等 abort 收口再截断，防重发被拒；只看不改不触发中断。
       if (slice.isRunning) await abortSession(activeId);
       if (!isDraftSession(activeId)) {
         try {
@@ -1314,7 +1311,6 @@ export function ChatPage(): React.JSX.Element {
                 }
               }}
               onRetryError={resendLast}
-              onEditStart={handleEditStart}
               onEditSubmit={submitUserEdit}
               onDeleteUserMessage={(createdAt) => void deleteUserMessage(createdAt)}
               onRewind={

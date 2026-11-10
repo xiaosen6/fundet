@@ -4,7 +4,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRunAt } from './automation-schedule.ts';
+import { nextRunAt, scheduleAfterFire } from './automation-schedule.ts';
 
 const at = (y: number, mo: number, d: number, h = 0, mi = 0): Date => new Date(y, mo - 1, d, h, mi);
 const rule = (schedule: Parameters<typeof nextRunAt>[0]['schedule'], time: string | null = null, day: number | null = null, cron: string | null = null) =>
@@ -87,4 +87,32 @@ test('once：未跑到点触发；已跑（lastRunAt 非空）不再触发', () 
   // 已跑 → null
   const r2 = { ...r1, lastRunAt: at(2026, 9, 21, 15, 0).getTime() };
   assert.equal(nextRunAt(r2, at(2026, 9, 22, 10, 0)), null);
+});
+
+test('once：手动「立即运行」只留历史，不消费尚未到点的正式触发', () => {
+  const scheduledAt = at(2026, 9, 22, 15, 0).getTime();
+  const once = { schedule: 'once' as const, time: '15:00', day: null, cron: null, nextRunAt: scheduledAt, lastRunAt: null };
+  const manualAt = at(2026, 9, 21, 10, 0).getTime();
+  assert.deepEqual(scheduleAfterFire(once, manualAt, 'manual'), {
+    nextRunAt: scheduledAt,
+    lastRunAt: null,
+  });
+  // 到点仍在 tick 可见范围内；只有这次 scheduled 触发才把计划消费掉。
+  assert.ok((scheduleAfterFire(once, manualAt, 'manual').nextRunAt ?? 0) > manualAt);
+  assert.deepEqual(scheduleAfterFire(once, scheduledAt, 'scheduled'), {
+    nextRunAt: null,
+    lastRunAt: scheduledAt,
+  });
+});
+
+test('interval：手动试跑不重置既有锚点；scheduled 语义不变', () => {
+  const lastRunAt = at(2026, 9, 22, 10, 0).getTime();
+  const next = at(2026, 9, 22, 10, 30).getTime();
+  const row = { schedule: 'interval' as const, time: null, day: null, cron: null, intervalMinutes: 30, lastRunAt, nextRunAt: next };
+  assert.deepEqual(scheduleAfterFire(row, at(2026, 9, 22, 10, 10).getTime(), 'manual'), { nextRunAt: next, lastRunAt });
+  const before = nextRunAt(row, new Date(next));
+  assert.deepEqual(scheduleAfterFire(row, at(2026, 9, 22, 10, 30).getTime(), 'scheduled'), {
+    nextRunAt: before,
+    lastRunAt,
+  });
 });

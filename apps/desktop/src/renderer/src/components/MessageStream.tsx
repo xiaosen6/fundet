@@ -131,7 +131,6 @@ function UserTurn({
   onOpenFile,
   onRewind,
   canEdit,
-  onEditStart,
   onEditSubmit,
 }: {
   item: Extract<DisplayItem, { kind: 'user' }>;
@@ -144,15 +143,13 @@ function UserTurn({
   onRewind?: () => void;
   /** 仅最后一条 user 消息可编辑（Cindy edit-last-message） */
   canEdit?: boolean;
-  /** 点编辑瞬间（外部据此中断运行中的 turn，Cindy：点编辑=停下要改） */
-  onEditStart?: () => void;
   /** 提交编辑：截断该消息及之后全部内容并按新文本重发。
    *  返回 false = 失败（调用方已提示），编辑态与草稿必须保留，别让用户白打一遍。 */
   onEditSubmit?: (text: string, createdAt: number | undefined, attachments: SessionAttachment[] | undefined) => Promise<boolean>;
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false);
   // ── inline 编辑态（Cindy UserMessageEditBox 同款交互）：气泡原位替换成
-  // textarea 预填原文；运行中点编辑由外部立即中断；提交才截断重发，取消零副作用。
+  // textarea 预填原文；进入/取消编辑零副作用，只有提交才截断重发。
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
   const [submitting, setSubmitting] = useState(false);
@@ -289,7 +286,6 @@ function UserTurn({
           onEdit={
             canEdit && onEditSubmit
               ? () => {
-                  onEditStart?.();
                   setEditing(true);
                 }
               : undefined
@@ -319,8 +315,6 @@ interface MessageStreamProps {
   onRewind?: () => void;
   /** 终态错误卡的「重新发送」：重发本轮最后一条用户消息 */
   onRetryError?: () => void;
-  /** 编辑入口（仅最后一条 user 消息显示）：点击瞬间回调（外部据此中断运行中 turn） */
-  onEditStart?: () => void;
   /** 提交编辑：截断该消息及之后全部内容并按新文本重发（false = 失败，编辑态保留） */
   onEditSubmit?: (
     text: string,
@@ -575,7 +569,6 @@ export function MessageStream({
   onDelete,
   onRewind,
   onRetryError,
-  onEditStart,
   onEditSubmit,
   onDeleteUserMessage,
   artifactPaths,
@@ -1066,7 +1059,6 @@ export function MessageStream({
                     canFork={canFork}
                     onFork={onFork}
                     canEdit={item.id === lastUserId && Boolean(onEditSubmit)}
-                    onEditStart={onEditStart}
                     onEditSubmit={onEditSubmit}
                     onRewind={onRewind}
                     onShare={

@@ -2,6 +2,7 @@ import * as Lark from '@larksuiteoapi/node-sdk';
 import { chunkImText, handleImMessage } from './dispatcher.ts';
 import { readImCreds } from './secrets.ts';
 import { setImRuntime } from './runtime.ts';
+import { captureImTurnConnection, sendImTextChunks, type ImTurnConnection } from './turn-connection.ts';
 
 let ws: Lark.WSClient | null = null;
 let rest: Lark.Client | null = null;
@@ -23,10 +24,10 @@ function nested(rec: Record<string, unknown>, ...keys: string[]): unknown {
   return cur;
 }
 
-async function reply(chatId: string, text: string): Promise<void> {
-  if (!rest) return;
-  for (const chunk of chunkImText(text)) {
-    await rest.im.message.create({
+async function reply(connection: ImTurnConnection<Lark.Client>, chatId: string, text: string): Promise<void> {
+  // 每个分块都复核代次，并使用入站时捕获的 client；stop/start 后旧回合不再外发。
+  await sendImTextChunks(connection, chunkImText(text), async (client, chunk) => {
+    await client.im.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
         receive_id: chatId,
@@ -34,7 +35,7 @@ async function reply(chatId: string, text: string): Promise<void> {
         content: JSON.stringify({ text: chunk }),
       },
     });
-  }
+  });
 }
 
 export async function startFeishu(): Promise<void> {
@@ -51,7 +52,10 @@ export async function startFeishu(): Promise<void> {
   rest = new Lark.Client({ appId, appSecret, appType: Lark.AppType.SelfBuild });
   const dispatcher = new Lark.EventDispatcher({}).register({
     'im.message.receive_v1': async (data: unknown) => {
-      if (gen !== generation) return;
+      if (gen !== generation || !rest) return;
+      // 连接在整个异步回合里固定：即使 stop/start 换了全局 rest，也只能用旧 client
+      // 且必须先通过代次检查；否则旧回合会落到新账号。
+      const connection = captureImTurnConnection(rest, gen, () => generation);
       const rec = asRecord(data) ?? {};
       const event = asRecord(rec.event) ?? rec;
       const message = asRecord(event.message);
@@ -80,7 +84,7 @@ export async function startFeishu(): Promise<void> {
         text,
         dedupeKey: String(message.message_id ?? '') || undefined,
       });
-      if (replyText) await reply(chatId, replyText);
+      if (replyText && connection.isCurrent()) await reply(connection, chatId, replyText);
     },
   });
   ws = new Lark.WSClient({

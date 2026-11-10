@@ -12,7 +12,7 @@
  * resume 路径、启动 RPC 也不会即时拒),控制流本身才是被测对象。
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +26,8 @@ const knobs = vi.hoisted(() => ({
   onEvent: null as null | ((event: unknown) => void),
   spawnedEnvs: [] as Array<Record<string, string | undefined>>,
   spawnedArgs: [] as string[][],
+  switchSessionOptions: [] as unknown[],
+  switchSessionRejects: false,
 }));
 
 vi.mock('../rpc-client.js', () => ({
@@ -47,7 +49,11 @@ vi.mock('../rpc-client.js', () => ({
       knobs.spawnedArgs.push([...(o?.args ?? [])]);
       if (knobs.ctorThrows) throw new Error('spawn failed (mock)');
     }
-    async request(cmd: { type: string }): Promise<{ success: boolean; data?: unknown; error?: string }> {
+    async request(cmd: { type: string }, options?: unknown): Promise<{ success: boolean; data?: unknown; error?: string }> {
+      if (cmd.type === 'switch_session') {
+        knobs.switchSessionOptions.push(options);
+        if (knobs.switchSessionRejects) throw new Error('switch_session timed out (mock)');
+      }
       if (cmd.type === 'get_state') {
         if (knobs.getStateRejects) throw new Error('get_state rejected (mock)');
         return { success: true, data: { sessionFile: '/mock/session.jsonl', model: { contextWindow: 200000 } } };
@@ -88,6 +94,8 @@ describe('PiAgent.startSession failure cleanup (mocked pi process)', () => {
     knobs.onEvent = null;
     knobs.spawnedEnvs = [];
     knobs.spawnedArgs = [];
+    knobs.switchSessionOptions = [];
+    knobs.switchSessionRejects = false;
     disposed = 0;
     proxyDisposed = 0;
     preparedMcpContext = undefined;
@@ -285,6 +293,30 @@ describe('PiAgent.startSession failure cleanup (mocked pi process)', () => {
 
     // 上层随后仍可能调用 close() —— cleanup 幂等,不抛。
     await handle.close();
+  });
+
+  it('gives resume switch_session a 60s budget without changing global RPC defaults', async () => {
+    const resumePath = path.join(agentHome, 'resume.jsonl');
+    writeFileSync(resumePath, '{}\n');
+    const onInvalidResumeSession = vi.fn(async () => true);
+    const agent = new PiAgent(buildDeps());
+    const handle = await agent.startSession({ ...opts(), resumeSessionId: resumePath, onInvalidResumeSession });
+    expect(knobs.switchSessionOptions).toEqual([{ timeoutMs: 60_000 }]);
+    expect(onInvalidResumeSession).not.toHaveBeenCalled();
+    await handle.close();
+  });
+
+  it('a resume timeout rejects without clearing the persisted resume identity', async () => {
+    const resumePath = path.join(agentHome, 'resume.jsonl');
+    writeFileSync(resumePath, '{}\n');
+    const onInvalidResumeSession = vi.fn(async () => true);
+    knobs.switchSessionRejects = true;
+    const agent = new PiAgent(buildDeps());
+    await expect(agent.startSession({ ...opts(), resumeSessionId: resumePath, onInvalidResumeSession }))
+      .rejects.toThrow(/switch_session timed out/);
+    // 超时只是结果未知，不是无效 resume；不能触发 CAS 清身份或 fresh fallback。
+    expect(onInvalidResumeSession).not.toHaveBeenCalled();
+    expect(knobs.closeCount).toBe(1);
   });
 });
 

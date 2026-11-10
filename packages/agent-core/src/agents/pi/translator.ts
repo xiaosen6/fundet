@@ -230,7 +230,15 @@ function applyDelegatedUsage(
     cacheWrite: Math.max(0, cumulative.cacheWrite - (previous?.cacheWrite ?? 0)),
     cost: Math.max(0, cumulative.cost - (previous?.cost ?? 0)),
   };
-  ctx.delegatedUsage.set(taskId, cumulative);
+  // 累计帧可能乱序：baseline 只能按「已接受增量」前进，不能被迟到的小快照拉低。
+  // 100→5→100 时第二次 delta=0；否则会把同一份 95 再次写入 usage_daily。
+  ctx.delegatedUsage.set(taskId, {
+    input: (previous?.input ?? 0) + delta.input,
+    output: (previous?.output ?? 0) + delta.output,
+    cacheRead: (previous?.cacheRead ?? 0) + delta.cacheRead,
+    cacheWrite: (previous?.cacheWrite ?? 0) + delta.cacheWrite,
+    cost: (previous?.cost ?? 0) + delta.cost,
+  });
   ctx.turnTokens += delta.input + delta.output;
   ctx.turnInput += delta.input;
   ctx.turnOutput += delta.output;

@@ -819,6 +819,22 @@ describe('pi translator', () => {
       expect(ctx.costUsd).toBeCloseTo(0.03, 10);
     });
 
+    it('late smaller cumulative frames cannot lower the accepted baseline and double-charge 95', () => {
+      // 上游 fb14fa181a 对应的最小乱序序列：100→5→100。真实总量只有 100，
+      // 若基线被 5 拉低，最后又会把 95 当新增量写进 usage_daily。
+      const ctx = createPiTranslateContext(noopLogger);
+      const { queue } = makeQueue();
+      translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+      translatePiEvent(progressEvent('sa-1', { input: 100, output: 20 }), queue, ctx);
+      translatePiEvent(progressEvent('sa-1', { input: 5, output: 2 }), queue, ctx);
+      translatePiEvent(progressEvent('sa-1', { input: 100, output: 20 }), queue, ctx);
+
+      expect(ctx.turnInput).toBe(100);
+      expect(ctx.turnOutput).toBe(20);
+      expect(ctx.turnTokens).toBe(120);
+      expect(ctx.delegatedUsage.get('sa-1')).toMatchObject({ input: 100, output: 20 });
+    });
+
     it('accumulates parallel delegations independently and never goes negative', () => {
       const ctx = createPiTranslateContext(noopLogger);
       const { queue } = makeQueue();

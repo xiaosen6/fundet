@@ -15,7 +15,7 @@ import { automations, automationRuns, sessions, messages } from '../db/schema.ts
 import { eq, like } from 'drizzle-orm';
 import type { AutomationInput, AutomationView, AutomationRunView } from '../../shared/automations.ts';
 
-import { nextRunAt } from './automation-schedule.ts';
+import { nextRunAt, scheduleAfterFire, type AutomationFireSource } from './automation-schedule.ts';
 /* ---------------- 视图转换 ---------------- */
 
 type Row = typeof automations.$inferSelect;
@@ -189,8 +189,8 @@ export function listAutomationRuns(automationId: string, limit = 20): Automation
 const running = new Set<string>();
 let timer: NodeJS.Timeout | null = null;
 
-/** 执行一次触发（可被 tick 与 runNow 共用） */
-async function fireAutomation(id: string): Promise<void> {
+/** 执行一次触发（可被 tick 与 runNow 共用；source 决定是否消费计划） */
+async function fireAutomation(id: string, source: AutomationFireSource): Promise<void> {
   if (running.has(id)) return;
   const row = getDb().select().from(automations).where(eq(automations.id, id)).get();
   if (!row) return;
@@ -211,11 +211,11 @@ async function fireAutomation(id: string): Promise<void> {
       createdAt: now,
     })
     .run();
-  // 触发后立即算下一次（interval 以 now 为新锚；once 已触发则 nextRunAt=null）
-  const next = nextRunAt({ ...(row as AutomationView), lastRunAt: row.schedule === 'once' ? now : row.lastRunAt }, new Date(now));
+  // 只有真正到点的触发才消费计划；手动试跑不得把 once 的正式提醒抹掉。
+  const after = scheduleAfterFire(row as AutomationView, now, source);
   getDb()
     .update(automations)
-    .set({ nextRunAt: next, lastRunAt: row.schedule === 'once' ? now : row.lastRunAt, updatedAt: now })
+    .set({ nextRunAt: after.nextRunAt, lastRunAt: after.lastRunAt, updatedAt: now })
     .where(eq(automations.id, id))
     .run();
   try {
@@ -237,7 +237,7 @@ async function fireAutomation(id: string): Promise<void> {
 }
 
 export function runAutomationNow(id: string): void {
-  void fireAutomation(id);
+  void fireAutomation(id, 'manual');
 }
 
 /** 一次 tick：把到期的 active 任务各触发一次（返回触发数，单测断言用） */
@@ -247,7 +247,7 @@ export function automationTick(nowMs: number = deps.now()): number {
     .from(automations)
     .all()
     .filter((r) => r.status === 'active' && r.nextRunAt !== null && r.nextRunAt <= nowMs);
-  for (const r of due) void fireAutomation(r.id);
+  for (const r of due) void fireAutomation(r.id, 'scheduled');
   return due.length;
 }
 

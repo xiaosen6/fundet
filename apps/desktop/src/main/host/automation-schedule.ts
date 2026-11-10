@@ -157,3 +157,21 @@ export function nextRunAt(rule: ScheduleRule, from: Date = new Date()): number |
       return null;
   }
 }
+
+export type AutomationFireSource = 'manual' | 'scheduled';
+
+/** 一次触发后如何更新计划。手动试跑只新增 run 历史，绝不消费 once 的正式触发。 */
+export function scheduleAfterFire(
+  rule: ScheduleRule & { nextRunAt?: number | null },
+  now: number,
+  source: AutomationFireSource,
+): { nextRunAt: number | null; lastRunAt: number | null } {
+  if (source === 'manual') {
+    return { nextRunAt: rule.nextRunAt ?? null, lastRunAt: rule.lastRunAt ?? null };
+  }
+  const lastRunAt = rule.schedule === 'once' ? now : (rule.lastRunAt ?? null);
+  return {
+    nextRunAt: nextRunAt({ ...rule, lastRunAt }, new Date(now)),
+    lastRunAt,
+  };
+}

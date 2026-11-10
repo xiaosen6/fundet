@@ -192,7 +192,6 @@ function mergeLoopbackNoProxy(env: NodeJS.ProcessEnv): void {
     '127.0.0.1',
     'localhost',
     '::1',
-    '[::1]',
   ])).join(',');
   delete env.no_proxy;
 }
@@ -1608,7 +1607,11 @@ export class PiAgent extends BaseAgent {
             resumeSessionId: opts.resumeSessionId,
           });
         } else {
-          const switched = await proc.request({ type: 'switch_session', sessionPath: opts.resumeSessionId });
+          // 只放宽恢复点：慢会话 switch_session 可超过默认 30s，其它 RPC 预算不变。
+          const switched = await proc.request(
+            { type: 'switch_session', sessionPath: opts.resumeSessionId },
+            { timeoutMs: 60_000 },
+          );
           if (!switched.success) {
             const mayFallback = (await opts.onInvalidResumeSession?.(opts.resumeSessionId)) ?? true;
             if (!mayFallback) {

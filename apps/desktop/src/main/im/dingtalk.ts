@@ -12,6 +12,7 @@ import { DWClient, TOPIC_ROBOT, type DWClientDownStream } from 'dingtalk-stream'
 import { chunkImText, handleImMessage, type ImInbound, type ImInboundExtras } from './dispatcher.ts';
 import { readImCreds } from './secrets.ts';
 import { setImRuntime } from './runtime.ts';
+import { captureImTurnConnection, sendImTextChunks, type ImTurnConnection } from './turn-connection.ts';
 import {
   DingTalkApiClient,
   type DingTalkOutboundTarget,
@@ -30,13 +31,14 @@ function targetOf(conversationId: string): DingTalkOutboundTarget | null {
   return targets.get(conversationId) ?? null;
 }
 
-async function sendText(conversationId: string, text: string): Promise<void> {
+async function sendText(
+  connection: ImTurnConnection<DingTalkApiClient>,
+  conversationId: string,
+  text: string,
+): Promise<void> {
   const target = targetOf(conversationId);
   if (!target) throw new Error('没有可用的回复通道（会话 webhook 未建立）');
-  if (!api) throw new Error('钉钉 API 客户端未初始化');
-  for (const chunk of chunkImText(text)) {
-    await api.sendText(target, chunk);
-  }
+  await sendImTextChunks(connection, chunkImText(text), (client, chunk) => client.sendText(target, chunk));
 }
 
 /** per-bot 工作目录（Cindy dingtalkManagedWorkingDirName 同款隔离语义） */
@@ -53,11 +55,12 @@ export function dingtalkWorkDir(appKey: string): string {
 
 /** 回复里的本地图片 markdown 引用 → 上传发图；返回剥掉已发引用的文本 */
 async function sendLocalImages(
+  connection: ImTurnConnection<DingTalkApiClient>,
   conversationId: string,
   workDir: string,
   finalText: string,
 ): Promise<{ text: string; sentAny: boolean }> {
-  if (!api) return { text: finalText, sentAny: false };
+  if (!connection.isCurrent()) return { text: finalText, sentAny: false };
   const refs = [...finalText.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]!);
   const locals: Array<{ ref: string; abs: string }> = [];
   for (const ref of refs.slice(0, 5)) {
@@ -77,9 +80,10 @@ async function sendLocalImages(
   let stripped = finalText;
   let sentAny = false;
   for (const { ref, abs } of locals) {
+    if (!connection.isCurrent()) return { text: finalText, sentAny };
     try {
       const bytes = new Uint8Array(fs.readFileSync(abs));
-      await api.sendImage(target, bytes, path.basename(abs));
+      await connection.client.sendImage(target, bytes, path.basename(abs));
       sentAny = true;
       stripped = stripped.split(`(${ref})`).join('()');
     } catch (err) {
@@ -109,6 +113,7 @@ export async function startDingTalk(): Promise<void> {
   dw.registerCallbackListener(TOPIC_ROBOT, async (message: DWClientDownStream) => {
     try {
       if (gen !== generation) return;
+      const connection = captureImTurnConnection(apiClient, gen, () => generation);
       const raw = typeof message.data === 'string' ? JSON.parse(message.data) : message.data;
       const envelope = parseInboundEnvelope(raw);
       if (!envelope) return;
@@ -123,7 +128,7 @@ export async function startDingTalk(): Promise<void> {
       // 群聊必须 @（单聊 mentioned 恒真）
       if (envelope.conversationType === '2' && !envelope.mentioned) return;
       if (content.unsupported.length > 0 && !content.text && content.downloadCodes.length === 0) {
-        await sendText(envelope.conversationId, `暂不支持${content.unsupported[0]!.label}消息。`);
+        await sendText(connection, envelope.conversationId, `暂不支持${content.unsupported[0]!.label}消息。`);
         return;
       }
       if (!content.text && content.downloadCodes.length === 0) return;
@@ -140,7 +145,7 @@ export async function startDingTalk(): Promise<void> {
                 return out;
               }
             : undefined,
-        reply: (text) => sendText(envelope.conversationId, text),
+        reply: (text) => sendText(connection, envelope.conversationId, text),
       };
       const resultText = await handleImMessage(
         {
@@ -152,11 +157,11 @@ export async function startDingTalk(): Promise<void> {
         },
         extras,
       );
-      if (resultText) {
-        const { text: stripped, sentAny } = await sendLocalImages(envelope.conversationId, workDir, resultText);
+      if (resultText && connection.isCurrent()) {
+        const { text: stripped, sentAny } = await sendLocalImages(connection, envelope.conversationId, workDir, resultText);
         const cleaned = stripped.replace(/!\[[^\]]*\]\(\)/g, '').trim();
-        if (cleaned) await sendText(envelope.conversationId, cleaned);
-        else if (!sentAny) await sendText(envelope.conversationId, resultText);
+        if (cleaned) await sendText(connection, envelope.conversationId, cleaned);
+        else if (!sentAny) await sendText(connection, envelope.conversationId, resultText);
       }
     } catch (err) {
       console.warn('[fundet:im:dingtalk] 消息处理失败', err);

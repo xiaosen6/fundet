@@ -319,26 +319,22 @@ export class IlinkApiClient {
   }
 
   async getUpdates(cursor: string, signal: AbortSignal) {
-    try {
-      return await this.request(
-        "ilink/bot/getupdates",
-        {
-          method: "POST",
-          authenticated: true,
-          body: {
-            get_updates_buf: cursor,
-            base_info: this.baseInfo(),
-          },
+    // 长轮询超时必须让宿主看到真实传输失败并进入既有退避/重连。
+    // 不能把 TIMEOUT 伪装成 ret:0 空批次——那会让 TCP 假活连接永远不再收消息。
+    // 与 pollQr 不同：扫码轮询的 TIMEOUT 才是正常 wait 语义，不能连带删除。
+    return this.request(
+      "ilink/bot/getupdates",
+      {
+        method: "POST",
+        authenticated: true,
+        body: {
+          get_updates_buf: cursor,
+          base_info: this.baseInfo(),
         },
-        signal,
-        this.options.longPollTimeoutMs ?? 35_000,
-      );
-    } catch (error) {
-      if (error instanceof WechatIlinkError && error.code === "TIMEOUT") {
-        return { ret: 0, msgs: [], get_updates_buf: cursor };
-      }
-      throw error;
-    }
+      },
+      signal,
+      this.options.longPollTimeoutMs ?? 35_000,
+    );
   }
 
   notifyStart(signal: AbortSignal): Promise<Record<string, unknown>> {
