@@ -915,6 +915,13 @@ export function ChatPage(): React.JSX.Element {
         await window.fundet.setSessionModel(activeId, modelId, providerId);
         toast.success(`模型已切换为 ${modelId}`);
       } catch (err) {
+        // 会话已被删（幽灵行——启动清扫/IM 回收/手动删后列表未同步）：
+        // 安静刷新列表让幽灵消失，不弹「切换失败」吓用户
+        if (/会话不存在/.test(err instanceof Error ? err.message : String(err))) {
+          await refreshSessionList();
+          toast.info('该会话已不存在，列表已刷新');
+          return;
+        }
         await refreshSessionList();
         toast.error(`切换模型失败：${err instanceof Error ? err.message : String(err)}`);
       }
@@ -938,6 +945,12 @@ export function ChatPage(): React.JSX.Element {
         await window.fundet.setSessionPermissionMode(activeId, mode);
         toast.success(`权限已切换为「${labels[mode] ?? mode}」`);
       } catch (err) {
+        // 幽灵行（会话已被删但侧栏未同步）：安静刷新，不弹错误
+        if (/会话不存在/.test(err instanceof Error ? err.message : String(err))) {
+          await refreshSessionList();
+          toast.info('该会话已不存在，列表已刷新');
+          return;
+        }
         // 失败回滚：重拉真实状态
         await refreshSessionList();
         toast.error(`切换权限档位失败：${err instanceof Error ? err.message : String(err)}`);
