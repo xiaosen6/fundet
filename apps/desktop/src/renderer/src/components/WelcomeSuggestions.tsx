@@ -1,6 +1,6 @@
 /**
  * WelcomeSuggestions — 新会话空消息态的引导建议卡（对齐 Cindy homeSuggestions）。
- * 池子贴 Fundet 产品能力（技能集市/知识库/钉钉/回滚/模型设置），点击直接把
+ * 池子贴 Fundet 产品能力（技能集市/知识库/办公工作台/回滚/模型设置），点击直接把
  * prompt 预填进输入框（用户过目后手动发送）；换一批洗牌取 4，不再显示持久化
  * 到 localStorage。
  */
@@ -45,15 +45,16 @@ const POOL: Suggestion[] = [
     Icon: BookOpen,
   },
   {
-    id: 'dingtalk',
-    label: '帮我看看今天的钉钉日程',
-    prompt: '查一下我今天的钉钉日程，重点提醒我下一场会议。',
+    // 办公平台（企业微信 / 钉钉）由工作台里的选择决定：文案不点名，命令走新对话注入的速查表
+    id: 'office-calendar',
+    label: '帮我看看今天的日程',
+    prompt: '查一下我今天的日程，重点提醒我下一场会议。',
     Icon: Briefcase,
   },
   {
-    id: 'dingtalk-approval',
-    label: '盘点我的待办与待审批',
-    prompt: '汇总我的钉钉待办和待审批，按优先级排一下给我。',
+    id: 'office-todo',
+    label: '盘点我的待办',
+    prompt: '汇总我的待办，按紧急程度排一下给我，能代办的单列出来。',
     Icon: Wallet,
   },
   {

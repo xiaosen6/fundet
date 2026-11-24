@@ -10,14 +10,24 @@ import { Briefcase, ChevronDown, Library, Settings2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/cn';
 import { MorphPopover } from './ui/MorphPopover';
+import { useOfficeCliProvider } from '../hooks/useOfficeCliProvider';
+import { OFFICE_PROVIDER_META } from '../../../shared/office-cli.js';
 import type { KnowledgeBaseView, KnowledgeSessionBinding } from '../../../shared/fundet-api.ts';
 
 const IDLE: KnowledgeSessionBinding = { ids: [], auto: false };
+
+/** 企业文档检索那一项跟当前办公 CLI 供应商走：企业微信搜文档，钉钉搜知识库 */
+const OFFICE_DOC_ITEM = {
+  wecom: { title: '企业微信文档', sub: '公司文档搜索（需企业微信已授权）', chip: '企微' },
+  dingtalk: { title: '钉钉知识库', sub: '公司文档/消息（需钉钉已登录）', chip: '钉钉' },
+} as const;
 
 export function KnowledgeChip({ sessionId }: { sessionId: string | null }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBaseView[]>([]);
   const [binding, setBinding] = useState<KnowledgeSessionBinding>(IDLE);
+  const provider = useOfficeCliProvider();
+  const officeItem = OFFICE_DOC_ITEM[provider];
 
   useEffect(() => {
     if (!sessionId) {
@@ -59,7 +69,7 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
     >
       <Library size={14} className="shrink-0" />
       <span data-cq-label className="min-w-0 truncate">
-        知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : binding.dingtalk ? ' · 钉钉' : ''}
+        知识库{binding.ids.length > 0 ? ` · ${binding.ids.length}` : binding.dingtalk ? ` · ${officeItem.chip}` : ''}
       </span>
       <ChevronDown size={14} className="shrink-0 text-muted" />
     </button>
@@ -76,7 +86,7 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
       trigger={trigger}
     >
       <div className="scrollbar-none flex flex-col">
-        {/* 钉钉知识库（企业文档/消息检索，走钉钉 AI 搜索；勾了即注入检索工具） */}
+        {/* 企业文档检索（工具跟当前办公 CLI 供应商走；勾了即注入检索工具） */}
         <button
           type="button"
           onClick={toggleDingtalk}
@@ -84,8 +94,8 @@ export function KnowledgeChip({ sessionId }: { sessionId: string | null }): Reac
         >
           <Briefcase size={16} className={cn('shrink-0', binding.dingtalk ? 'text-accent' : 'text-muted')} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-14 text-primary">钉钉知识库</span>
-            <span className="block text-11 text-muted">公司文档/消息（需钉钉已登录）</span>
+            <span className="block truncate text-14 text-primary">{officeItem.title}</span>
+            <span className="block text-11 text-muted">{officeItem.sub}</span>
           </span>
           <span
             className={cn(

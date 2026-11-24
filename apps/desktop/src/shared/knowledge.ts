@@ -6,6 +6,7 @@ export const KNOWLEDGE_MCP_SERVER_NAME = 'knowledge';
 export const KNOWLEDGE_MCP_TOOL_NAME = 'knowledge_search';
 export const KNOWLEDGE_MCP_LIST_TOOL_NAME = 'knowledge_list';
 export const KNOWLEDGE_MCP_DINGTALK_TOOL_NAME = 'dingtalk_kb_search';
+export const KNOWLEDGE_MCP_WECOM_TOOL_NAME = 'wecom_doc_search';
 
 /** KB 级检索/分块参数（MCP 默认 limit、导入分块都用它） */
 export interface KnowledgeBaseParams {
@@ -21,7 +22,11 @@ export interface KnowledgeBaseParams {
 export interface KnowledgeSessionBinding {
   ids: string[];
   auto: boolean;
-  /** 同时勾选钉钉知识库（企业文档/消息检索，走 dws aisearch） */
+  /**
+   * 同时勾选「企业文档」检索：工具跟当前办公 CLI 供应商走——钉钉 = dingtalk_kb_search
+   * （知识库 AI 搜索），企业微信 = wecom_doc_search（文档搜索）。字段名沿用 dingtalk
+   * （存量会话绑定里存的就是这个键），语义已是两家通用。
+   */
   dingtalk?: boolean;
 }
 

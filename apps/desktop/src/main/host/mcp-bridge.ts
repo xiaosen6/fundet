@@ -45,6 +45,8 @@ import { getSessionKnowledgeBinding } from '../knowledge/store.js';
 import { startKnowledgeMcpServer } from '../knowledge/mcp-server.js';
 import { handleKnowledgeSearch, handleKnowledgeList } from '../knowledge/tool.js';
 import { formatDingtalkResults } from '../knowledge/dingtalk-format.js';
+import { formatWecomDocResults } from '../knowledge/wecom-format.js';
+import { KNOWLEDGE_SCOPE_RULE_WECOM } from '../knowledge/mcp-server.js';
 import { startMemoryMcpServer } from '../memory/mcp-server.js';
 import { createMemoryToolHandlers, type MemoryStoreLike } from '../memory/handlers.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
@@ -56,6 +58,8 @@ import { activeImageGenProvider } from '../imagegen/gateway.ts';
 import { saveGeneratedImage } from '../imagegen/save.ts';
 import type { MakerMemoryManager } from '@fundet/agent-core';
 import { resolveDws, execDws } from './dws.js';
+import { execWecom, resolveWecomCli } from './wecom-cli.js';
+import { getOfficeProvider } from './office-cli.js';
 import { ensureBrowserRuntime } from '../browser/host.js';
 import { startBrowserMcpServer } from '../browser/mcp-http.js';
 
@@ -515,44 +519,75 @@ export function createPreparePiExtraSpawnConfig(logger: Logger, memoryManager?: 
       }
     });
 
-    // 知识库（会话绑定了才注入）：勾本地→search/list；勾钉钉→dingtalk_kb_search
-    // （用户显式选源，agent 不再靠语义理解猜——0.3.10 形态）。审批不进白名单。
+    // 知识库（会话绑定了才注入）：勾本地→search/list；勾企业文档→检索工具跟当前
+    // 办公 CLI 供应商走（钉钉 dingtalk_kb_search / 企业微信 wecom_doc_search）。绑定的
+    // 字段名沿用 dingtalk（存量会话存的就是这个键）。用户显式选源，agent 不再靠
+    // 语义理解猜（0.3.10 形态）。审批不进白名单。
     tasks.push(async () => {
       try {
         const binding = ctx?.sessionId ? getSessionKnowledgeBinding(ctx.sessionId) : null;
         const kbIds = binding?.ids ?? [];
-        const useDingtalk = binding?.dingtalk === true;
-        if (kbIds.length > 0 || useDingtalk) {
+        const useOffice = binding?.dingtalk === true;
+        if (kbIds.length > 0 || useOffice) {
+          const officeProvider = await getOfficeProvider();
           const kbIdsSnapshot = [...kbIds];
-          const knowledge = await startKnowledgeMcpServer(token, logger.child('knowledge-mcp'), {
-            ...(kbIds.length > 0
-              ? {
-                  search: (args: Record<string, unknown>) =>
-                    handleKnowledgeSearch(kbIdsSnapshot, args),
-                  list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
-                }
-              : {}),
-            ...(useDingtalk
-              ? {
-                  dingtalk: async (args: Record<string, unknown>) => {
-                    const query = typeof args.query === 'string' ? args.query.trim() : '';
-                    const limit = typeof args.limit === 'number' ? args.limit : 5;
-                    if (!query) return { text: '缺少检索词（query）。', isError: true };
-                    const dws = await resolveDws();
-                    if (!dws) return { text: '还没安装 dws（钉钉工作台面板可一键安装）。', isError: true };
-                    const res = await execDws(
-                      dws,
-                      ['aisearch', 'enterprise', '--queries', query, '--format', 'json'],
-                      60_000,
-                    );
-                    if (res.code !== 0) {
-                      return { text: `钉钉检索命令失败：${res.stderr || res.stdout || res.code}`, isError: true };
-                    }
-                    return formatDingtalkResults(res.stdout, query, limit);
-                  },
-                }
-              : {}),
-          });
+          const knowledge = await startKnowledgeMcpServer(
+            token,
+            logger.child('knowledge-mcp'),
+            {
+              ...(kbIds.length > 0
+                ? {
+                    search: (args: Record<string, unknown>) =>
+                      handleKnowledgeSearch(kbIdsSnapshot, args),
+                    list: () => Promise.resolve(handleKnowledgeList(kbIdsSnapshot)),
+                  }
+                : {}),
+              ...(useOffice && officeProvider === 'dingtalk'
+                ? {
+                    dingtalk: async (args: Record<string, unknown>) => {
+                      const query = typeof args.query === 'string' ? args.query.trim() : '';
+                      const limit = typeof args.limit === 'number' ? args.limit : 5;
+                      if (!query) return { text: '缺少检索词（query）。', isError: true };
+                      const dws = await resolveDws();
+                      if (!dws) return { text: '还没安装 dws（办公工作台切到钉钉后可一键安装）。', isError: true };
+                      const res = await execDws(
+                        dws,
+                        ['aisearch', 'enterprise', '--queries', query, '--format', 'json'],
+                        60_000,
+                      );
+                      if (res.code !== 0) {
+                        return { text: `钉钉检索命令失败：${res.stderr || res.stdout || res.code}`, isError: true };
+                      }
+                      return formatDingtalkResults(res.stdout, query, limit);
+                    },
+                  }
+                : {}),
+              ...(useOffice && officeProvider === 'wecom'
+                ? {
+                    wecom: async (args: Record<string, unknown>) => {
+                      const query = typeof args.query === 'string' ? args.query.trim() : '';
+                      const limit = typeof args.limit === 'number' ? args.limit : 5;
+                      if (!query) return { text: '缺少检索词（query）。', isError: true };
+                      const cli = await resolveWecomCli();
+                      if (!cli) return { text: '还没安装 wecom-cli（办公工作台可一键安装）。', isError: true };
+                      // 参数形状取自官方 --schema（doc.search：keywords 必填）
+                      const res = await execWecom(
+                        cli,
+                        [
+                          'doc',
+                          'search',
+                          '--json',
+                          JSON.stringify({ keywords: [query], search_scope: 'title_content', limit: Math.min(Math.max(1, limit), 10) }),
+                        ],
+                        60_000,
+                      );
+                      return formatWecomDocResults(res, query, limit);
+                    },
+                  }
+                : {}),
+            },
+            { scopeRule: officeProvider === 'wecom' ? KNOWLEDGE_SCOPE_RULE_WECOM : undefined },
+          );
           disposers.push(knowledge.dispose);
           servers.push({ name: KNOWLEDGE_MCP_SERVER_NAME, url: knowledge.url });
         }

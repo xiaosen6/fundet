@@ -11,7 +11,9 @@ import type {
   PermissionMode,
 } from '@fundet/agent-core';
 import type { ImBotsStatus, ImChannelId, ImSaveInput } from './im-bots.ts';
+import type { OfficeCliProvider } from './office-cli.ts';
 export type { ImBotsStatus, ImChannelId, ImChannelStatus, ImSaveInput } from './im-bots.ts';
+export type { OfficeCliProvider } from './office-cli.ts';
 import type { BrowserStatus } from './browser-settings.ts';
 export type { BrowserStatus } from './browser-settings.ts';
 import type { ComputerStatus } from './computer-settings.ts';
@@ -157,24 +159,44 @@ export interface DwsProfileView {
   status?: string;
 }
 
-/** 钉钉工作台状态（主进程 host/dws.ts 是唯一真源） */
+/**
+ * 办公工作台状态（主进程是唯一真源；按当前供应商走 host/wecom-cli.ts 或 host/dws.ts）。
+ * 历史命名沿用 Dws 前缀——这张面现在是企业微信 / 钉钉两家共用。
+ */
 export interface DwsStatusView {
+  /** 当前办公 CLI 供应商（缺省企业微信） */
+  provider: OfficeCliProvider;
   installed: boolean;
   version?: string;
   loggedIn: boolean;
   profiles: DwsProfileView[];
-  /** 已装配的 dingtalk-* 技能目录名（用户技能根下） */
+  /** 已装配的官方技能目录名（用户技能根下：wecomcli-* 或 dingtalk-*） */
   skills: string[];
-  /** 钉钉总开关（dws.enabled，默认 true）：关=隐藏工作台+对话不注入 dws 速查表 */
+  /** 办公集成总开关（dws.enabled，默认 true）：关=隐藏工作台+对话不注入命令速查 */
   enabled: boolean;
+  /** 企业微信：已授权的机器人 Bot ID（auth show 的 Bot ID） */
+  botId?: string;
+  /** 扫码登录进行态（仅企业微信；钉钉走浏览器授权没有此态） */
+  login?: OfficeLoginState;
 }
 
-/** 钉钉工作台动作结果（安装 / 登录引导 / 技能装配） */
+/** 企业微信扫码登录进行态：主进程持有 `auth init` 进程，面板轮询状态 */
+export type OfficeLoginState =
+  /** 二维码已生成，等用户用企业微信扫 */
+  | { state: 'waiting'; qrDataUrl?: string; pageUrl?: string; expiresAt: number }
+  | { state: 'succeeded' }
+  /** 5 分钟内没扫，CLI 自行超时退出 */
+  | { state: 'expired' }
+  | { state: 'failed'; message: string };
+
+/** 办公工作台动作结果（安装 / 登录引导 / 技能装配） */
 export interface DwsActionResult {
   ok: boolean;
   output: string;
   /** 登录输出里的授权 URL（浏览器没自动弹时手动打开） */
   url?: string;
+  /** 企业微信扫码登录：二维码 PNG 的 data URL（面板直接展示） */
+  qrDataUrl?: string;
 }
 
 /* ---------- 钉钉组件（灵动岛数据面） ---------- */
@@ -231,6 +253,8 @@ export interface DwsWidgetsSnapshot {
   disabledKind?: 'not-installed' | 'not-logged-in' | 'expired' | 'auth-failed';
   reason?: string;
   fetchedAt: number;
+  /** 这份快照来自哪家 CLI；缺省（老版本主进程）按钉钉解读 */
+  provider?: OfficeCliProvider;
   calendar: DwsCalendarEventView[];
   todos: DwsTodoView[];
   approvals: DwsApprovalPendingView[];
@@ -596,23 +620,33 @@ export interface FundetApi {
   imWechatQrCancel(): Promise<void>;
   imSetDefaults(patch: { workDir?: string; providerId?: string; model?: string }): Promise<void>;
 
-  /** 钉钉工作台（dws）：探测安装/登录/技能装配状态 */
+  /**
+   * 办公工作台（企业微信 wecom-cli / 钉钉 dws，按当前供应商分派）：
+   * 探测安装/登录/技能装配状态
+   */
   dwsStatus(): Promise<DwsStatusView>;
   dwsSetEnabled(enabled: boolean): Promise<{ ok: boolean; enabled: boolean }>;
-  /** 安装官方 dws CLI（默认 Gitee 镜像；github 走官方仓 raw） */
-  dwsInstall(source: 'gitee' | 'github'): Promise<DwsActionResult>;
-  /** 拉起可见终端窗口跑 dws auth login（浏览器自动开） */
+  /** 切换办公 CLI 供应商（持久化；组件板立即按新供应商刷新） */
+  officeCliSetProvider(provider: OfficeCliProvider): Promise<{ ok: boolean; provider: OfficeCliProvider }>;
+  /**
+   * 安装官方 CLI。钉钉：gitee（自建镜像，默认）/ github；企业微信：mirror（npmmirror，
+   * 默认）/ npm（官方源）——各取所需，不认识的取值按该供应商的默认源
+   */
+  dwsInstall(source: 'gitee' | 'github' | 'mirror' | 'npm'): Promise<DwsActionResult>;
+  /** 登录：钉钉后台跑 auth login 抓浏览器授权链接；企业微信后台跑扫码并取回二维码 */
   dwsLogin(): Promise<DwsActionResult>;
-  /** 退出登录（dws auth logout）：升级 dws 后旧登录态不兼容的自救入口 */
+  /** 退出登录：钉钉 dws auth logout；企业微信删除本机凭据文件（CLI 无退出命令） */
   dwsLogout(): Promise<DwsActionResult>;
-  /** 装配官方技能包到用户技能根（dingtalk-* 前缀目录） */
+  /** 装配官方技能包到用户技能根（wecomcli-* / dingtalk-* 前缀目录） */
   dwsSkillSetup(): Promise<DwsActionResult>;
 
-  /** 钉钉组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
+  /** 办公组件板：取快照（超过 TTL 自动触发一轮刷新；force=true 立即刷） */
   dwsWidgets(force?: boolean): Promise<DwsWidgetsSnapshot>;
   onDwsWidgetsChanged(cb: (snapshot: DwsWidgetsSnapshot) => void): () => void;
   onDwsEnabledChanged(cb: (enabled: boolean) => void): () => void;
-  /** dws 安装增量输出（重装/安装时的实时进度） */
+  /** 办公 CLI 供应商已切换（设置页与聊天页据此换文案/刷新） */
+  onOfficeCliProviderChanged(cb: (provider: OfficeCliProvider) => void): () => void;
+  /** CLI 安装增量输出（重装/安装时的实时进度） */
   onDwsInstallProgress(cb: (chunk: string) => void): () => void;
   /** 组件卡条目点开查看（v1 仅 unread：最近消息） */
   dwsWidgetsDetail(kind: 'unread', id: string): Promise<DwsChatMessageView[]>;

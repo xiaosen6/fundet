@@ -2,13 +2,14 @@
  * 灵动岛（深度融合版）：不再是悬浮异物，而是会话头部（46px slim header）的
  * 尾部状态簇——安静常驻（muted 文字 + 计数，hover 才浮出胶囊底），点击向下
  * 弹出组件板（float-in 150ms，与菜单/弹层同语言；Esc/点外部收起）。
- * 数据面与欢迎页组件板（DwsWidgets）完全复用。
+ * 数据面与欢迎页组件板（DwsWidgets）完全复用；平台名跟快照的供应商走。
  */
 import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, TriangleAlert } from 'lucide-react';
 import type { DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
-import { dwsConnectionBroken } from '../../lib/dwsState';
+import { dwsConnectionBroken, dwsDisabledTitle, officeProviderOf } from '../../lib/dwsState';
+import { OFFICE_PROVIDER_META } from '../../../../shared/office-cli.js';
 import { DwsWidgets } from './DwsWidgets';
 
 function fmtCountdown(ms: number): string {
@@ -58,12 +59,14 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, onOpenPanel }: 
   }, [open]);
 
   if (!snapshot) return null;
+  const label = OFFICE_PROVIDER_META[officeProviderOf(snapshot)].label;
   if (snapshot.state !== 'ready') {
     // 只有「本来能用、现在断了」（过期/授权失效）才亮警示：整颗消失会让用户
     // 以为「今天真没事」。从没装/从没登录属于没配置，静默——否则常驻噪音。
     if (!dwsConnectionBroken(snapshot)) return null;
     const className =
       'flex h-7 items-center gap-1.5 rounded-full bg-hover-soft px-2.5 text-11 text-warning';
+    const reason = snapshot.reason ?? dwsDisabledTitle(snapshot);
     return (
       <div className="mr-3 flex shrink-0 items-center">
         {/* 没有跳转目标就不要做成按钮——点了没反应的按钮比没有按钮更糟
@@ -71,17 +74,17 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, onOpenPanel }: 
         {onOpenPanel ? (
           <button
             type="button"
-            title={snapshot.reason ?? '钉钉连接已失效'}
+            title={reason}
             className={cn(className, 'transition-colors hover:text-primary')}
             onClick={onOpenPanel}
           >
             <TriangleAlert size={12} className="shrink-0" />
-            钉钉未连接
+            {label}未连接
           </button>
         ) : (
-          <span title={snapshot.reason ?? '钉钉连接已失效'} className={className}>
+          <span title={reason} className={className}>
             <TriangleAlert size={12} className="shrink-0" />
-            钉钉未连接
+            {label}未连接
           </span>
         )}
       </div>
@@ -100,7 +103,7 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, onOpenPanel }: 
       <button
         type="button"
         aria-expanded={open}
-        title="钉钉 · 今日（点击展开）"
+        title={`${label} · 今日（点击展开）`}
         className={cn(
           'flex h-7 max-w-[420px] items-center gap-2 rounded-full px-2.5 text-12 select-none',
           'text-muted transition-colors duration-[var(--motion-fast)]',
@@ -120,7 +123,7 @@ export function DynamicIsland({ snapshot, onAskAgent, onRefresh, onOpenPanel }: 
             </span>
           </>
         ) : (
-          <span className="font-medium text-primary">钉钉</span>
+          <span className="font-medium text-primary">{label}</span>
         )}
         <span className="flex shrink-0 items-center gap-1.5 text-11 tabular-nums">
           {todoCount > 0 && (

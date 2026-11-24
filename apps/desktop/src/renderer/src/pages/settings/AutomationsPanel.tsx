@@ -83,15 +83,15 @@ const TEMPLATES: Array<{
     ],
   },
   {
-    title: '办公与钉钉',
+    title: '办公日程',
     items: [
       {
         name: '每日日程晨报',
-        desc: '每天早上汇总今天的钉钉日程，重点提醒下一场会议',
-        instructions: '汇总我今天的钉钉日程，按时间排序列出，重点提醒下一场会议。',
+        desc: '每天早上汇总今天的日程，重点提醒下一场会议',
+        instructions: '汇总我今天的日程，按时间排序列出，重点提醒下一场会议。',
         schedule: 'weekdays',
         time: '09:00',
-        tags: ['钉钉'],
+        tags: ['日程'],
         Icon: CalendarClock,
       },
       {

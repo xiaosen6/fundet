@@ -71,7 +71,8 @@ const LIST_EXTEND = 80;
 const PANEL_BUTTONS: Array<{ id: SidebarPanelId; label: string; Icon: typeof Bot }> = [
   { id: 'im', label: 'IM 机器人', Icon: Bot },
   { id: 'automations', label: '自动化', Icon: CalendarClock },
-  { id: 'dws', label: '钉钉工作台', Icon: Briefcase },
+  // 办公工作台 = 企业微信 / 钉钉官方 CLI 的引导与组件板（面板 id 沿用历史名 dws）
+  { id: 'dws', label: '办公工作台', Icon: Briefcase },
   { id: 'skills', label: '技能', Icon: Zap },
   { id: 'knowledge', label: '知识库', Icon: BookOpen },
   { id: 'memory', label: '记忆', Icon: Brain },

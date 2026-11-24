@@ -15,6 +15,10 @@ import {
   parseChatMessages,
   parseTodos,
   parseUnread,
+  parseWecomCalendar,
+  parseWecomTodos,
+  wecomTimeMs,
+  wecomTodayWindow,
 } from './dws-widgets.ts';
 
 const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__');
@@ -185,5 +189,153 @@ describe('errOf（失败原因人话化）', () => {
     const long = 'x'.repeat(300);
     assert.equal(errOf({ code: 1, stdout: `{"error":{"message":"${long}"}}`, stderr: '' }).length, 220);
     assert.equal(errOf({ code: 3, stdout: '', stderr: '' }), '退出码 3');
+  });
+});
+
+/* ---------------- 企业微信（wecom-cli）----------------
+ * 注意：这里的样例**不是真机实捕**——是按官方 `wecom-cli <方法> --schema` 的返回
+ * 结构拼的（2026-11-24 取自 1.3.4：calendar.schedules.list / todo.list）。登录态
+ * 实测输出待用户首次授权后补抓替换。时钟注入，断言与运行日无关。 */
+
+/** 样例数据日：2026-11-24 中午（本地时间） */
+const WECOM_NOW = new Date(2026, 10, 24, 12, 0, 0).getTime();
+
+const WECOM_CALENDAR = JSON.stringify({
+  schedule_list: [
+    {
+      schedule_id: 'sched-1',
+      subject: '周例会',
+      begin_time: '2026-11-24 10:00:00',
+      end_time: '2026-11-24 11:00:00',
+      is_all_day: false,
+      location: '3F 会议室',
+      creator_name: '张三',
+      attendees: [
+        { userid: 'u1', name: '张三' },
+        { userid: 'u2', name: '李四' },
+      ],
+      meeting_room: { meeting_room_id: 'r1', meeting_room_name: '301' },
+      description: '同步本周进展',
+    },
+    { schedule_id: 'sched-2', subject: '全天外出', begin_time: '2026-11-24 00:00:00', end_time: '2026-11-24 00:00:00', is_all_day: true },
+    { schedule_id: 'sched-3', subject: '早上的会', begin_time: '2026-11-24 07:00:00', end_time: '2026-11-24 07:30:00' },
+    { schedule_id: 'sched-4', subject: '下午的会', begin_time: '2026-11-24 15:00:00', end_time: '2026-11-24 15:30:00' },
+  ],
+  schedule_list_count: 4,
+});
+
+const WECOM_TODOS = JSON.stringify({
+  items: [
+    { todo_id: 't1', title: '写周报', deadline: { type: 'date', value: '2026-11-20' }, status: 'proceed', creator: { user_name: '我', userid: 'u1' } },
+    { todo_id: 't2', title: '准备评审材料', deadline: { type: 'datetime', value: '2026-11-24 18:00:00' }, status: 'proceed' },
+    { todo_id: 't3', title: '回复邮件', status: 'proceed' },
+    { todo_id: 't4', title: '今天到期', deadline: { type: 'date', value: '2026-11-24' }, status: 'proceed' },
+  ],
+  items_count: 4,
+  has_more: false,
+});
+
+describe('wecomTimeMs（wecom-cli 时间串）', () => {
+  it('不带时区 = 本地时间；日期型 = 当天 0 点', () => {
+    assert.equal(wecomTimeMs('2026-11-24 10:30:00'), new Date(2026, 10, 24, 10, 30, 0).getTime());
+    assert.equal(wecomTimeMs('2026-11-24'), new Date(2026, 10, 24).getTime());
+  });
+
+  it('带时区（Z / ±hh:mm）按绝对时刻', () => {
+    assert.equal(wecomTimeMs('2026-11-24T02:00:00Z'), Date.parse('2026-11-24T02:00:00Z'));
+    assert.equal(wecomTimeMs('2026-11-24 10:00:00+08:00'), Date.parse('2026-11-24T10:00:00+08:00'));
+  });
+
+  it('非字符串 / 空 / 认不出 → null', () => {
+    assert.equal(wecomTimeMs(12345), null);
+    assert.equal(wecomTimeMs(''), null);
+    assert.equal(wecomTimeMs('   '), null);
+    assert.equal(wecomTimeMs('明天下午'), null);
+  });
+});
+
+describe('wecomTodayWindow（日程查询窗口）', () => {
+  it('本地时间当天 00:00:00 – 23:59:59', () => {
+    assert.deepEqual(wecomTodayWindow(new Date(2026, 10, 24, 10, 0, 0).getTime()), {
+      begin_time: '2026-11-24 00:00:00',
+      end_time: '2026-11-24 23:59:59',
+    });
+    // 跨年末的日期补零
+    assert.equal(wecomTodayWindow(new Date(2026, 0, 5, 23, 0, 0).getTime()).begin_time, '2026-01-05 00:00:00');
+  });
+});
+
+describe('parseWecomCalendar（官方 schema 形状）', () => {
+  it('归一化 + 会议室 + 创建者 + 参会人 + 按开始时间排序', () => {
+    const events = parseWecomCalendar(WECOM_CALENDAR, WECOM_NOW);
+    assert.deepEqual(
+      events.map((e) => e.title),
+      ['全天外出', '周例会', '下午的会'],
+    );
+    const meeting = events[1]!;
+    assert.equal(meeting.id, 'sched-1');
+    assert.equal(meeting.startMs, new Date(2026, 10, 24, 10, 0, 0).getTime());
+    assert.equal(meeting.endMs, new Date(2026, 10, 24, 11, 0, 0).getTime());
+    assert.equal(meeting.roomName, '301');
+    assert.equal(meeting.location, '3F 会议室');
+    assert.equal(meeting.organizer, '张三');
+    assert.deepEqual(meeting.attendees, ['张三', '李四']);
+    assert.equal(meeting.description, '同步本周进展');
+  });
+
+  it('已结束超过 1 小时的不占版面；进行中的保留', () => {
+    // 07:00–07:30 的会被过滤；10:00–11:00 结束刚 1 小时（12:00 − 11:00 = 1h，边界含）保留
+    assert.equal(parseWecomCalendar(WECOM_CALENDAR, WECOM_NOW).length, 3);
+    const later = new Date(2026, 10, 24, 12, 0, 1).getTime();
+    assert.deepEqual(
+      parseWecomCalendar(WECOM_CALENDAR, later).map((e) => e.title),
+      ['全天外出', '下午的会'],
+    );
+  });
+
+  it('全天日程算到当天最后一秒，不会被当成「已结束」', () => {
+    const [allDay] = parseWecomCalendar(WECOM_CALENDAR, WECOM_NOW);
+    assert.equal(allDay!.isAllDay, true);
+    assert.equal(allDay!.endMs, new Date(2026, 10, 24, 23, 59, 59).getTime() + 999);
+    assert.ok(allDay!.endMs! >= WECOM_NOW);
+  });
+
+  it('垃圾输入 / 缺字段返回空数组或安全默认值', () => {
+    assert.deepEqual(parseWecomCalendar('not json', WECOM_NOW), []);
+    assert.deepEqual(parseWecomCalendar('{"schedule_list":{}}', WECOM_NOW), []);
+    assert.deepEqual(parseWecomCalendar('{}', WECOM_NOW), []);
+    const [bare] = parseWecomCalendar('{"schedule_list":[{"schedule_id":"x"}]}', WECOM_NOW);
+    assert.equal(bare!.title, '（无标题）');
+    assert.equal(bare!.startMs, null);
+    assert.deepEqual(bare!.attendees, []);
+  });
+});
+
+describe('parseWecomTodos（官方 schema 形状）', () => {
+  it('逾期在前，其余按截止升序、无截止垫底', () => {
+    // t1 截止 11-20（逾期）；t2 今天 18:00；t4 截止日 = 今天（到当天结束，不算逾期）；t3 无截止
+    assert.deepEqual(
+      parseWecomTodos(WECOM_TODOS, WECOM_NOW).map((t) => t.taskId),
+      ['t1', 't2', 't4', 't3'],
+    );
+  });
+
+  it('date 型截止算到当天结束；datetime 型按时刻；没有优先级给默认档', () => {
+    const todos = parseWecomTodos(WECOM_TODOS, WECOM_NOW);
+    const byId = Object.fromEntries(todos.map((t) => [t.taskId, t]));
+    assert.equal(byId.t4!.dueMs, new Date(2026, 10, 24, 23, 59, 59).getTime() + 999);
+    assert.equal(byId.t2!.dueMs, new Date(2026, 10, 24, 18, 0, 0).getTime());
+    assert.equal(byId.t3!.dueMs, null);
+    assert.equal(byId.t1!.subject, '写周报');
+    assert.equal(byId.t1!.priority, 50);
+  });
+
+  it('最多 6 条；垃圾输入返回空数组', () => {
+    assert.deepEqual(parseWecomTodos('nope', WECOM_NOW), []);
+    assert.deepEqual(parseWecomTodos('{"items":"x"}', WECOM_NOW), []);
+    const many = JSON.stringify({
+      items: Array.from({ length: 9 }, (_, i) => ({ todo_id: `t${i}`, title: `任务 ${i}` })),
+    });
+    assert.equal(parseWecomTodos(many, WECOM_NOW).length, 6);
   });
 });

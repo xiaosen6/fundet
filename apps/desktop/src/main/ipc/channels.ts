@@ -136,6 +136,8 @@ export const FUNDET_INVOKE = {
   DWS_SKILL_SETUP: 'dws:skill-setup',
   DWS_WIDGETS: 'dws:widgets',
   DWS_WIDGETS_DETAIL: 'dws:widgets-detail',
+  /** 办公 CLI 供应商（企业微信 / 钉钉）；其余 dws:* 通道是两家共用的面，名字沿用 */
+  OFFICECLI_SET_PROVIDER: 'officecli:set-provider',
   UPDATE_STATUS: 'update:status',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL: 'update:install',
@@ -187,6 +189,8 @@ export const FUNDET_PUSH = {
   DWS_ENABLED_CHANGED: 'dws:enabled-changed',
   /** dws 安装进度（payload = 增量输出文本行） */
   DWS_INSTALL_PROGRESS: 'dws:install-progress',
+  /** 办公 CLI 供应商已切换：payload = 'wecom' | 'dingtalk' */
+  OFFICECLI_PROVIDER_CHANGED: 'officecli:provider-changed',
   /** 知识库导入进度：payload { kbId, completed, total, current } */
   KB_IMPORT_PROGRESS: 'kb:import-progress',
   KB_EMBED_PROGRESS: 'kb:embed-progress',

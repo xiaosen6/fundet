@@ -1,17 +1,26 @@
 /**
- * 钉钉组件聚合器（灵动岛数据面）：定时并发跑四路 dws 查询，归一化成
- * DwsWidgetsSnapshot 缓存在主进程，push 给渲染层。
+ * 办公组件聚合器（灵动岛数据面）：按当前办公 CLI 供应商（officecli.provider）
+ * 定时并发跑查询，归一化成 DwsWidgetsSnapshot 缓存在主进程，push 给渲染层。
+ *
+ * - 钉钉（dws）：四路——今日日程 / 待办 / 待审批 / 未读会话
+ * - 企业微信（wecom-cli）：两路——今日日程 / 未完成待办（CLI 没有审批与未读
+ *   会话接口，这两卡不进快照）；返回结构取自官方 `--schema`，登录态实测输出待补
  *
  * - 门控：未装/未登录 → disabled，不跑查询
  * - 节奏：默认 2 分钟一轮；渲染层回焦触发 dwsWidgets() 时按 TTL（45s）去抖
  * - 降级：单查询失败保留上次好数据 + errors 角标，不拖垮整板
  * - 只读：本模块不产生任何写操作；组件上的动作全部走 Agent 会话（过命令确认闸）
  *
- * 解析器吃 dws 全量 JSON（输出几 KB，不进模型上下文，无需 --jq 裁剪），
+ * 钉钉解析器吃 dws 全量 JSON（输出几 KB，不进模型上下文，无需 --jq 裁剪），
  * fixture 是真机登录态实捕（__fixtures__/dws-*.json）。
+ * 供应商设置只能惰性读（settings 依赖 sqlite 原生模块，node --test 直跑本文件的
+ * 纯解析器时不能拉起数据库）。
  */
 import { createRequire } from 'node:module';
 import { execDws, extractJson, hasActiveLogin, parseProfileList, resolveDws } from './dws.ts';
+import { execWecom, parseWecomAuthShow, parseWecomError, resolveWecomCli } from './wecom-cli.ts';
+import { getOfficeProvider } from './office-cli.ts';
+import { DEFAULT_OFFICE_PROVIDER, type OfficeCliProvider } from '../../shared/office-cli.ts';
 import type {
   DwsApprovalPendingView,
   DwsCalendarEventView,
@@ -62,11 +71,21 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+/** 已结束超过 1 小时的不占版面；按开始时间排序，封顶 MAX_ITEMS */
+function finishCalendar(events: DwsCalendarEventView[], nowMs: number): DwsCalendarEventView[] {
+  return events
+    .filter((e) => e.id || e.title !== '（无标题）')
+    .filter((e) => e.endMs === null || e.endMs >= nowMs - 60 * 60_000)
+    .sort((a, b) => (a.startMs ?? Infinity) - (b.startMs ?? Infinity))
+    .slice(0, MAX_ITEMS);
+}
+
 export function parseCalendarEvents(stdout: string, nowMs: number = Date.now()): DwsCalendarEventView[] {
   const parsed = extractJson(stdout) as { result?: { events?: unknown } } | null;
   const events = parsed?.result?.events;
   if (!Array.isArray(events)) return [];
-  return events
+  return finishCalendar(
+    events
     .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
     // 已取消的会议钉钉仍会返回（带 status:"cancelled"）——不过滤会按时间段
     // 被推断成「进行中/未开始」持续展示（2026-10-09 用户实报）
@@ -98,12 +117,9 @@ export function parseCalendarEvents(stdout: string, nowMs: number = Date.now()):
             .slice(0, 8)
         : [],
       description: firstString(e.description)?.replace(/\s+/g, ' ').slice(0, 120),
-    }))
-    .filter((e) => e.id || e.title !== '（无标题）')
-    // 已结束超过 1 小时的不占版面
-    .filter((e) => e.endMs === null || e.endMs >= nowMs - 60 * 60_000)
-    .sort((a, b) => (a.startMs ?? Infinity) - (b.startMs ?? Infinity))
-    .slice(0, MAX_ITEMS);
+    })),
+    nowMs,
+  );
 }
 
 export function parseTodos(stdout: string, nowMs: number = Date.now()): DwsTodoView[] {
@@ -118,6 +134,126 @@ export function parseTodos(stdout: string, nowMs: number = Date.now()): DwsTodoV
       dueMs: toMs(c.dueTime),
       priority: typeof c.priority === 'number' ? c.priority : 50,
     }))
+    .filter((t) => t.taskId && t.subject)
+    // 逾期在前，其余按截止升序、无截止垫底
+    .sort((a, b) => {
+      const ao = a.dueMs !== null && a.dueMs < nowMs ? 0 : 1;
+      const bo = b.dueMs !== null && b.dueMs < nowMs ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return (a.dueMs ?? Infinity) - (b.dueMs ?? Infinity);
+    })
+    .slice(0, MAX_ITEMS);
+}
+
+function parseWecomJson(stdout: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+/**
+ * wecom-cli 的时间串：`YYYY-MM-DD HH:mm:ss` / `YYYY-MM-DD` 按本地时间；带时区
+ * （Z / ±hh:mm）的按绝对时刻；其它形态交给 Date.parse，认不出返回 null。
+ */
+export function wecomTimeMs(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const v = value.trim();
+  if (!v) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(v);
+  if (!m) {
+    const fallback = Date.parse(v);
+    return Number.isFinite(fallback) ? fallback : null;
+  }
+  const [y, mo, d, hh = '0', mi = '0', ss = '0', tz] = m.slice(1) as Array<string | undefined>;
+  const two = (s: string | undefined): string => (s ?? '0').padStart(2, '0');
+  if (tz) {
+    const instant = Date.parse(`${y}-${two(mo)}-${two(d)}T${two(hh)}:${two(mi)}:${two(ss)}${tz === 'Z' ? 'Z' : tz}`);
+    return Number.isFinite(instant) ? instant : null;
+  }
+  const local = new Date(Number(y), Number(mo) - 1, Number(d), Number(hh), Number(mi), Number(ss), 0).getTime();
+  return Number.isFinite(local) ? local : null;
+}
+
+/** 今日日程的查询窗口（本地时间 00:00:00 – 23:59:59，wecom-cli 的时间格式） */
+export function wecomTodayWindow(nowMs: number = Date.now()): { begin_time: string; end_time: string } {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const fmt = (d: Date): string =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const start = new Date(nowMs);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(nowMs);
+  end.setHours(23, 59, 59, 0);
+  return { begin_time: fmt(start), end_time: fmt(end) };
+}
+
+/**
+ * 今日日程（wecom-cli calendar schedules list）。返回结构取自官方 --schema：
+ * schedule_list[] 的 ScheduleInfo——subject / begin_time / end_time / is_all_day /
+ * location / attendees[].name / meeting_room.meeting_room_name / creator_name。
+ */
+export function parseWecomCalendar(stdout: string, nowMs: number = Date.now()): DwsCalendarEventView[] {
+  const list = parseWecomJson(stdout)?.schedule_list;
+  if (!Array.isArray(list)) return [];
+  return finishCalendar(
+    list.filter(isRecord).map((e) => {
+      const isAllDay = e.is_all_day === true;
+      const startMs = wecomTimeMs(e.begin_time);
+      let endMs = wecomTimeMs(e.end_time);
+      // 全天日程的结束时间可能给次日 0 点或同为日期：算到当天最后一毫秒，免得被「已结束」过滤
+      if (isAllDay && startMs !== null && (endMs === null || endMs <= startMs)) {
+        endMs = startMs + 24 * 60 * 60_000 - 1;
+      }
+      const attendees = Array.isArray(e.attendees) ? e.attendees.filter(isRecord) : [];
+      return {
+        id: firstString(e.schedule_id, e.id) ?? '',
+        title: firstString(e.subject, e.title) ?? '（无标题）',
+        startMs,
+        endMs,
+        isAllDay,
+        location: firstString(e.location),
+        roomName: firstString(isRecord(e.meeting_room) ? e.meeting_room.meeting_room_name : undefined),
+        organizer: firstString(e.creator_name),
+        // 参会人名（点开详情展示）；wecom 返回里没有「自己」的标记，原样取
+        attendees: attendees
+          .map((a) => firstString(a.name) ?? '')
+          .filter(Boolean)
+          .slice(0, 8),
+        description: firstString(e.description)?.replace(/\s+/g, ' ').slice(0, 120),
+      };
+    }),
+    nowMs,
+  );
+}
+
+/**
+ * 待办（wecom-cli todo list，status_filter=proceed）。返回结构取自官方 --schema：
+ * items[] 的 title / todo_id / deadline{type,value}。date 型截止算到当天结束
+ * （截止日当天不算逾期）；wecom 没有优先级，统一给默认档。
+ */
+export function parseWecomTodos(stdout: string, nowMs: number = Date.now()): DwsTodoView[] {
+  const items = parseWecomJson(stdout)?.items;
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter(isRecord)
+    .map((t) => {
+      const deadline = isRecord(t.deadline) ? t.deadline : undefined;
+      let dueMs = wecomTimeMs(deadline?.value);
+      // date 型截止算到当天最后一毫秒（截止日当天不算逾期）
+      if (dueMs !== null && deadline?.type === 'date') dueMs += 24 * 60 * 60_000 - 1;
+      return {
+        taskId: firstString(t.todo_id, t.id) ?? '',
+        subject: firstString(t.title, t.subject) ?? '',
+        dueMs,
+        priority: typeof t.priority === 'number' ? t.priority : 50,
+      };
+    })
     .filter((t) => t.taskId && t.subject)
     // 逾期在前，其余按截止升序、无截止垫底
     .sort((a, b) => {
@@ -206,10 +342,33 @@ let lastCycleAt = 0;
 let busy = false;
 let timer: NodeJS.Timeout | null = null;
 let loggedInvocation = false;
+/** 当前缓存对应的供应商；与设置不一致时清缓存按新供应商重取 */
+let activeProvider: OfficeCliProvider = DEFAULT_OFFICE_PROVIDER;
+/** 供应商切换发生在某轮查询途中：那一轮结束后要按新供应商补跑一轮 */
+let rerunRequested = false;
+/** 供应商刚切换、新供应商的第一轮还没出结果：此时给占位快照，不把上一家清空后的
+ *  空缓存当成「今天没事」展示 */
+let switching = false;
 
 function snapshot(): DwsWidgetsSnapshot {
+  if (switching) {
+    return {
+      provider: activeProvider,
+      state: 'disabled',
+      disabledKind: 'not-logged-in',
+      reason: '正在切换办公平台…',
+      fetchedAt: 0,
+      calendar: [],
+      todos: [],
+      approvals: [],
+      unread: [],
+      unreadTotal: 0,
+      errors: {},
+    };
+  }
   if (disabled) {
     return {
+      provider: activeProvider,
       state: 'disabled',
       disabledKind: disabled.kind,
       reason: disabled.reason,
@@ -224,6 +383,7 @@ function snapshot(): DwsWidgetsSnapshot {
   }
   return {
     state: 'ready',
+    provider: activeProvider,
     fetchedAt: lastCycleAt,
     calendar: cache.calendar?.data ?? [],
     todos: cache.todos?.data ?? [],
@@ -240,6 +400,8 @@ function snapshot(): DwsWidgetsSnapshot {
 }
 
 function push(): void {
+  // 只有带真实结果的那一轮才 push：到这里切换过渡态结束
+  switching = false;
   try {
     const { BrowserWindow } = requireElectron('electron') as typeof import('electron');
     const payload = snapshot();
@@ -295,12 +457,143 @@ function enrichApprovalError(msg: string, version: string | null): string {
   return tooOld ? `${msg}（dws ${version} 版本过旧：到钉钉工作台面板点「重装 / 升级 dws」，装完后如仍失败，再「退出登录」重新登录）` : msg;
 }
 
+function resetWidgetState(): void {
+  cache.calendar = undefined;
+  cache.todos = undefined;
+  cache.approvals = undefined;
+  cache.unread = undefined;
+  disabled = null;
+  lastCycleAt = 0;
+  loggedInvocation = false;
+}
+
+/** 切换办公 CLI 供应商后调用：上一家的数据清空，随后的 refreshDwsWidgets 按新供应商全量重取 */
+export function resetDwsWidgets(): void {
+  resetWidgetState();
+}
+
+export function refreshDwsWidgets(): Promise<DwsWidgetsSnapshot> {
+  return runCycle(true);
+}
+
+/**
+ * 轮询入口：读当前供应商再分派。busy 的检查与置位之间没有 await（采集函数体同步
+ * 跑到第一个 await 前就已置位），并发调用不会双入。切换供应商时若恰好有一轮在途，
+ * 那一轮属于旧供应商——它回来后发现过期就不写缓存，由这里补跑一轮新供应商的。
+ */
 async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
-  if (busy) return snapshot();
+  const provider = await getOfficeProvider();
+  if (provider !== activeProvider) {
+    resetWidgetState();
+    activeProvider = provider;
+    switching = true;
+    force = true;
+  }
+  if (busy) {
+    if (force) rerunRequested = true;
+    return snapshot();
+  }
   if (!force && Date.now() - lastCycleAt < REFRESH_TTL_MS) return snapshot();
+  try {
+    return await (provider === 'wecom' ? runWecomCycle() : runDingtalkCycle());
+  } finally {
+    if (rerunRequested && !busy) {
+      rerunRequested = false;
+      void runCycle(true);
+    }
+  }
+}
+
+/** 本轮开始时的供应商；途中被切换 = 这一轮的结果作废 */
+function staleCheck(): () => boolean {
+  const start = activeProvider;
+  return () => activeProvider !== start;
+}
+
+/**
+ * 企业微信一轮：先看授权（未授权时不发业务请求，省掉两次必败的网络调用），
+ * 再并发拉今日日程与未完成待办。审批/未读没有对应接口——不进缓存也不报错。
+ */
+async function runWecomCycle(): Promise<DwsWidgetsSnapshot> {
   busy = true;
+  const stale = staleCheck();
+  try {
+    const finish = (): DwsWidgetsSnapshot => {
+      lastCycleAt = Date.now();
+      push();
+      return snapshot();
+    };
+    const cli = await resolveWecomCli();
+    if (stale()) return snapshot();
+    if (!cli) {
+      disabled = { kind: 'not-installed', reason: '还没安装 wecom-cli（企业微信工作台面板可一键安装）' };
+      return finish();
+    }
+    // 命中哪个调用方式只报一次（npm 全局装与 ~/.local/bin 可能并存，排查时要靠这条）
+    if (!loggedInvocation) {
+      loggedInvocation = true;
+      console.log('[fundet:dws] 聚合器命中 wecom-cli 调用方式', { command: cli.args.length > 0 ? `${cli.command} ${cli.args.join(' ')}` : cli.command });
+    }
+    const auth = await execWecom(cli, ['auth', 'show'], RUN_TIMEOUT_MS);
+    if (stale()) return snapshot();
+    if (auth.code !== 0) {
+      // 授权命令本身失败 ≠ 未登录：授权类错误给可操作提示；网络/代理抖动保住旧数据
+      const failure = parseWecomError(auth);
+      if (failure.auth) {
+        disabled = { kind: 'auth-failed', reason: `企业微信授权已失效：${failure.message}（到企业微信工作台重新扫码）` };
+      } else {
+        disabled = null;
+        const err = `企业微信连接失败：${failure.message}`;
+        cache.calendar = { data: cache.calendar?.data ?? [], error: err };
+        cache.todos = { data: cache.todos?.data ?? [], error: err };
+      }
+      return finish();
+    }
+    if (parseWecomAuthShow(auth.stdout).loggedIn !== true) {
+      disabled = { kind: 'not-logged-in', reason: '还没登录企业微信（企业微信工作台面板点「扫码登录」）' };
+      return finish();
+    }
+    disabled = null;
+    const now = Date.now();
+    const [cal, todo] = await Promise.all([
+      execWecom(cli, ['calendar', 'schedules', 'list', '--json', JSON.stringify(wecomTodayWindow(now))], QUERY_TIMEOUT_MS),
+      execWecom(cli, ['todo', 'list', '--json', JSON.stringify({ status_filter: ['proceed'], limit: 20 })], QUERY_TIMEOUT_MS),
+    ]);
+    if (stale()) return snapshot();
+    // 失败诊断（只在有失败时输出）：UI 只挂角标时看不到是哪一路、为什么挂
+    for (const [name, res] of [
+      ['calendar', cal],
+      ['todo', todo],
+    ] as const) {
+      if (res.code === 0) continue;
+      console.warn('[fundet:dws] 企业微信组件查询失败', {
+        name,
+        code: res.code,
+        stdoutHead: res.stdout.replace(/\s+/g, ' ').slice(0, 160),
+        stderrHead: res.stderr.replace(/\s+/g, ' ').slice(0, 160),
+      });
+    }
+    cache.calendar =
+      cal.code === 0
+        ? { data: parseWecomCalendar(cal.stdout, now) }
+        : { data: cache.calendar?.data ?? [], error: parseWecomError(cal).message };
+    cache.todos =
+      todo.code === 0
+        ? { data: parseWecomTodos(todo.stdout, now) }
+        : { data: cache.todos?.data ?? [], error: parseWecomError(todo).message };
+    return finish();
+  } finally {
+    busy = false;
+  }
+}
+
+/** 钉钉一轮：profile 门控 + 四路查询（日程 / 待办 / 待审批 / 未读会话） */
+async function runDingtalkCycle(): Promise<DwsWidgetsSnapshot> {
+  busy = true;
+  const stale = staleCheck();
   try {
     const dws = await resolveDws();
+    if (stale()) return snapshot();
     if (!dws) {
       disabled = { kind: 'not-installed', reason: '还没安装 dws（钉钉工作台面板可一键安装）' };
       lastCycleAt = Date.now();
@@ -329,6 +622,7 @@ async function runCycle(force: boolean): Promise<DwsWidgetsSnapshot> {
       execDws(dws, ['oa', 'approval', 'list-pending', '--format', 'json'], QUERY_TIMEOUT_MS),
       execDws(dws, ['chat', 'message', 'list-unread-conversations', '--format', 'json'], QUERY_TIMEOUT_MS),
     ]);
+    if (stale()) return snapshot();
     // 失败诊断（只在有失败时输出）：UI 只挂角标时看不到是哪一路、为什么挂
     for (const [name, res] of [
       ['profile', profile],
@@ -455,6 +749,8 @@ export function parseChatMessages(stdout: string): DwsChatMessageView[] {
 const SAFE_CONV_ID = /^[A-Za-z0-9+/=_.-]{1,128}$/;
 
 export async function fetchUnreadDetail(conversationId: string): Promise<DwsChatMessageView[]> {
+  // 未读详情是钉钉独有；企业微信没有这张卡（渲染层按供应商隐藏），保险起见直接返回
+  if (activeProvider !== 'dingtalk') return [];
   if (!SAFE_CONV_ID.test(conversationId)) return [];
   const dws = await resolveDws();
   if (!dws) return [];

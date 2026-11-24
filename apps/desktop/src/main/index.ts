@@ -14,6 +14,8 @@ import { initDatabase } from './db/client.js';
 import { getHost, shutdownHost } from './host/pi-host.js';
 import { resolvePiBinaryPath, resolveBundledGitRoot } from './host/pi-binary.js';
 import { setupBundledGitFallback } from './host/git-bash.js';
+import { ensureUserLocalBinOnPath } from './host/local-bin-path.js';
+import { cancelWecomLogin } from './host/wecom-cli.js';
 import { ensureBundledGitRuntime } from './host/git-runtime.js';
 import { resolveWindowsGitPathEntries } from '@fundet/agent-core';
 import { ensureBundledSkills } from './host/skills.js';
@@ -284,6 +286,10 @@ function bootstrap(): void {
       console.warn('[fundet:skills] 预制技能同步失败（不阻断启动）', err);
     }
   }
+  // 1c) ~/.local/bin 是办公 CLI（dws / wecom-cli）的官方安装位置；不在本进程 PATH
+  // 上就补到末尾——Agent 的 bash 靠 PATH 找裸命令名，pi 子进程继承 process.env。
+  // 必须早于首个 pi 会话（prewarm 在页面加载后即可能建会话）。
+  ensureUserLocalBinOnPath();
   // 2) pi 宿主装配（PiAgent + Maker 单例；二进制缺失会在这里抛错，早发现）
   try {
     getHost();
@@ -350,6 +356,8 @@ function bootstrap(): void {
     stopAutomationScheduler();
     // 回收技能扫描隔离子进程（在途扫描取消，幂等）
     disposeSkillScanHost();
+    // 企业微信扫码登录可能在等用户扫码：退出时终止 CLI 进程（否则成孤儿继续轮询）
+    cancelWecomLogin();
     // 浏览器清理、IM 与 pi 宿主并行结算；任何一路失败都不能挡住最终退出。
     await Promise.allSettled([stopAllImBots(), disposeBrowserHost(), shutdownHost()]);
   });

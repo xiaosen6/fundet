@@ -78,7 +78,7 @@ import {
 } from '../search/config.ts';
 import { searchWithEngine } from '../search/providers.ts';
 import { fetchProviderModels } from '../host/provider-models.js';
-import { getHost } from '../host/pi-host.js';
+import { getHost, noteOfficeCliInstalled } from '../host/pi-host.js';
 import {
   attributeFilesToTurnWindows,
   diffArtifacts,
@@ -123,7 +123,9 @@ import {
 } from '../browser/real-profile.ts';
 import { setSetting, getSetting, getBoolSetting, setBoolSetting } from '../db/settings.js';
 import { getDwsStatus } from '../host/dws.ts';
-import { startDwsWidgets, stopDwsWidgets } from '../host/dws-widgets.ts';
+import { cancelWecomLogin, getWecomLoginState, getWecomStatus } from '../host/wecom-cli.js';
+import { refreshDwsWidgets, resetDwsWidgets, startDwsWidgets, stopDwsWidgets } from '../host/dws-widgets.ts';
+import { normalizeOfficeProvider, OFFICE_PROVIDER_SETTING } from '../../shared/office-cli.js';
 import { BROWSER_ENABLED_SETTING } from '../../shared/browser-settings.ts';
 import { COMPUTER_ENABLED_SETTING } from '../../shared/computer-settings.ts';
 import { disableCuaDriverTelemetry, resolveCuaDriverCommand } from '../computer/driver.ts';
@@ -857,12 +859,34 @@ export function registerIpcHandlers(): void {
     return session.compactSession();
   });
 
-  // 钉钉总开关（dws.enabled，默认 true）：关=隐藏工作台/灵动岛 + 新对话不注入
-  // dws 速查表 + 停组件轮询。放在 register 层（settings 依赖 sqlite 原生模块，
-  // 不能进 dws.ts——那会连带炸掉 dws.test.ts 的纯函数测试环境）
+  // 办公工作台（企业微信 wecom-cli / 钉钉 dws，按 officecli.provider 分派）。
+  // 总开关 dws.enabled 是两家共用的：关=隐藏工作台/灵动岛 + 新对话不注入命令速查
+  // + 停组件轮询。放在 register 层（settings 依赖 sqlite 原生模块，不能进
+  // dws.ts——那会连带炸掉 dws.test.ts 的纯函数测试环境）
   ipcMain.handle(FUNDET_INVOKE.DWS_STATUS, async () => {
-    const s = await getDwsStatus();
-    return { ...s, enabled: getBoolSetting('dws.enabled', true) };
+    const provider = normalizeOfficeProvider(getSetting(OFFICE_PROVIDER_SETTING));
+    const s = provider === 'wecom' ? await getWecomStatus() : await getDwsStatus();
+    // 回填 system prompt 的安装探测缓存：刚装完不必重启，下一个新会话就带速查表
+    if (s.installed) noteOfficeCliInstalled(provider);
+    const login = provider === 'wecom' ? getWecomLoginState() : undefined;
+    // profiles 归一：企微状态没有多 profile 概念，补空数组（面板 identity 直接 .map）
+    const profiles = 'profiles' in s ? (s.profiles ?? []) : [];
+    return { ...s, profiles, provider, enabled: getBoolSetting('dws.enabled', true), ...(login ? { login } : {}) };
+  });
+  ipcMain.handle(FUNDET_INVOKE.OFFICECLI_SET_PROVIDER, async (_e, provider: unknown) => {
+    const next = normalizeOfficeProvider(provider);
+    const current = normalizeOfficeProvider(getSetting(OFFICE_PROVIDER_SETTING));
+    setSetting(OFFICE_PROVIDER_SETTING, next);
+    if (next !== current) {
+      // 切走企业微信时终止在途扫码；组件板清掉上一家的数据并立即按新供应商取一轮
+      cancelWecomLogin();
+      resetDwsWidgets();
+      if (getBoolSetting('dws.enabled', true)) void refreshDwsWidgets();
+    }
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(FUNDET_PUSH.OFFICECLI_PROVIDER_CHANGED, next);
+    }
+    return { ok: true, provider: next };
   });
   ipcMain.handle(FUNDET_INVOKE.DWS_SET_ENABLED, async (_e, enabled: unknown) => {
     const next = enabled === true;

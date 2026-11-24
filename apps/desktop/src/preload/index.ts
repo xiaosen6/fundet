@@ -14,6 +14,7 @@ import type {
   InteractionDismissedPayload,
   InteractionRequestPayload,
   KbImportProgress,
+  OfficeCliProvider,
   SessionOutboxChangedPayload,
   StatusChangedPayload,
 } from '../shared/fundet-api.js';
@@ -196,6 +197,7 @@ const api: FundetApi = {
 
   dwsStatus: () => invoke(FUNDET_INVOKE.DWS_STATUS),
   dwsSetEnabled: (enabled) => invoke(FUNDET_INVOKE.DWS_SET_ENABLED, enabled),
+  officeCliSetProvider: (provider) => invoke(FUNDET_INVOKE.OFFICECLI_SET_PROVIDER, provider),
   dwsInstall: (source) => invoke(FUNDET_INVOKE.DWS_INSTALL, source),
   dwsLogin: () => invoke(FUNDET_INVOKE.DWS_LOGIN),
   dwsLogout: () => invoke(FUNDET_INVOKE.DWS_LOGOUT),
@@ -274,6 +276,7 @@ const api: FundetApi = {
   onImStatusChanged: (cb) => subscribe(FUNDET_PUSH.IM_STATUS_CHANGED, cb),
   onDwsWidgetsChanged: (cb) => subscribe(FUNDET_PUSH.DWS_WIDGETS_CHANGED, cb),
   onDwsEnabledChanged: (cb) => subscribe(FUNDET_PUSH.DWS_ENABLED_CHANGED, cb),
+  onOfficeCliProviderChanged: (cb) => subscribe<OfficeCliProvider>(FUNDET_PUSH.OFFICECLI_PROVIDER_CHANGED, cb),
   onDwsInstallProgress: (cb) => subscribe(FUNDET_PUSH.DWS_INSTALL_PROGRESS, cb),
   onUpdateStatusChanged: (cb) => subscribe(FUNDET_PUSH.UPDATE_STATUS_CHANGED, cb),
   onKbImportProgress: (cb) => subscribe<KbImportProgress>(FUNDET_PUSH.KB_IMPORT_PROGRESS, cb),

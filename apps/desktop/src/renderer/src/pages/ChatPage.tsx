@@ -73,6 +73,7 @@ import { ModelSelector, PermissionSelector, EffortSelector } from '../components
 import { ContextCapacityRing } from '../components/ContextCapacityRing';
 import { DwsWidgets } from '../components/dws/DwsWidgets';
 import { DynamicIsland } from '../components/dws/DynamicIsland';
+import { setOfficeCliProviderCache } from '../hooks/useOfficeCliProvider';
 import type { DwsWidgetsSnapshot } from '../../../shared/fundet-api.js';
 import { brand } from '../../../shared/brand.js';
 import { FolderPickerChip } from '../components/FolderPickerChip';
@@ -141,11 +142,23 @@ export function ChatPage(): React.JSX.Element {
   // 计划卡：plan 档会话轮末/切换时拉取的最新 Plan Steps（undefined=尚无数据不显示）
   const [planContent, setPlanContent] = useState<string | undefined>(undefined);
 
-  // 钉钉总开关（设置→钉钉）：关=隐藏工作台/灵动岛（新对话不注入 dws 速查表在主进程门控）
+  // 办公集成总开关 + 当前办公 CLI 供应商（企业微信 / 钉钉）：关=隐藏工作台/灵动岛
+  // （新对话不注入命令速查在主进程门控）。供应商缓存进 useOfficeCliProvider，
+  // 知识库 chip 等不看组件板快照的组件据此换文案；切换由主进程推送。
   useEffect(() => {
-    void window.fundet.dwsStatus().then((s) => setDwsEnabled(s.enabled)).catch(() => undefined);
+    void window.fundet
+      .dwsStatus()
+      .then((s) => {
+        setDwsEnabled(s.enabled);
+        setOfficeCliProviderCache(s.provider);
+      })
+      .catch(() => undefined);
     const off = window.fundet.onDwsEnabledChanged(setDwsEnabled);
-    return off;
+    const offProvider = window.fundet.onOfficeCliProviderChanged(setOfficeCliProviderCache);
+    return () => {
+      off();
+      offProvider();
+    };
   }, []);
 
   // 计划卡数据：切换会话清空；plan 档会话轮次结束（isRunning 落 false）时拉取

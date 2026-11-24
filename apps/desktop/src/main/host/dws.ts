@@ -5,12 +5,15 @@
  * 以用户本人 OAuth 身份操作钉钉工作台（消息/日历/审批/待办/文档/AI表格等 180+ 命令）。
  * Fundet 不捆绑二进制、不做 API 代理，只负责四步引导：
  *   ① 安装（官方 install.ps1，默认 Gitee 镜像——本机实测 GitHub 直连常被重置）
- *   ② dws auth login（拉起可见 PowerShell 窗口，浏览器自动开）
+ *   ② dws auth login（后台进程跑，抓授权 URL 给面板做「打开授权页」按钮）
  *   ③ dws skill setup（官方技能包平铺到 ~/.agents/skills/dingtalk-*，
  *      与本仓技能系统同目录，Pi 会话直接可用——核心零改动）
  *   ④ 状态探测（version / profile list 的 JSON 输出）
  * Agent 执行 dws 走普通 shell 命令，过既有命令确认闸；dws 官方技能自带
  * 「写操作先 --dry-run」纪律，双层确认叠加。
+ *
+ * 办公工作台面板的 IPC（安装/登录/退出/技能）在本文件注册，按当前办公 CLI 供应商
+ * （officecli.provider）分派：企业微信走 ./wecom-cli.ts，钉钉走本文件。
  *
  * electron 依赖全部惰性 require（node --test 导入纯解析函数不能拉起 electron）。
  */
@@ -20,6 +23,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
 import { FUNDET_INVOKE, FUNDET_PUSH } from '../ipc/channels.ts';
+import { getOfficeProvider } from './office-cli.ts';
+import { ensureUserLocalBinOnPath } from './local-bin-path.ts';
+import {
+  installWecomCli,
+  installWecomSkills,
+  openWecomLogin,
+  runWecomLogout,
+} from './wecom-cli.ts';
 
 const requireElectron = createRequire(import.meta.url);
 
@@ -310,6 +321,9 @@ export async function installDws(
   const output = tail(`${res.stdout}\n${res.stderr}`.trim());
   if (res.code !== 0) return { ok: false, output: output || '安装脚本退出码非 0' };
   const after = await resolveDws();
+  // 官方脚本会把 ~/.local/bin 写进用户 PATH，但本进程环境不会刷新——补到进程
+  // PATH 上，Agent 的 bash 立刻就能找到 dws
+  if (after) ensureUserLocalBinOnPath();
   return {
     ok: after !== null,
     output: after ? `${output}\n\n安装成功：dws ${after.psCommand === 'dws' ? '' : '(本地路径)'}已可用。` : `${output}\n\n脚本跑完但没探测到 dws——可能 PATH 未刷新，重启应用再试。`,
@@ -439,12 +453,25 @@ export function registerDwsIpc(): void {
   const broadcastProgress = (chunk: string): void => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(FUNDET_PUSH.DWS_INSTALL_PROGRESS, chunk);
   };
-  ipcMain.handle(FUNDET_INVOKE.DWS_INSTALL, async (_e: unknown, source: unknown) =>
-    installDws(source === 'github' ? 'github' : 'gitee', broadcastProgress),
+  // 以下四个动作是两家共用的面：按当前供应商分派。source 参数各取所需——钉钉认
+  // gitee/github，企业微信认 mirror/npm，不认识的取值按该供应商的默认源。
+  ipcMain.handle(FUNDET_INVOKE.DWS_INSTALL, async (_e: unknown, source: unknown) => {
+    if ((await getOfficeProvider()) === 'wecom') {
+      return installWecomCli(source === 'npm' ? 'npm' : 'mirror', broadcastProgress);
+    }
+    return installDws(source === 'github' ? 'github' : 'gitee', broadcastProgress);
+  });
+  ipcMain.handle(FUNDET_INVOKE.DWS_LOGIN, async () =>
+    (await getOfficeProvider()) === 'wecom' ? openWecomLogin() : openDwsLogin(),
   );
-  ipcMain.handle(FUNDET_INVOKE.DWS_LOGIN, async () => openDwsLogin());
-  ipcMain.handle(FUNDET_INVOKE.DWS_LOGOUT, async () => runDwsLogout());
-  ipcMain.handle(FUNDET_INVOKE.DWS_SKILL_SETUP, async () => runDwsSkillSetup());
+  ipcMain.handle(FUNDET_INVOKE.DWS_LOGOUT, async () =>
+    (await getOfficeProvider()) === 'wecom' ? runWecomLogout() : runDwsLogout(),
+  );
+  ipcMain.handle(FUNDET_INVOKE.DWS_SKILL_SETUP, async () =>
+    (await getOfficeProvider()) === 'wecom'
+      ? installWecomSkills(broadcastProgress)
+      : runDwsSkillSetup(),
+  );
 }
 
 /** 退出登录：dws auth logout（默认清全部账号）。升级 dws 后旧登录态不兼容时

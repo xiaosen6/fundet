@@ -43,3 +43,26 @@ describe('dwsDisabledTitle（占位卡标题）', () => {
     assert.equal(dwsDisabledTitle(snap(undefined)), '钉钉还没登录');
   });
 });
+
+describe('dwsDisabledTitle 随办公 CLI 供应商换平台名', () => {
+  const wecom = (disabledKind: 'not-installed' | 'not-logged-in' | 'expired' | 'auth-failed') => ({
+    state: 'disabled' as const,
+    disabledKind,
+    provider: 'wecom' as const,
+  });
+
+  it('企业微信：未装 / 未登录 / 失效三种脸色都对得上平台', () => {
+    assert.equal(dwsDisabledTitle(wecom('not-installed')), '还没安装企业微信 CLI');
+    assert.equal(dwsDisabledTitle(wecom('not-logged-in')), '企业微信还没登录');
+    assert.equal(dwsDisabledTitle(wecom('expired')), '企业微信连接已失效');
+    assert.equal(dwsDisabledTitle(wecom('auth-failed')), '企业微信连接已失效');
+  });
+
+  it('快照没带 provider 时保持钉钉文案（字段出现前的行为不变）', () => {
+    assert.equal(dwsDisabledTitle(snap('not-installed')), '还没安装钉钉 CLI');
+  });
+
+  it('明确给了钉钉也原样', () => {
+    assert.equal(dwsDisabledTitle({ state: 'disabled', disabledKind: 'expired', provider: 'dingtalk' }), '钉钉连接已失效');
+  });
+});

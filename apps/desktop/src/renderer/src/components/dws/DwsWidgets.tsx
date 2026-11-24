@@ -1,5 +1,6 @@
 /**
- * 钉钉组件板：今日日程 / 待我审批 / 我的待办 / 未读消息。
+ * 办公组件板（企业微信 / 钉钉）：今日日程 / 我的待办，钉钉另有 待我审批 / 未读消息
+ * （企业微信 CLI 没有这两个接口，按 officeSupportedWidgets 隐藏对应卡）。
  *
  * 两种呈现模式（expandMode）：
  * - popover（主页欢迎页）：板面完全静态——条目点击不原地展开，弹出锚定在卡片
@@ -26,7 +27,8 @@ import {
 } from 'lucide-react';
 import type { DwsChatMessageView, DwsWidgetsSnapshot } from '../../../../shared/fundet-api.js';
 import { cn } from '../../lib/cn';
-import { dwsConnectionBroken, dwsDisabledTitle } from '../../lib/dwsState';
+import { dwsConnectionBroken, dwsDisabledTitle, officeProviderOf } from '../../lib/dwsState';
+import { OFFICE_PROVIDER_META, officeSupportedWidgets } from '../../../../shared/office-cli.js';
 
 function fmtTime(ms: number | null | undefined): string {
   if (!ms) return '';
@@ -356,7 +358,7 @@ function CalendarBody({
                     <AskChip
                       ctx={ctx}
                       label="准备这场"
-                      prompt={`帮我准备钉钉会议「${e.title}」${e.roomName ? `（会议室：${e.roomName}）` : ''}${
+                      prompt={`帮我准备${OFFICE_PROVIDER_META[officeProviderOf(s)].label}会议「${e.title}」${e.roomName ? `（会议室：${e.roomName}）` : ''}${
                         e.startMs ? `，${fmtTime(e.startMs)} 开始` : ''
                       }${e.attendees.length > 0 ? `，参会人：${e.attendees.join('、')}` : ''}。收集背景，给我议题和材料清单。`}
                     />
@@ -401,7 +403,7 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
                     <AskChip
                       ctx={ctx}
                       label="拉详情给意见"
-                      prompt={`拉取钉钉审批单「${a.title ?? a.id}」的详情，给我建议（同意/拒绝）和理由，先别提交。`}
+                      prompt={`拉取${OFFICE_PROVIDER_META[officeProviderOf(s)].label}审批单「${a.title ?? a.id}」的详情，给我建议（同意/拒绝）和理由，先别提交。`}
                     />
                   </div>
                 </Reveal>
@@ -417,6 +419,10 @@ function ApprovalsBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): Rea
 function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: ListCtx }): React.JSX.Element {
   if (s.todos.length === 0) return <EmptyState Icon={CheckSquare} text="没有待办" />;
   const items = ctx.sliced ? s.todos.slice(0, 3) : s.todos;
+  const provider = officeProviderOf(s);
+  // 企业微信的待办没有优先级（priority 是归一化默认档），文案里不提
+  const hasPriority = provider !== 'wecom';
+  const meta = OFFICE_PROVIDER_META[provider];
   return (
     <>
       <p className="flex items-baseline gap-2">
@@ -461,13 +467,24 @@ function TodosBody({ s, now, ctx }: { s: DwsWidgetsSnapshot; now: number; ctx: L
                   <div className="rounded-inner bg-hover-soft/60 px-2.5 py-2">
                     <p className="text-12 leading-relaxed text-secondary">{t.subject}</p>
                     <p className="mt-0.5 text-11 text-muted">
-                      优先级 {t.priority <= 20 ? '高' : t.priority <= 30 ? '中' : '普通'}
-                      {t.dueMs !== null ? ` · 截止 ${new Date(t.dueMs).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                      {[
+                        hasPriority ? `优先级 ${t.priority <= 20 ? '高' : t.priority <= 30 ? '中' : '普通'}` : '',
+                        t.dueMs !== null
+                          ? `截止 ${new Date(t.dueMs).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </p>
                     <AskChip
                       ctx={ctx}
                       label="处理这条"
-                      prompt={`帮我处理这条钉钉待办：「${t.subject}」（优先级 ${t.priority}${t.dueMs !== null ? `，截止 ${new Date(t.dueMs).toLocaleString('zh-CN')}` : ''}）。判断需要做什么，能直接办的就办（用 dws），办不了给我行动建议。`}
+                      prompt={`帮我处理这条${meta.label}待办：「${t.subject}」（${[
+                        hasPriority ? `优先级 ${t.priority}` : '',
+                        t.dueMs !== null ? `截止 ${new Date(t.dueMs).toLocaleString('zh-CN')}` : '',
+                      ]
+                        .filter(Boolean)
+                        .join('，')}）。判断需要做什么，能直接办的就办（用 ${meta.cli}），办不了给我行动建议。`}
                     />
                   </div>
                 </Reveal>
@@ -518,7 +535,7 @@ function UnreadBody({ s, ctx }: { s: DwsWidgetsSnapshot; ctx: ListCtx }): React.
                     <AskChip
                       ctx={ctx}
                       label="总结这个会话"
-                      prompt={`总结钉钉会话「${c.title}」的最近消息（约 ${c.unread} 条未读），给我要点和需要我回应的事项。`}
+                      prompt={`总结${OFFICE_PROVIDER_META[officeProviderOf(s)].label}会话「${c.title}」的最近消息（约 ${c.unread} 条未读），给我要点和需要我回应的事项。`}
                     />
                   </div>
                 </Reveal>
@@ -575,7 +592,7 @@ function DisabledCard({
           className="mt-1 h-8 rounded-full bg-accent px-3.5 text-12 font-medium text-accent-fg"
           onClick={onOpenPanel}
         >
-          去钉钉工作台
+          去{OFFICE_PROVIDER_META[officeProviderOf(snapshot)].workspace}
         </button>
       )}
     </div>
@@ -660,19 +677,25 @@ export function DwsWidgets({
     setPop({ kind, top, left: r.left, width, height });
   }
 
+  const provider = officeProviderOf(s);
+  const meta = OFFICE_PROVIDER_META[provider];
+  const supported = officeSupportedWidgets(provider);
+  const has = (kind: CardKind): boolean => supported.includes(kind);
+
+  // 审批 / 未读两张卡只有钉钉有：没有的卡不渲染，其「交给智能体」入口也不出现
   const cardAsk: Partial<Record<CardKind, () => void>> = {
     todos:
       s.todos.length > 0
         ? () =>
             onAskAgent?.(
-              `帮我处理钉钉待办：${s.todos.map((t) => t.subject).join('、')}。逐条判断需要我做什么，能代办的就直接办（用 dws），办不了的给我行动建议。`,
+              `帮我处理${meta.label}待办：${s.todos.map((t) => t.subject).join('、')}。逐条判断需要我做什么，能代办的就直接办（用 ${meta.cli}），办不了的给我行动建议。`,
             )
         : undefined,
     unread:
-      s.unread.length > 0
+      has('unread') && s.unread.length > 0
         ? () =>
             onAskAgent?.(
-              `帮我总结钉钉未读消息，重点是这几个会话：${s.unread.map((c) => `「${c.title}」（${c.unread} 条）`).join('、')}。各拉最近的消息，汇总成要点给我。`,
+              `帮我总结${meta.label}未读消息，重点是这几个会话：${s.unread.map((c) => `「${c.title}」（${c.unread} 条）`).join('、')}。各拉最近的消息，汇总成要点给我。`,
             )
         : undefined,
   };
@@ -680,14 +703,14 @@ export function DwsWidgets({
   return (
     <div className="flex h-full w-full flex-col">
       <div className="mb-2.5 flex shrink-0 items-center gap-2 select-none">
-        <span className="text-12 font-medium text-secondary">钉钉 · 今日</span>
+        <span className="text-12 font-medium text-secondary">{meta.label} · 今日</span>
         <span className="text-11 text-muted">更新于 {fmtAgo(s.fetchedAt)}</span>
         {onRefresh && (
           <button
             type="button"
             className="ml-auto flex h-6 w-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-hover hover:text-primary"
-            aria-label="刷新钉钉组件"
-            title="刷新钉钉组件（拉取最新数据，需几秒）"
+            aria-label={`刷新${meta.label}组件`}
+            title={`刷新${meta.label}组件（拉取最新数据，需几秒）`}
             onClick={() => {
               if (refreshing) return;
               setRefreshing(true);
@@ -698,9 +721,15 @@ export function DwsWidgets({
           </button>
         )}
       </div>
-      {/* 板区弹性：网格吃满剩余高度（行 1fr 对分、660px 封顶防高屏过空），居中兜底 */}
+      {/* 板区弹性：网格吃满剩余高度（行 1fr 对分、660px 封顶防高屏过空），居中兜底。
+          企业微信只有两张卡（日程 + 待办）= 单行；钉钉四张 = 两行 */}
       <div className="flex min-h-0 flex-1 flex-col justify-center">
-        <div className="grid max-h-[660px] min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-[repeat(2,minmax(0,1fr))]">
+        <div
+          className={cn(
+            'grid max-h-[660px] min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2',
+            has('approvals') ? 'sm:grid-rows-[repeat(2,minmax(0,1fr))]' : 'sm:grid-rows-1',
+          )}
+        >
         <CardShell
           title="今日日程"
           Icon={CalendarDays}
@@ -710,29 +739,33 @@ export function DwsWidgets({
         >
           <CalendarBody s={s} now={now} ctx={boardCtxOf('calendar')} />
         </CardShell>
-        <CardShell title="待我审批" Icon={Inbox} error={s.errors.approvals} onRefresh={onRefresh} index={1}>
-          <ApprovalsBody s={s} ctx={boardCtxOf('approvals')} />
-        </CardShell>
+        {has('approvals') && (
+          <CardShell title="待我审批" Icon={Inbox} error={s.errors.approvals} onRefresh={onRefresh} index={1}>
+            <ApprovalsBody s={s} ctx={boardCtxOf('approvals')} />
+          </CardShell>
+        )}
         <CardShell
           title="我的待办"
           Icon={CheckSquare}
           error={s.errors.todos}
           onRefresh={onRefresh}
-          index={2}
+          index={has('approvals') ? 2 : 1}
           onAsk={cardAsk.todos}
         >
           <TodosBody s={s} now={now} ctx={boardCtxOf('todos')} />
         </CardShell>
-        <CardShell
-          title="未读消息"
-          Icon={MessageSquare}
-          error={s.errors.unread}
-          onRefresh={onRefresh}
-          index={3}
-          onAsk={cardAsk.unread}
-        >
-          <UnreadBody s={s} ctx={boardCtxOf('unread')} />
-        </CardShell>
+        {has('unread') && (
+          <CardShell
+            title="未读消息"
+            Icon={MessageSquare}
+            error={s.errors.unread}
+            onRefresh={onRefresh}
+            index={3}
+            onAsk={cardAsk.unread}
+          >
+            <UnreadBody s={s} ctx={boardCtxOf('unread')} />
+          </CardShell>
+        )}
         </div>
       </div>
 

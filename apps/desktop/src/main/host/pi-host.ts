@@ -25,14 +25,21 @@ import { createByokAuthAdapter, isLoopbackBaseUrl, piNativeKeyEnvVar } from './a
 import { readProviderKey } from './secrets.js';
 import { resolvePiBinaryPath, resolveRipgrepPath } from './pi-binary.js';
 import { createFundetMemoryManager } from './memory.js';
-import { getBoolSetting } from '../db/settings.js';
+import { getBoolSetting, getSetting } from '../db/settings.js';
 import { lookupKnownModel, resolveModelInputModality } from './pi-model-catalog.ts';
+import { wecomBinaryPath } from './wecom-cli.js';
+import {
+  normalizeOfficeProvider,
+  OFFICE_PROVIDER_SETTING,
+  type OfficeCliProvider,
+} from '../../shared/office-cli.js';
 import { SEARCH_MCP_SERVER_NAME } from '../../shared/search-engines.ts';
 import { MEMORY_MCP_SERVER_NAME } from '../../shared/memory.ts';
 import { IMAGEGEN_MCP_SERVER_NAME } from '../../shared/imagegen.ts';
 import { createPreparePiExtraSpawnConfig } from './mcp-bridge.js';
 import systemPromptRaw from './system-prompt.md?raw';
 import dwsCheatSheetRaw from './dws-prompt.md?raw';
+import wecomCheatSheetRaw from './wecom-prompt.md?raw';
 import { brand } from '../../shared/brand.js';
 
 // 品牌化自我介绍：system-prompt.md 原文即 Fundet 终稿；下面两个 replace 是上游底座机制（对 Fundet 均为 no-op）
@@ -144,13 +151,11 @@ function buildPiNativeProviders(logger: Logger): PiNativeProvidersResult {
 function buildRuntimeConfig(memoryManager: MakerMemoryManager): AgentRuntimeConfig {
   return {
     // 无网关：endpoint 留空，所有会话走显式 BYOM providerId（pi 侧 fail-closed 保证不回落）
-    // getter 每会话求值（agent-core startSession 现读）：dws CLI 已装且钉钉总开关
-    // 开（dws.enabled，设置→钉钉可关）才追加钉钉速查段；关=对话不集成 dws，
-    // 没装钉钉的用户零 token 开局；探测结果进程内缓存，应用内新装 dws 需重启生效
+    // getter 每会话求值（agent-core startSession 现读）：当前办公 CLI（企业微信
+    // wecom-cli / 钉钉 dws）已装且办公集成开关开（dws.enabled，设置→工作台可关）
+    // 才追加对应速查段；没装的用户零 token 开局
     get systemPrompt() {
-      return isDwsCliInstalled() && getBoolSetting('dws.enabled', true)
-        ? `${systemPrompt}\n\n${dwsCheatSheetRaw}`.trim()
-        : systemPrompt.trim();
+      return `${systemPrompt}\n\n${officeCheatSheet()}`.trim();
     },
     managedExecutablePaths: { ripgrep: resolveRipgrepPath() },
     // pi 原生 auto-memory 不用（记忆走 Maker Memory：.md 分片 + FTS + 压缩 digest 沉淀）
@@ -164,46 +169,79 @@ function buildRuntimeConfig(memoryManager: MakerMemoryManager): AgentRuntimeConf
 }
 
 /**
- * dws CLI 安装探测（轻量：官方 install.ps1 落点 + PATH，不起 dws 进程）。
- * 只做 system prompt 速查段的门控；dws 真实可用性由各调用方自行探测。
+ * 办公 CLI 安装探测（轻量：官方安装落点 ~/.local/bin + PATH，不起 CLI 进程）。
+ * 只做 system prompt 速查段的门控；真实可用性由各调用方自行探测。
+ *
+ * 探测缓存 + markInstalled：面板轮询到「已安装」时回填（noteOfficeCliInstalled），
+ * 应用内刚装完不必重启，下一个新会话就带上速查表。
  */
-let dwsInstalledCache: boolean | null = null;
-let dwsProbeInFlight = false;
-function isDwsCliInstalled(): boolean {
-  if (dwsInstalledCache !== null) return dwsInstalledCache;
-  const fallback = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'dws.exe' : 'dws');
-  if (fs.existsSync(fallback)) {
-    dwsInstalledCache = true;
-    return true;
-  }
-  // 官方落点不存在（多为没装 dws 的用户）：PATH 探测转异步后台——原 spawnSync
-  // 同步阻塞主进程最长 3s，首启 prewarm 的 systemPrompt getter 就会踩到，
-  // 没装的用户白卡一次启动（2026-10-10 用户实报）。探测完成前按 false：
-  // 没装 → 速查表本就不注入，功能最终一致；探测到 PATH 里的 dws 后下个
-  // 会话起注入。
-  if (!dwsProbeInFlight) {
-    dwsProbeInFlight = true;
-    const cmd = process.platform === 'win32' ? 'cmd.exe' : 'which';
-    const args = process.platform === 'win32' ? ['/d', '/c', 'where', 'dws'] : ['dws'];
-    try {
-      const child = spawn(cmd, args, { stdio: 'ignore', windowsHide: true });
-      const timer = setTimeout(() => child.kill(), 3000);
-      child.on('error', () => {
-        clearTimeout(timer);
-        dwsInstalledCache = false;
-        dwsProbeInFlight = false;
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        dwsInstalledCache = code === 0;
-        dwsProbeInFlight = false;
-      });
-    } catch {
-      dwsInstalledCache = false;
-      dwsProbeInFlight = false;
-    }
-  }
-  return false;
+function createCliInstalledProbe(localBinary: () => string, bin: string): {
+  isInstalled: () => boolean;
+  markInstalled: () => void;
+} {
+  let cache: boolean | null = null;
+  let probeInFlight = false;
+  return {
+    isInstalled(): boolean {
+      if (cache !== null) return cache;
+      if (fs.existsSync(localBinary())) {
+        cache = true;
+        return true;
+      }
+      // 官方落点不存在（多为没装的用户）：PATH 探测转异步后台——原 spawnSync
+      // 同步阻塞主进程最长 3s，首启 prewarm 的 systemPrompt getter 就会踩到，
+      // 没装的用户白卡一次启动（2026-10-10 用户实报）。探测完成前按 false：
+      // 没装 → 速查表本就不注入，功能最终一致；探测到 PATH 里的 CLI 后下个
+      // 会话起注入。
+      if (!probeInFlight) {
+        probeInFlight = true;
+        const cmd = process.platform === 'win32' ? 'cmd.exe' : 'which';
+        const args = process.platform === 'win32' ? ['/d', '/c', 'where', bin] : [bin];
+        try {
+          const child = spawn(cmd, args, { stdio: 'ignore', windowsHide: true });
+          const timer = setTimeout(() => child.kill(), 3000);
+          child.on('error', () => {
+            clearTimeout(timer);
+            cache = false;
+            probeInFlight = false;
+          });
+          child.on('close', (code) => {
+            clearTimeout(timer);
+            cache = code === 0;
+            probeInFlight = false;
+          });
+        } catch {
+          cache = false;
+          probeInFlight = false;
+        }
+      }
+      return false;
+    },
+    markInstalled(): void {
+      cache = true;
+    },
+  };
+}
+
+const dwsProbe = createCliInstalledProbe(
+  () => path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'dws.exe' : 'dws'),
+  'dws',
+);
+const wecomProbe = createCliInstalledProbe(() => wecomBinaryPath(), 'wecom-cli');
+const isDwsCliInstalled = (): boolean => dwsProbe.isInstalled();
+const isWecomCliInstalled = (): boolean => wecomProbe.isInstalled();
+
+/** 面板轮询到「已安装」时回填探测缓存（见 createCliInstalledProbe） */
+export function noteOfficeCliInstalled(provider: OfficeCliProvider): void {
+  (provider === 'wecom' ? wecomProbe : dwsProbe).markInstalled();
+}
+
+/** 当前供应商的命令速查段：对应 CLI 已装且办公集成开关开着才给 */
+function officeCheatSheet(): string {
+  if (!getBoolSetting('dws.enabled', true)) return '';
+  const provider = normalizeOfficeProvider(getSetting(OFFICE_PROVIDER_SETTING));
+  if (provider === 'wecom') return isWecomCliInstalled() ? wecomCheatSheetRaw : '';
+  return isDwsCliInstalled() ? dwsCheatSheetRaw : '';
 }
 
 /** pi 宿主侧根目录（PI_CODING_AGENT_DIR 前缀）：单一共享 userData/agent-home——
