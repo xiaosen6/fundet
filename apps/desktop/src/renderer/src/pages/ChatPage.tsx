@@ -49,6 +49,7 @@ import {
   useSessionOutbox,
   useSessionSlice,
 } from '../stores/sessionStore';
+import { subscribeAgentIntents } from '../stores/agentIntents';
 import {
   getDefaultWorkDir,
   getLastModel,
@@ -490,46 +491,36 @@ export function ChatPage(): React.JSX.Element {
   // 下方 pet 订阅 effect deps=[]，回调用 ref 取最新 createSession——直接捕获会把
   // 首渲染的空 providers 闭包进去（桌宠左键/截图的强制新建会话会静默失效）
   const createSessionRef = useRef<() => string | null>(() => null);
+  // 跨路由意图消费（2026-11-24 修复）：事件由 sessionStore 全局捕获进中转 store
+  // （此前挂在本组件上，停在设置页时点桌宠/通知无人接收）；订阅时补投排队意图，
+  // 从设置页跳转回来的截图也不会丢。通知的会话切换已在捕获点完成，这里只管桌宠。
   useEffect(() => {
-    const unSubShot = window.fundet?.onPetScreenshot?.(async (payload) => {
-      if (payload?.base64) {
-        // 截图问答 = 强制新建会话并携带截图（pendingRef 保证穿过会话切换清空）
-        await whenProvidersReady(); // 启动竞态门控：providers 未载完先等（8s 兜底）
-        createSessionRef.current();
-        // base64 → ArrayBuffer → stageBytes 走现有附件管线
-        const bin = atob(payload.base64);
-        const buf = new ArrayBuffer(bin.length);
-        const view = new Uint8Array(buf);
-        for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
-        const name = `截图_${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.png`;
-        void window.fundet
-          .stageBytes(workDirRef.current, name, buf)
-          .then((att) => {
-            pendingShotRef.current = att;
-            setAttachments([att]);
-            toast.success('截图已附上，请输入你的问题');
-          })
-          .catch((err: unknown) => {
-            toast.error(err instanceof Error ? err.message : '截图附加失败');
-          });
+    return subscribeAgentIntents((intent) => {
+      if (intent.type === 'pet-screenshot') {
+        void (async () => {
+          // 截图问答 = 强制新建会话并携带截图（pendingRef 保证穿过会话切换清空）
+          await whenProvidersReady(); // 启动竞态门控：providers 未载完先等（8s 兜底）
+          createSessionRef.current();
+          // base64 → ArrayBuffer → stageBytes 走现有附件管线
+          const bin = atob(intent.base64);
+          const buf = new ArrayBuffer(bin.length);
+          const view = new Uint8Array(buf);
+          for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+          const name = `截图_${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.png`;
+          await window.fundet
+            .stageBytes(workDirRef.current, name, buf)
+            .then((att) => {
+              pendingShotRef.current = att;
+              setAttachments([att]);
+              toast.success('截图已附上，请输入你的问题');
+            })
+            .catch((err: unknown) => {
+              toast.error(err instanceof Error ? err.message : '截图附加失败');
+            });
+        })();
+      } else if (intent.type === 'pet-new-chat') {
+        void whenProvidersReady().then(() => createSessionRef.current());
       }
-    });
-    const unSubChat = window.fundet?.onPetNewChat?.(() => {
-      void whenProvidersReady().then(() => createSessionRef.current());
-    });
-    return () => {
-      unSubShot?.();
-      unSubChat?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 完成提醒：点击系统通知 → 切到对应会话（主进程已聚焦主窗；顺手清关注态）
-  useEffect(() => {
-    return window.fundet?.onNotifyOpenSession?.(({ sessionId }) => {
-      if (!sessionId) return;
-      markSessionSeen(sessionId);
-      setActiveId(sessionId);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

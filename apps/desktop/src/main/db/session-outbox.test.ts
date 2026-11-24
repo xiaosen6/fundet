@@ -130,6 +130,37 @@ test('cancelAllPending 只取消未终态；sending 不动（须走 abort）', (
   assert.equal(store.get('u2')?.state, 'cancelled');
 });
 
+test('requestCancelSending：只给该会话的 sending 行打标记（abort 前置；2026-11-24 修复）', () => {
+  const db = makeDb();
+  seedSession(db);
+  seedSession(db, 's2');
+  const store = createSessionOutboxStore(db);
+  const h1 = store.enqueue({ userMessageId: 'u1', sessionId: 's1', payloadJson: PAYLOAD(1), now: 1 });
+  store.enqueue({ userMessageId: 'u2', sessionId: 's1', payloadJson: PAYLOAD(2), now: 2 });
+  const other = store.enqueue({ userMessageId: 'o1', sessionId: 's2', payloadJson: PAYLOAD(3), now: 3 });
+  store.casToSending(h1.id, 0, 4);
+  store.casToSending(other.id, 0, 4);
+  const n = store.requestCancelSending('s1', 5);
+  assert.equal(n, 1);
+  assert.equal(store.get(h1.id)?.cancelRequested, 1); // sending 行被标记
+  assert.equal(store.get('u2')?.cancelRequested, 0); // queued 行不动（cancelAllPending 管）
+  assert.equal(store.get(other.id)?.cancelRequested, 0); // 其它会话不动
+});
+
+test('markCancelled 允许 sending→cancelled（终态收口路径；2026-11-24 修复）', () => {
+  const db = makeDb();
+  seedSession(db);
+  const store = createSessionOutboxStore(db);
+  const h1 = store.enqueue({ userMessageId: 'u1', sessionId: 's1', payloadJson: PAYLOAD(1), now: 1 });
+  store.enqueue({ userMessageId: 'u2', sessionId: 's1', payloadJson: PAYLOAD(2), now: 2 });
+  store.casToSending(h1.id, 0, 3);
+  store.requestCancelSending('s1', 4);
+  store.markCancelled(h1.id, 5); // 终态 abort 错误到达时的收口
+  assert.equal(store.get(h1.id)?.state, 'cancelled');
+  // cancelled 不再占 head：u2 可派发
+  assert.equal(store.head('s1')!.userMessageId, 'u2');
+});
+
 test('附件保护视图：未终态行的载荷附件路径全列出', () => {
   const db = makeDb();
   seedSession(db);
@@ -141,6 +172,33 @@ test('附件保护视图：未终态行的载荷附件路径全列出', () => {
   const h2 = store.enqueue({ userMessageId: 'u2', sessionId: 's1', payloadJson: PAYLOAD(2), now: 2 });
   store.remove(h2.id);
   assert.deepEqual(store.pendingAttachmentPaths(), ['C:/tmp/x.png']);
+});
+
+test('附件保护视图：一条消息多附件全列出；终态行不再保护（2026-11-24 维护清扫接线回归）', () => {
+  const db = makeDb();
+  seedSession(db);
+  const store = createSessionOutboxStore(db);
+  const h1 = store.enqueue({
+    userMessageId: 'u1', sessionId: 's1', now: 1,
+    payloadJson: JSON.stringify({
+      text: 'a',
+      attachments: [
+        { path: 'C:/tmp/a.pdf', name: 'a.pdf', kind: 'file' },
+        { path: 'C:/tmp/b.png', name: 'b.png', kind: 'image' },
+        // 无 path 的附件条目跳过（不炸、不出空串）
+        { name: 'no-path' },
+      ],
+    }),
+  });
+  const h2 = store.enqueue({
+    userMessageId: 'u2', sessionId: 's1', now: 2,
+    payloadJson: JSON.stringify({ text: 'b', attachments: [{ path: 'C:/tmp/done.pdf' }] }),
+  });
+  store.casToSending(h2.id, 0, 3);
+  store.remove(h2.id); // 终态成功删行：不再保护
+  assert.deepEqual(store.pendingAttachmentPaths(), ['C:/tmp/a.pdf', 'C:/tmp/b.png']);
+  store.markFailed(h1.id, 'x', 4); // failed 仍是未终态：继续保护
+  assert.deepEqual(store.pendingAttachmentPaths(), ['C:/tmp/a.pdf', 'C:/tmp/b.png']);
 });
 
 test('会话删除级联清空 outbox（外键）', () => {

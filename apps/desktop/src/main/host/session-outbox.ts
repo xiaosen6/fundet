@@ -121,6 +121,12 @@ export function createOutboxService(deps: OutboxServiceDeps): {
   retry(sessionId: string, id: string): OutboxItemView[];
   remove(sessionId: string, id: string): OutboxItemView[];
   cancelAll(sessionId: string): OutboxItemView[];
+  /**
+   * 「停止」的在途处理：给该会话 sending 行打取消标记（须在 session.abort() 之前调）。
+   * 终态 abort 错误到达时 onTerminalEvent 据此把行收成 cancelled 而不是 failed——
+   * 否则「aborted」不属于可重试类别，行落 failed 堵住整条 FIFO，下一条消息发不出。
+   */
+  requestCancelDispatch(sessionId: string): void;
   onTerminalEvent(sessionId: string, event: AgentEvent): void;
   recoverAndResume(): void;
   dispose(): void;
@@ -376,6 +382,10 @@ export function createOutboxService(deps: OutboxServiceDeps): {
       store.cancelAllPending(sessionId, deps.now());
       deps.onChanged(sessionId);
       return views(sessionId);
+    },
+    requestCancelDispatch(sessionId) {
+      store.requestCancelSending(sessionId, deps.now());
+      deps.onChanged(sessionId);
     },
     onTerminalEvent,
     recoverAndResume,

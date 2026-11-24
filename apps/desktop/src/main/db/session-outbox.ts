@@ -96,6 +96,8 @@ export interface SessionOutboxStore {
   /** 手动重试：failed/outcome_unknown → queued（outcome_unknown 须调用方先拿到用户确认）。 */
   requeueManual(id: string, now: number): OutboxRow | null;
   setCancelRequested(id: string, now: number): void;
+  /** 会话内所有在途行（sending）打取消标记：abort 前置调用，终态到达时据此转 cancelled。 */
+  requestCancelSending(sessionId: string, now: number): number;
   /** 会话内所有未终态（queued/failed/outcome_unknown）→ cancelled；返回受影响行数。 */
   cancelAllPending(sessionId: string, now: number): number;
   /** 附件保护视图：所有未终态行的载荷里引用的附件路径集合（供维护清扫排除）。 */
@@ -153,6 +155,10 @@ export function createSessionOutboxStore(native: Database.Database): SessionOutb
     ),
     setCancelRequested: native.prepare(
       'UPDATE session_outbox SET cancel_requested = 1, updated_at = ? WHERE id = ?',
+    ),
+    requestCancelSending: native.prepare(
+      `UPDATE session_outbox SET cancel_requested = 1, updated_at = ?
+       WHERE session_id = ? AND state = 'sending'`,
     ),
     cancelAll: native.prepare(
       `UPDATE session_outbox SET state = 'cancelled', updated_at = ?
@@ -238,7 +244,12 @@ export function createSessionOutboxStore(native: Database.Database): SessionOutb
     },
     markCancelled(id, now) {
       const prior = row(id);
-      if (!prior || prior.state === 'sending') return;
+      // 允许 sending→cancelled：本方法只被终态收口路径（onTerminalEvent 的
+      // cancelRequested 分支、cancelled-before-dispatch）调用——那里的行已在
+      // 派发跟踪之下；真正的批量取消走 cancelAllPending（不碰 sending）。
+      // 此前一刀切拒绝 sending，导致用户「停止」后终态 abort 错误落成 failed
+      // 堵住整条 FIFO。
+      if (!prior) return;
       write(id, 'cancelled', prior.attempt, prior.autoRetryCount, prior.nextAttemptAt, prior.lastError, now);
     },
     remove(id) {
@@ -256,6 +267,9 @@ export function createSessionOutboxStore(native: Database.Database): SessionOutb
     },
     setCancelRequested(id, now) {
       stmt.setCancelRequested.run(now, id);
+    },
+    requestCancelSending(sessionId, now) {
+      return Number(stmt.requestCancelSending.run(now, sessionId).changes);
     },
     cancelAllPending(sessionId, now) {
       return Number(stmt.cancelAll.run(now, sessionId).changes);

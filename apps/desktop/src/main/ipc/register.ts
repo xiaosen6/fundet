@@ -974,6 +974,9 @@ ${input.text}`;
   );
 
   ipcMain.handle(FUNDET_INVOKE.SESSION_ABORT, async (_e, id: string) => {
+    // 先给在途 outbox 行打取消标记再 abort：终态 abort 错误到达时据此收成
+    // cancelled（而不是 failed 堵住 FIFO）——渲染层「停止」的完整链路。
+    outboxService?.requestCancelDispatch(id);
     const session = getHost().maker.getSession(id);
     if (session) await session.abort();
   });

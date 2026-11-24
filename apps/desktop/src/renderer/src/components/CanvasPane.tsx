@@ -58,8 +58,9 @@ function loadWidth(): number {
   return Number.isFinite(n) && n >= MIN_WIDTH ? Math.min(n, Math.floor(window.innerWidth * 0.7)) : DEFAULT_WIDTH;
 }
 
-/** 源码高亮：按扩展挑语言，失败回落纯文本 */
-function highlightSource(text: string, path: string): string {
+/** 源码高亮：按扩展挑语言；失败回落 null（调用方渲染纯文本节点——原文绝不
+ *  进 dangerouslySetInnerHTML，highlight.js 输出才是唯一可信的 HTML 源） */
+function highlightSource(text: string, path: string): string | null {
   const ext = (path.split('.').pop() ?? '').toLowerCase();
   const langMap: Record<string, string> = {
     ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript',
@@ -73,7 +74,7 @@ function highlightSource(text: string, path: string): string {
       ? hljs.highlight(text, { language: lang, ignoreIllegals: true }).value
       : hljs.highlightAuto(text).value;
   } catch {
-    return text;
+    return null;
   }
 }
 
@@ -360,6 +361,7 @@ const Preview = memo(function PreviewImpl({
       : null,
     [text, artifact.kind, artifact.path],
   );
+  const sourceText = text !== null ? text.slice(0, 80_000) : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -427,9 +429,14 @@ const Preview = memo(function PreviewImpl({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text.slice(0, 80_000)}</ReactMarkdown>
         </div>
       )}
-      {hlHtml !== null && (
+      {sourceText !== null && (
         <pre className="flex-1 overflow-auto rounded-inner border border-board bg-card p-2 font-mono text-11 leading-[1.5] whitespace-pre-wrap text-primary">
-          <code dangerouslySetInnerHTML={{ __html: hlHtml }} />
+          {/* 高亮失败（hlHtml=null）回落 React 文本节点：原文绝不经 dangerouslySetInnerHTML */}
+          {hlHtml !== null ? (
+            <code dangerouslySetInnerHTML={{ __html: hlHtml }} />
+          ) : (
+            <code>{sourceText}</code>
+          )}
           {text !== null && text.length > 80_000 ? '\n…' : ''}
         </pre>
       )}

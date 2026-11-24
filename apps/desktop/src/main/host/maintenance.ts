@@ -10,6 +10,8 @@ import path from 'node:path';
 import { app } from 'electron';
 import { getSqlite } from '../db/client.js';
 import { cleanupAgentHome } from './agent-home-cleanup.js';
+import { decideOrphanSettingKeys } from './orphan-settings.js';
+import { createSessionOutboxStore } from '../db/session-outbox.js';
 
 const UPLOADS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const UPLOADS_DIR_MAX_BYTES = 512 * 1024 * 1024; // 512MB 总量上限
@@ -18,15 +20,16 @@ const UPLOADS_DIR_MAX_BYTES = 512 * 1024 * 1024; // 512MB 总量上限
  *  outbox 未终态行引用的附件跳过（排队消息重启后还要发，附件不能被清走）。 */
 function cleanupUploadsDir(workDirs: string[]): void {
   const now = Date.now();
-  // 受保护路径：durable outbox 未终态行的载荷附件（路径归一化比较）
+  // 受保护路径：durable outbox 未终态行的载荷附件（路径归一化比较）。
+  // 走 store.pendingAttachmentPaths（从每个附件对象里取 .path）——2026-11-24
+  // 修复：此前内联 SQL 取的是整个附件 JSON 对象再与路径字符串比较，永不相等，
+  // 排队消息超 7 天 TTL / 超 512MB 上限时附件会被误清，重启后发送缺件。
   let protectedPaths: Set<string> | null = null;
   try {
     protectedPaths = new Set(
-      (getSqlite().prepare(
-        `SELECT DISTINCT je.value AS p FROM session_outbox,
-         json_each(json_extract(session_outbox.payload_json, '$.attachments')) je
-         WHERE session_outbox.state IN ('queued','sending','failed','outcome_unknown')`,
-      ).all() as Array<{ p: string }>).map((r) => r.p.replace(/[\\/]+/g, '/').toLowerCase()),
+      createSessionOutboxStore(getSqlite())
+        .pendingAttachmentPaths()
+        .map((p) => p.replace(/[\\/]+/g, '/').toLowerCase()),
     );
   } catch {
     /* 无 outbox 表/脏载荷：按无保护清理 */
@@ -90,19 +93,18 @@ function checkpointWal(): void {
   }
 }
 
-/** P2-6: settings 表孤儿键清扫 */
+/** P2-6: settings 表孤儿键清扫。判定走 orphan-settings 纯函数（含测试）：
+ *  kb.session.* 键名后缀是会话 id；im.session.* 的会话 id 在值里——2026-11-24
+ *  修复：此前一律按键名后缀，im 映射每次启动被整批误删。 */
 function cleanupOrphanSettings(validSessionIds: Set<string>): number {
   const sqlite = getSqlite();
-  const rows = sqlite.prepare("SELECT key FROM settings WHERE key LIKE 'kb.session.%' OR key LIKE 'im.session.%'").all() as Array<{ key: string }>;
+  const rows = sqlite
+    .prepare("SELECT key, value FROM settings WHERE key LIKE 'kb.session.%' OR key LIKE 'im.session.%'")
+    .all() as Array<{ key: string; value: string | null }>;
   let removed = 0;
-  for (const r of rows) {
-    // kb.session.<sessionId> / im.session.<channel>.<chatId>
-    // im.session 键里的 sessionId 在冒号后——需要查 sessions 表有没有对应行
-    const sessionId = r.key.replace(/^kb\.session\./, '').replace(/^im\.session\.[^.]+\./, '');
-    if (sessionId && !validSessionIds.has(sessionId)) {
-      sqlite.prepare('DELETE FROM settings WHERE key = ?').run(r.key);
-      removed++;
-    }
+  for (const key of decideOrphanSettingKeys(rows, validSessionIds)) {
+    sqlite.prepare('DELETE FROM settings WHERE key = ?').run(key);
+    removed++;
   }
   if (removed > 0) console.log(`[fundet:maintenance] settings 孤儿键清扫 ${removed} 条`);
   return removed;

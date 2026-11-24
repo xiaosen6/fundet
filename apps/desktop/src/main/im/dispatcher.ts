@@ -22,6 +22,7 @@ import type {
 } from '@fundet/agent-core';
 import type { ImChannelId } from '../../shared/im-bots.ts';
 import { getSetting, setSetting } from '../db/settings.js';
+import { decideIdleReclaims } from './idle-reclaim.ts';
 import { listProviders } from '../db/providers.js';
 import { hasProviderKey } from '../host/secrets.js';
 import { getHost } from '../host/pi-host.js';
@@ -156,6 +157,18 @@ function attachImInteractionBridge(
         : request.kind === 'plan_review'
           ? { kind: 'plan_review', behavior: 'deny', reason }
           : { kind: 'permission', behavior: 'deny', reason };
+
+    // 无回复通道的渠道（微信——轮询阻塞在整个回合上，提问送达后也收不到回复）：
+    // 立即拒绝/提交空答案，不再空等 9 分钟超时（2026-11-24 修复：此前只有钉钉
+    // 传 reply，其余渠道的提问用户根本看不到，白等超时后 deny）
+    if (!extras?.reply) {
+      if (request.kind === 'ask_user_question') {
+        const answers: Record<string, string> = {};
+        for (const q of request.questions) answers[q.question] = '';
+        return { kind: 'ask_user_question', answers };
+      }
+      return denyOf('该渠道暂不支持审批交互，请在桌面端或钉钉/企微/飞书里发起');
+    }
 
     if (request.kind === 'ask_user_question') {
       const answers: Record<string, string> = {};
@@ -317,20 +330,24 @@ function markImActive(channel: ImChannelId, chatId: string): void {
   imLastActive.set(sessionMapKey(channel, chatId), Date.now());
 }
 
-// 定期检查并回收闲置 IM 会话
+// 定期检查并回收闲置 IM 会话（判定走 idle-reclaim 纯函数；key 即完整
+// im.session.<channel>.<chatId>，按它直查 settings——2026-11-24 修复：
+// 此前查 `im.session.${key}` 双重前缀永远 miss，回收从未生效）
 setInterval(() => {
   const { maker } = getHost();
-  const now = Date.now();
-  for (const [key, lastActive] of imLastActive) {
-    if (now - lastActive < IM_IDLE_MS) continue;
-    const sessionId = getSetting(`im.session.${key}`);
-    if (sessionId && maker.isSessionAlive(sessionId)) {
-      void maker
-        .closeSession(sessionId, 'requested')
-        .then(() => console.log('[fundet:im] 闲置会话回收', { key }))
-        .catch(() => undefined);
-    }
-    imLastActive.delete(key);
+  const { sessionIds, staleKeys } = decideIdleReclaims(
+    [...imLastActive].map(([key, lastActive]) => ({ key, lastActive })),
+    Date.now(),
+    IM_IDLE_MS,
+    (k) => getSetting(k),
+  );
+  for (const key of staleKeys) imLastActive.delete(key);
+  for (const sessionId of sessionIds) {
+    if (!maker.isSessionAlive(sessionId)) continue;
+    void maker
+      .closeSession(sessionId, 'requested')
+      .then(() => console.log('[fundet:im] 闲置会话回收', { sessionId }))
+      .catch(() => undefined);
   }
 }, 5 * 60 * 1000).unref();
 

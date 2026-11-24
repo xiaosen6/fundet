@@ -44,6 +44,7 @@ import { parseKnowledgeSources, type KnowledgeSource } from '../lib/knowledgeCit
 import { MessageNavRail } from './chat/MessageNavRail';
 import { GeneratedFilesCard } from './chat/GeneratedFilesCard';
 import { splitGeneratedFileTurns, type GeneratedFileRef } from '../lib/generatedFiles';
+import { userRowIndexes } from '../lib/prev-question';
 import { useImeEnterGuard } from '../hooks/useImeEnterGuard';
 import { editSubmitSettles, errorRetriable } from '../lib/sessionEditState';
 import {
@@ -726,14 +727,10 @@ export function MessageStream({
 
   // 跳到上一条提问（对齐 Cindy PrevMessageJumpChip：icon-only 圆钮落右上角）。
   // 导航条自身的当前项/可见范围判定在 MessageNavRail 内部测量，这里只管 chip。
+  // 下标一律用虚拟化 rows 口径——rows 相对 grouped 会剔 todo 行、插产物卡/改动卡
+  // 伪行（2026-11-24 修复：此前在 grouped 上编号拿去跳 rows，历史里有伪行就偏移）。
   const [prevQuestion, setPrevQuestion] = useState<{ index: number; preview: string } | null>(null);
-  const userIndexes = useMemo(() => {
-    const idx: number[] = [];
-    grouped.forEach((g, i) => {
-      if (g.kind === 'user') idx.push(i);
-    });
-    return idx;
-  }, [grouped]);
+  const userIndexes = useMemo(() => userRowIndexes(rows), [rows]);
   const rafPendingRef = useRef(false);
   const updateScrollProbes = (): void => {
     if (rafPendingRef.current) return;
@@ -763,7 +760,7 @@ export function MessageStream({
         if (ui < firstVisible) prev = ui;
         else break;
       }
-      const item = prev >= 0 ? grouped[prev] : undefined;
+      const item = prev >= 0 ? rows[prev] : undefined;
       if (prev < 0 || !item || item.kind !== 'user') {
         setPrevQuestion(null);
         return;

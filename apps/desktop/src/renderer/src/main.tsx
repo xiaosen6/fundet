@@ -5,6 +5,7 @@ import { brand } from '../../shared/brand.js';
 import './styles/globals.css';
 import { applyFonts } from './lib/fonts';
 import { initGlobalListeners } from './stores/sessionStore';
+import { subscribeAgentIntents } from './stores/agentIntents';
 
 // localStorage 键名品牌迁移（longma.* → fundet.*，一次性；在 fonts 等读取方初始化前跑）
 for (const [oldKey, newKey] of [
@@ -60,6 +61,13 @@ const router = createHashRouter([
 ]);
 
 document.title = brand.name;
+
+// 跨路由 agent 意图（2026-11-24 修复）：桌宠/系统通知点击时若不在聊天页，
+// 先导航回聊天页——事件的消费在 ChatPage（挂载后经 subscribeAgentIntents
+// 补投排队意图），路由到达即可接上。
+subscribeAgentIntents(() => {
+  if (window.location.hash.replace(/^#/, '') !== '/') void router.navigate('/');
+});
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

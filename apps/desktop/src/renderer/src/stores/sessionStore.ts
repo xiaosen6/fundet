@@ -18,6 +18,7 @@ import { settleRunningThinking } from '../lib/thinkingSettlement';
 import { promotableDraftIds } from '../lib/draftPromotion';
 import { toast } from '../components/ui/toast';
 import { playCompletionChime } from '../lib/chime';
+import { pushAgentIntent } from './agentIntents';
 import type { AgentEvent, InteractionRequest, UsageSnapshot } from '@fundet/agent-core';
 import type { SessionOutboxItem } from '../../../shared/fundet-api.ts';
 import type {
@@ -769,6 +770,22 @@ export function initGlobalListeners(): void {
   });
   // 完成提醒提示音（主窗渲染层播放；主进程已按开关与失焦态门控并节流）
   window.fundet.onNotifyChime(() => playCompletionChime());
+
+  // 跨路由 agent 意图（2026-11-24 修复）：桌宠/系统通知的点击事件此前只挂在
+  // ChatPage 上，停在设置页时无人接收。这里全局捕获进中转 store；会话切换是
+  // store 层能力当场做掉，其余由 ChatPage 消费、main.tsx 负责导航回聊天页。
+  window.fundet.onPetScreenshot?.((payload) => {
+    if (payload?.base64) pushAgentIntent({ type: 'pet-screenshot', base64: payload.base64 });
+  });
+  window.fundet.onPetNewChat?.(() => {
+    pushAgentIntent({ type: 'pet-new-chat' });
+  });
+  window.fundet.onNotifyOpenSession?.(({ sessionId }) => {
+    if (!sessionId) return;
+    markSessionSeen(sessionId);
+    setActiveSessionId(sessionId);
+    pushAgentIntent({ type: 'notify-open-session', sessionId });
+  });
 }
 
 // ---------------------------------------------------------------------------

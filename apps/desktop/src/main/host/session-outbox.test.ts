@@ -57,7 +57,9 @@ function makeStore(): SessionOutboxStore {
     },
     markFailed: (id, error, now) => { const r = rows.get(id); if (r) { r.state = 'failed'; r.lastError = error; r.updatedAt = now; } },
     markOutcomeUnknown: (id, error, now) => { const r = rows.get(id); if (r) { r.state = 'outcome_unknown'; r.lastError = error ?? r.lastError; r.updatedAt = now; } },
-    markCancelled: (id, now) => { const r = rows.get(id); if (r && r.state !== 'sending') { r.state = 'cancelled'; r.updatedAt = now; } },
+    // 与真实 store 同口径：允许 sending→cancelled（仅终态收口路径调用；
+    // 批量取消走 cancelAllPending 不碰 sending）
+    markCancelled: (id, now) => { const r = rows.get(id); if (r) { r.state = 'cancelled'; r.updatedAt = now; } },
     remove: (id) => { rows.delete(id); },
     requeueForRetry: (id, nextAttemptAt, error, now) => {
       const r = rows.get(id);
@@ -72,6 +74,13 @@ function makeStore(): SessionOutboxStore {
       return { ...r };
     },
     setCancelRequested: (id, now) => { const r = rows.get(id); if (r) { r.cancelRequested = 1; r.updatedAt = now; } },
+    requestCancelSending: (sid, now) => {
+      let n = 0;
+      for (const r of bySession(sid)) {
+        if (r.state === 'sending') { r.cancelRequested = 1; r.updatedAt = now; n++; }
+      }
+      return n;
+    },
     cancelAllPending: (sid, now) => {
       let n = 0;
       for (const r of bySession(sid)) {
@@ -277,4 +286,37 @@ test('cancelAllPending：queued 全取消，sending 不动', async () => {
   h.service.cancelAll('s1');
   assert.equal(h.store.get('u1')?.state, 'sending');
   assert.equal(h.store.get('u2')?.state, 'cancelled');
+});
+
+test('停止（abort）在途行：requestCancelDispatch → 终态 abort 错误收成 cancelled，FIFO 接棒（2026-11-24 修复回归）', async () => {
+  const h = makeHarness();
+  enqueue(h, 'u1');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(h.store.get('u1')?.state, 'sending');
+  // SESSION_ABORT 的新顺序：先打取消标记，再 abort
+  h.service.requestCancelDispatch('s1');
+  h.service.onTerminalEvent('s1', {
+    type: 'error',
+    data: { isTerminal: true, message: 'Request was aborted' },
+    turnAttemptToken: 1,
+  } as unknown as AgentEvent);
+  assert.equal(h.store.get('u1')?.state, 'cancelled');
+  assert.equal(h.service.isDispatching('s1'), false);
+  // 队列不被堵：下一条正常派发
+  enqueue(h, 'u2');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(h.sends.length, 2);
+});
+
+test('未打取消标记的 abort 终态仍走可重试性收口（真错误不误吞）', async () => {
+  const h = makeHarness();
+  enqueue(h, 'u1');
+  await new Promise((r) => setTimeout(r, 20));
+  // 没有 requestCancelDispatch（如 pi 崩溃导致的 abort，而非用户停止）
+  h.service.onTerminalEvent('s1', {
+    type: 'error',
+    data: { isTerminal: true, message: 'Request was aborted' },
+    turnAttemptToken: 1,
+  } as unknown as AgentEvent);
+  assert.equal(h.store.get('u1')?.state, 'failed');
 });

@@ -68,7 +68,13 @@ export function ConfirmDialogHost(): React.JSX.Element | null {
     if (!pending || closing) return undefined;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') settle(false);
-      if (e.key === 'Enter') settle(true);
+      if (e.key === 'Enter') {
+        // 焦点在按钮上时让位：Enter 交给按钮原生激活（焦点在「取消」= 取消，
+        // 与交互卡快捷键让位同规则——此前这里无条件 settle(true)，焦点在取消键
+        // 上按回车会变成确认）
+        if (e.target instanceof HTMLElement && e.target.closest('button')) return;
+        settle(true);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);

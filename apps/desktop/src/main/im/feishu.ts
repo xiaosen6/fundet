@@ -82,13 +82,18 @@ export async function startFeishu(): Promise<void> {
       }
       if (!text) return;
       const senderId = String(nested(sender ?? {}, 'sender_id', 'open_id') ?? message.sender_id ?? 'user');
-      const replyText = await handleImMessage({
-        channel: 'feishu',
-        chatId,
-        senderName: senderId.slice(-6),
-        text,
-        dedupeKey: String(message.message_id ?? '') || undefined,
-      });
+      const replyText = await handleImMessage(
+        {
+          channel: 'feishu',
+          chatId,
+          senderName: senderId.slice(-6),
+          text,
+          dedupeKey: String(message.message_id ?? '') || undefined,
+        },
+        // 审批/提问桥的送达通道（2026-11-24 修复：此前只有钉钉传 reply，
+        // 飞书会话里模型提问用户看不到，白等 9 分钟后 deny）
+        { reply: (promptText) => reply(connection, chatId, promptText) },
+      );
       if (replyText && connection.isCurrent()) await reply(connection, chatId, replyText);
     },
   });
