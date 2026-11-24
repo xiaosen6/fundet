@@ -102,6 +102,10 @@ export function UsageHistoryPanel(): React.JSX.Element {
   const view = useMemo(() => {
     if (rows === null) return null;
     const today = localDayKey();
+    // 「近 30 天」窗口起点：按模型表 / 概览的模型数都按同一窗口聚合——
+    // 此前 modelMap 吃全部行（最长 90 天），分母却是 30 天总量，占比算出
+    // 15000% 级、横条按这个百分比渲染直接冲出卡片（2026-11-24 用户实报）
+    const winStart = shiftDay(today, -(30 - 1));
     const dayMap = new Map<string, { tokens: number; cost: number; models: Map<string, UsageRow> }>();
     const modelMap = new Map<string, { tokens: number; input: number; output: number; cacheRead: number; cacheWrite: number; days: Set<string> }>();
     for (const r of rows) {
@@ -113,14 +117,16 @@ export function UsageHistoryPanel(): React.JSX.Element {
       d.tokens += r.tokens;
       d.cost += r.costUsd;
       d.models.set(r.model, r);
-      const m = modelMap.get(r.model) ?? { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, days: new Set<string>() };
-      m.tokens += r.tokens;
-      m.input += r.inputTokens;
-      m.output += r.outputTokens;
-      m.cacheRead += r.cacheReadTokens;
-      m.cacheWrite += r.cacheWriteTokens;
-      m.days.add(r.day);
-      modelMap.set(r.model, m);
+      if (r.day >= winStart) {
+        const m = modelMap.get(r.model) ?? { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, days: new Set<string>() };
+        m.tokens += r.tokens;
+        m.input += r.inputTokens;
+        m.output += r.outputTokens;
+        m.cacheRead += r.cacheReadTokens;
+        m.cacheWrite += r.cacheWriteTokens;
+        m.days.add(r.day);
+        modelMap.set(r.model, m);
+      }
     }
     const models = [...modelMap.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
     if (models.length === 0) return { empty: true as const };
@@ -162,7 +168,6 @@ export function UsageHistoryPanel(): React.JSX.Element {
     const last30Tokens = days.reduce((a, d) => a + d.tokens, 0);
     const todayTokens = dayMap.get(today)?.tokens ?? 0;
     // 缓存命中率（近 30 天窗口内有拆分数据的行）
-    const winStart = shiftDay(today, -(30 - 1));
     let split = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     for (const r of rows) {
       if (r.day < winStart) continue;
@@ -439,12 +444,12 @@ export function UsageHistoryPanel(): React.JSX.Element {
                   </td>
                   <td className="py-2 text-right tabular-nums text-primary">{fmtCompact(m.tokens)}</td>
                   <td className="py-2 pl-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-20 rounded-full bg-chip">
-                        <div className="h-1 rounded-full" style={{ width: `${Math.max(2, pct * 100)}%`, backgroundColor: modelColor(m.model) }} />
-                      </div>
-                      <span className="tabular-nums text-muted">{(pct * 100).toFixed(1)}%</span>
-                    </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-20 overflow-hidden rounded-full bg-chip">
+                    <div className="h-1 rounded-full" style={{ width: `${Math.min(100, Math.max(2, pct * 100))}%`, backgroundColor: modelColor(m.model) }} />
+                  </div>
+                  <span className="tabular-nums text-muted">{(pct * 100).toFixed(1)}%</span>
+                </div>
                   </td>
                   <td className="py-2 text-right tabular-nums text-secondary">{fmtCompact(m.input)}</td>
                   <td className="py-2 text-right tabular-nums text-secondary">{fmtCompact(m.output)}</td>

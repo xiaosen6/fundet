@@ -721,13 +721,14 @@ export function DwsWidgets({
           </button>
         )}
       </div>
-      {/* 板区弹性：网格吃满剩余高度（行 1fr 对分、660px 封顶防高屏过空），居中兜底。
-          企业微信只有两张卡（日程 + 待办）= 单行；钉钉四张 = 两行 */}
+      {/* 板区弹性：钉钉四张卡吃满剩余高度（行 1fr 对分、660px 封顶防高屏过空）。
+          企微两张卡不参与拉伸（flex-1 会把单行拉到 660px，卡片被抻得老长——
+          2026-11-24 用户实报），按内容自然高度、外层 justify-center 居中 */}
       <div className="flex min-h-0 flex-1 flex-col justify-center">
         <div
           className={cn(
-            'grid max-h-[660px] min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2',
-            has('approvals') ? 'sm:grid-rows-[repeat(2,minmax(0,1fr))]' : 'sm:grid-rows-1',
+            'grid gap-3 sm:grid-cols-2',
+            has('approvals') ? 'max-h-[660px] min-h-0 flex-1 sm:grid-rows-[repeat(2,minmax(0,1fr))]' : 'sm:grid-rows-1',
           )}
         >
         <CardShell
